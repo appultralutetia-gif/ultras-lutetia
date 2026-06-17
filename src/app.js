@@ -75,6 +75,7 @@ async function doInscription() {
   const pseudo = document.getElementById('regTelegram').value.trim();
   const email = document.getElementById('regEmail').value.trim();
   const ville = document.getElementById('regVille').value.trim();
+  const codePostal = document.getElementById('regCodePostal').value.trim();
   const pwd = document.getElementById('regPassword').value;
   const rgpd = document.getElementById('regRgpd').checked;
   if (!prenom || !nom || !pseudo || !pwd || !email) return toast('Champs obligatoires manquants (email requis)', 'error');
@@ -83,7 +84,7 @@ async function doInscription() {
   if (!rgpd) return toast('Accepte les conditions RGPD', 'error');
   try {
     showLoading();
-    await UL.inscription({ prenom, nom, pseudoTelegram: pseudo, email, ville, password: pwd });
+    await UL.inscription({ prenom, nom, pseudoTelegram: pseudo, email, ville, codePostal, password: pwd });
     hideLoading();
     toast('Compte créé ✅ — En attente de validation par le bureau.', 'success');
     showLogin();
