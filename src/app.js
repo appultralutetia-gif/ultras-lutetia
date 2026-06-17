@@ -86,7 +86,7 @@ async function doInscription() {
     showLoading();
     await UL.inscription({ prenom, nom, pseudoTelegram: pseudo, email, ville, codePostal, password: pwd });
     hideLoading();
-    toast('Compte créé ✅ — En attente de validation par le bureau.', 'success');
+    toast('Compte créé ✅ — Un email de confirmation t\'a été envoyé. Vérifie ta boîte mail (et tes spams) avant de te connecter.', 'success', 8000);
     showLogin();
   } catch(e) { hideLoading(); toast(e.message || 'Erreur inscription', 'error'); }
 }
@@ -2151,12 +2151,12 @@ function showModal(id) {
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 function closeModalOutside(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
 
-function toast(msg, type='info') {
+function toast(msg, type='info', duree=2800) {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.textContent = msg;
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 2800);
+  setTimeout(() => el.remove(), duree);
 }
 let loadingEl = null;
 function showLoading() {
