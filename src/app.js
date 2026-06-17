@@ -42,27 +42,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     navigator.serviceWorker.register('/ultras-lutetia/sw.js').catch(() => {});
   }
 
-  // Gérer le token de confirmation email dans l'URL
-  const params = new URLSearchParams(window.location.search);
-  const tokenHash = params.get('token_hash');
-  const type = params.get('type');
-  if (tokenHash && type === 'email') {
-    try {
-      showLoading();
-      const { error } = await UL.sb.auth.verifyOtp({ token_hash: tokenHash, type: 'email' });
-      hideLoading();
-      if (error) {
-        showLoginPage();
-        toast('Lien de confirmation invalide ou expiré', 'error');
-        return;
-      }
-      // Nettoyer l'URL
-      window.history.replaceState({}, '', window.location.pathname);
-    } catch(e) {
-      hideLoading();
-      showLoginPage();
-      return;
-    }
+  // Si hash access_token présent, attendre que Supabase JS le traite
+  const hash = window.location.hash;
+  if (hash && hash.includes('access_token')) {
+    showLoading();
+    await new Promise(r => setTimeout(r, 1500));
+    hideLoading();
+    window.history.replaceState({}, '', window.location.pathname);
   }
 
   const { membre } = await UL.initSession();
@@ -161,7 +147,7 @@ async function showApp(membre) {
 
 function applyRights(membre) {
   // Boutons contextuels pages existantes
-  if (hasCelluleTifo(membre)) document.getElementById('btnCreerSession').style.display = 'block';
+  if (hasCelluleTifo(membre)) document.getElementById('btnCreerTifo').style.display = 'block';
   if (hasCelluleDepl(membre)) document.getElementById('btnCreerDepl').style.display = 'block';
   if (isBureau(membre)) document.getElementById('btnPublierAnnonce').style.display = 'block';
   if (peutValiderInscriptions(membre)) document.getElementById('demandesSection').style.display = 'block';
@@ -177,7 +163,7 @@ function applyRights(membre) {
     el('adminSectionCalendrier').style.display = 'block';
   }
   if (hasCelluleDepl(membre))   el('adminSectionDepl').style.display = 'block';
-  if (hasCelluleTifo(membre))   el('adminSectionSessions').style.display = 'block';
+  if (hasCelluleTifo(membre))   el('adminSectionTifos').style.display = 'block';
   if (hasCelluleMatos(membre))  el('adminSectionMatos').style.display = 'block';
   if (hasCelluleSticks(membre)) el('adminSectionSticks').style.display = 'block';
   if (isCellule(membre))        el('adminSectionStats').style.display = 'block';
@@ -202,7 +188,7 @@ function showPage(pageId) {
   // Nav active
   const map = {
     pageAccueil:0, pageCalendrier:1, pageDeplacements:2,
-    pageSessions:3, pageBoutique:4, pageProfil:5, pageAdmin:6,
+    pageTifos:3, pageBoutique:4, pageProfil:5, pageAdmin:6,
     // pages secondaires → highlight parent
     pageMembres:6, pageStats:6, pageCharte:5, pageCartage:6, pageDemandesAdmin:6
   };
@@ -214,7 +200,7 @@ function showPage(pageId) {
   }
   // Lazy load
   if (pageId === 'pageCalendrier') loadCalendrier();
-  if (pageId === 'pageSessions') loadSessions();
+  if (pageId === 'pageTifos') loadTifos();
   if (pageId === 'pageDeplacements') loadDeplacements();
   if (pageId === 'pageBoutique') loadBoutique();
   if (pageId === 'pageProfil') loadProfil();
@@ -241,11 +227,11 @@ async function loadAccueil() {
   // Sessions
   try {
     const sessions = await UL.getUpcomingSessions();
-    const el = document.getElementById('sessionsAccueil');
+    const el = document.getElementById('tifosAccueil');
     el.innerHTML = sessions.length
-      ? sessions.slice(0,2).map(s => renderSessionCard(s, 'acc_')).join('')
-      : '<p style="color:var(--gris);font-size:14px;">Aucune session à venir</p>';
-    await refreshSessionsActions(sessions.slice(0,2), 'acc_');
+      ? sessions.slice(0,2).map(s => renderTifoCard(s, 'acc_')).join('')
+      : '<p style="color:var(--gris);font-size:14px;">Aucun tifo à venir</p>';
+    await refreshTifosActions(sessions.slice(0,2), 'acc_');
   } catch(e) {}
   // Déplacement
   try {
@@ -351,28 +337,28 @@ const PINTES = [
   { id: 'sans',     label: 'Sans pinte', emoji: '❌' },
 ];
 
-async function refreshSessionsActions(sessions, prefix='') {
-  await Promise.all(sessions.map(s => loadSessionActions(s.id, null, prefix).catch(() => {})));
+async function refreshTifosActions(sessions, prefix='') {
+  await Promise.all(sessions.map(s => loadTifoActions(s.id, null, prefix).catch(() => {})));
 }
 
-async function loadSessions() {
-  document.getElementById('sessionsListe').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+async function loadTifos() {
+  document.getElementById('tifosListe').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
     const [sessions, past] = await Promise.all([
       UL.getUpcomingSessions(),
       UL.getPastSessions(),
     ]);
-    document.getElementById('sessionsListe').innerHTML = sessions.length
-      ? sessions.map(s => renderSessionCard(s)).join('')
-      : '<div class="empty-state"><div>📋</div>Aucune session à venir</div>';
-    document.getElementById('sessionsHistorique').innerHTML = past.length
-      ? past.map(s => renderSessionCard(s)).join('')
+    document.getElementById('tifosListe').innerHTML = sessions.length
+      ? sessions.map(s => renderTifoCard(s)).join('')
+      : '<div class="empty-state"><div>📋</div>Aucun tifo à venir</div>';
+    document.getElementById('tifosHistorique').innerHTML = past.length
+      ? past.map(s => renderTifoCard(s)).join('')
       : '<div class="empty-state"><div>📋</div>Aucun historique</div>';
-    await refreshSessionsActions(sessions);
-  } catch(e) { toast('Erreur chargement sessions', 'error'); }
+    await refreshTifosActions(sessions);
+  } catch(e) { toast('Erreur chargement des tifos', 'error'); }
 }
 
-function renderSessionCard(s, prefix='') {
+function renderTifoCard(s, prefix='') {
   const m = UL.getCurrentMembre();
   const date = new Date(s.date).toLocaleDateString('fr-FR', { weekday:'short', day:'numeric', month:'short' });
   const types = { Tracage:'🖊️', Assemblage:'🔧', Peinture:'🖌️' };
@@ -386,7 +372,7 @@ function renderSessionCard(s, prefix='') {
 
   // Barre admin : ouvrir/fermer/supprimer + code si session ouverte
   const adminBar = hasCelluleTifo(m) ? `
-    <div class="session-admin-bar">
+    <div class="tifo-admin-bar">
       ${isPlanned ? `<button class="btn btn-sm btn-success" onclick="doOuvrirSession('${s.id}',event)">▶ Ouvrir</button>` : ''}
       ${isOpen    ? `<button class="btn btn-sm btn-danger"  onclick="doFermerSession('${s.id}',event)">⏹ Fermer</button>` : ''}
       ${isOpen && s.code_validation ? `<div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.3em;color:var(--vert);padding:4px 10px;background:rgba(34,197,94,.12);border-radius:8px;">🔑 ${s.code_validation}</div>` : ''}
@@ -395,20 +381,20 @@ function renderSessionCard(s, prefix='') {
       <button class="btn btn-sm btn-danger"   onclick="doSupprimerSession('${s.id}',event)">🗑</button>
     </div>` : '';
 
-  return `<div class="session-card ${isOpen?'open':''}">
+  return `<div class="tifo-card ${isOpen?'open':''}">
     <div style="display:flex;align-items:flex-start;gap:10px;">
       <div class="status-dot ${isOpen?'open':isPlanned?'planned':'closed'}" style="margin-top:5px;"></div>
       <div style="flex:1;min-width:0;">
         <div class="card-title">${types[s.type_session]||'📋'} ${esc(s.nom)}</div>
         <div class="card-sub">${date}${s.heure?' · '+s.heure.slice(0,5):''} · ${esc(s.lieu)}</div>
-        ${s.avec_pizza ? '<div style="font-size:11px;color:var(--pizza);margin-top:4px;">🍕 Session pizza</div>' : ''}
+        ${s.avec_pizza ? '<div style="font-size:11px;color:var(--pizza);margin-top:4px;">🍕 Tifo pizza</div>' : ''}
         ${s.capacite_max ? `<div style="font-size:11px;color:var(--gris);margin-top:2px;">👥 ${s._nb_inscrits||0} / ${s.capacite_max} places</div>` : ''}
       </div>
       ${badge}
     </div>
 
     <!-- Zone actions membre -->
-    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);" id="sessionActions_${prefix}${s.id}">
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);" id="tifoActions_${prefix}${s.id}">
       <div style="text-align:center;padding:8px;color:var(--gris);font-size:13px;">⏳</div>
     </div>
 
@@ -424,7 +410,7 @@ function renderSessionCard(s, prefix='') {
   </div>`;
 }
 
-async function loadSessionActions(sessionId, btn, prefix='') {
+async function loadTifoActions(sessionId, btn, prefix='') {
   const originalText = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
@@ -433,7 +419,7 @@ async function loadSessionActions(sessionId, btn, prefix='') {
     const estPresent  = monInscrit?.statut === 'present';
     const isOpen      = s.statut === 'en_cours';
     const isPlanned   = s.statut === 'a_venir';
-    const el          = document.getElementById('sessionActions_' + prefix + sessionId);
+    const el          = document.getElementById('tifoActions_' + prefix + sessionId);
     let html = '';
 
     if (!estInscrit && isPlanned) {
@@ -464,7 +450,7 @@ async function loadSessionActions(sessionId, btn, prefix='') {
         </a>`;
 
     } else if (s.statut === 'terminee') {
-      html = `<div style="text-align:center;font-size:13px;color:var(--gris);">Session terminée</div>`;
+      html = `<div style="text-align:center;font-size:13px;color:var(--gris);">Tifo terminé</div>`;
     }
 
     if (el) {
@@ -475,7 +461,7 @@ async function loadSessionActions(sessionId, btn, prefix='') {
     } else {
       // DOM pas encore prêt — réessayer dans 300ms
       setTimeout(() => {
-        const el2 = document.getElementById('sessionActions_' + prefix + sessionId);
+        const el2 = document.getElementById('tifoActions_' + prefix + sessionId);
         if (el2) el2.innerHTML = html || '';
       }, 300);
     }
@@ -484,8 +470,8 @@ async function loadSessionActions(sessionId, btn, prefix='') {
     if (btn) { btn.disabled = false; btn.textContent = originalText || "S'inscrire"; }
     // Fallback : remettre un bouton cliquable si appel silencieux
     if (!btn) {
-      const elErr = document.getElementById('sessionActions_' + prefix + sessionId);
-      if (elErr) elErr.innerHTML = `<button class="btn btn-primary" style="width:100%;padding:8px;" onclick="loadSessionActions('${sessionId}', this)">S'inscrire</button>`;
+      const elErr = document.getElementById('tifoActions_' + prefix + sessionId);
+      if (elErr) elErr.innerHTML = `<button class="btn btn-primary" style="width:100%;padding:8px;" onclick="loadTifoActions('${sessionId}', this)">S'inscrire</button>`;
     }
   }
 }
@@ -583,7 +569,7 @@ async function doValiderPresence(avecPizza = false) {
     await UL.validerPresence(currentSessionId, code, pizza, pinte);
     toast('Présence validée ! ✅', 'success');
     closeModal('modalPresence');
-    loadSessions();
+    loadTifos();
     loadAccueil();
   } catch(e) { toast(e.message || 'Code incorrect', 'error'); }
 }
@@ -592,15 +578,15 @@ async function doValiderPresence(avecPizza = false) {
 async function doInscrire(id, btn) {
   if (!id && btn) id = btn.getAttribute('data-session-id');
   if (!id) id = currentSessionId;
-  if (!id) return toast('Erreur : session introuvable', 'error');
+  if (!id) return toast('Erreur : tifo introuvable', 'error');
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.inscrire(id);
     toast('Inscription confirmée ✅', 'success');
     closeModal('modalConfirmInscription');
-    // Mettre à jour uniquement la zone actions de cette session sans recharger toute la liste
+    // Mettre à jour uniquement la zone actions de ce tifo sans recharger toute la liste
     // Rafraîchir silencieusement la zone actions (sans passer de bouton)
-    await loadSessionActions(id, null);
+    await loadTifoActions(id, null);
     loadAccueil();
   } catch(e) {
     toast(e.message || 'Impossible de s\'inscrire', 'error');
@@ -608,7 +594,7 @@ async function doInscrire(id, btn) {
   }
 }
 async function doDesinscrire(id) {
-  try { await UL.desinscrire(id); toast('Désinscription effectuée', 'success'); loadSessions(); }
+  try { await UL.desinscrire(id); toast('Désinscription effectuée', 'success'); loadTifos(); }
   catch(e) { toast(e.message || 'Impossible de se désinscrire', 'error'); }
 }
 
@@ -617,21 +603,21 @@ async function doOuvrirSession(id, e) {
   if (e) e.stopPropagation();
   try {
     const { code } = await UL.openSession(id);
-    toast('Session ouverte ! Code : ' + code, 'success');
-    loadSessions();
-  } catch(e) { toast(e.message || 'Impossible d\'ouvrir la session', 'error'); }
+    toast('Tifo ouvert ! Code : ' + code, 'success');
+    loadTifos();
+  } catch(e) { toast(e.message || 'Impossible d\'ouvrir le tifo', 'error'); }
 }
 async function doFermerSession(id, e) {
   if (e) e.stopPropagation();
-  if (!confirm('Fermer cette session ?')) return;
-  try { await UL.closeSession(id); toast('Session fermée', 'success'); loadSessions(); }
-  catch(e) { toast('Impossible d\'ouvrir la session', 'error'); }
+  if (!confirm('Fermer ce tifo ?')) return;
+  try { await UL.closeSession(id); toast('Tifo fermé', 'success'); loadTifos(); }
+  catch(e) { toast('Impossible d\'ouvrir le tifo', 'error'); }
 }
 async function doSupprimerSession(id, e) {
   if (e) e.stopPropagation();
   if (!confirm('Supprimer définitivement ?')) return;
-  try { await UL.deleteSession(id); toast('Session supprimée', 'success'); loadSessions(); }
-  catch(e) { toast('Impossible de fermer la session', 'error'); }
+  try { await UL.deleteSession(id); toast('Session supprimée', 'success'); loadTifos(); }
+  catch(e) { toast('Impossible de fermer le tifo', 'error'); }
 }
 
 // ── Admin : voir inscrits ────────────────────────────────────
@@ -660,7 +646,7 @@ async function voirInscrits(id, nom, e) {
           ${hasCelluleTifo(m)?`<button class="btn btn-sm btn-danger" style="padding:4px 8px;font-size:11px;" onclick="doDesinscrireAdmin('${id}','${i.membre_id}','${esc(nom)}')">✕</button>`:''}
         </div>`).join('')}`;
     showModal('modalAdminSession');
-  } catch(e) { toast('Impossible de supprimer la session', 'error'); }
+  } catch(e) { toast('Impossible de supprimer le tifo', 'error'); }
 }
 
 async function doDesinscrireAdmin(sessionId, membreId, nom) {
@@ -669,7 +655,7 @@ async function doDesinscrireAdmin(sessionId, membreId, nom) {
     await UL.desinscrireMembreSession(sessionId, membreId);
     toast('Membre désinscrit ✅', 'success');
     voirInscrits(sessionId, nom, null);
-    loadAdminSessions();
+    loadAdminTifos();
   } catch(e) { toast('Impossible de charger les inscrits', 'error'); }
 }
 
@@ -803,7 +789,7 @@ async function doCreerSession() {
     await UL.createSession(data);
     toast('Session créée ✅', 'success');
     closeModal('modalCreerSession');
-    loadSessions();
+    loadTifos();
   } catch(e) { toast(e.message, 'error'); }
 }
 
@@ -818,7 +804,7 @@ async function ouvrirModifierSession() {
       }).join('');
     document.getElementById('msFormFields').style.display = 'none';
     showModal('modalModifierSession');
-  } catch(e) { toast('Erreur chargement sessions', 'error'); }
+  } catch(e) { toast('Erreur chargement des tifos', 'error'); }
 }
 
 async function chargerSessionAModifier(id) {
@@ -840,7 +826,7 @@ async function chargerSessionAModifier(id) {
 
 async function doModifierSession() {
   const id = document.getElementById('msSelectSession').value;
-  if (!id) return toast('Sélectionne une session', 'error');
+  if (!id) return toast('Sélectionne un tifo', 'error');
   const data = {
     nom: document.getElementById('msNom').value.trim(),
     date: document.getElementById('msDate').value,
@@ -857,13 +843,13 @@ async function doModifierSession() {
     await UL.updateSession(id, data);
     toast('Session modifiée ✅', 'success');
     closeModal('modalModifierSession');
-    loadSessions();
-    loadAdminSessions();
+    loadTifos();
+    loadAdminTifos();
   } catch(e) { toast(e.message || 'Erreur modification', 'error'); }
 }
 
-function loadAdminSessions() {
-  if (document.getElementById('pageSessions')?.classList.contains('active')) loadSessions();
+function loadAdminTifos() {
+  if (document.getElementById('pageTifos')?.classList.contains('active')) loadTifos();
 }
 
 // ─── DÉPLACEMENTS ─────────────────────────────────────────────
