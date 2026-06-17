@@ -1145,6 +1145,41 @@ window.UL = {
   validerCotisationCash, validerCotisationHelloAsso, getAllCotisations,
   // Storage / Upload
   uploadPhotoMatos, uploadPhotoStick, updatePhotoMatos, updatePhotoStick,
+  // Email
+  envoyerEmailValidation,
   // Direct Supabase access
   sb, getCurrentUser: () => currentUser, getCurrentMembre: () => currentMembre,
 };
+
+// ============================================================
+// EMAIL — Brevo API
+// ============================================================
+
+async function envoyerEmailBrevo({ to, toName, subject, htmlContent }) {
+  const resp = await sb.functions.invoke('send-email', {
+    body: { to, toName, subject, htmlContent },
+  });
+  if (resp.error) throw new Error('Email erreur: ' + resp.error.message);
+  return true;
+}
+
+async function envoyerEmailValidation(membre) {
+  const prenom = membre.prenom || 'membre';
+  return envoyerEmailBrevo({
+    to: membre.email,
+    toName: prenom + ' ' + (membre.nom || ''),
+    subject: '✅ Ton compte Ultras Lutetia est activé !',
+    htmlContent: `
+      <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;background:#0F172A;color:#E2E8F0;padding:32px;border-radius:12px;">
+        <img src="https://appultralutetia-gif.github.io/ultras-lutetia/logo_ul.png" width="60" style="margin-bottom:20px;">
+        <h2 style="font-family:Arial,sans-serif;color:#1A56DB;margin-bottom:8px;">Bienvenue dans les Ultras Lutetia !</h2>
+        <p>Bonjour <strong>${prenom}</strong>,</p>
+        <p>Ton compte a été validé par le bureau. Tu peux maintenant te connecter à l'espace membre :</p>
+        <a href="https://appultralutetia-gif.github.io/ultras-lutetia/" 
+           style="display:inline-block;background:#1A56DB;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin:16px 0;">
+          Accéder à l'application
+        </a>
+        <p style="color:#94A3B8;font-size:13px;margin-top:24px;">À bientôt dans les tribunes — Ultras Lutetia 🔵⚪</p>
+      </div>`,
+  });
+}
