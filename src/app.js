@@ -103,6 +103,23 @@ async function doLogout() {
 // ─── App init + droits ────────────────────────────────────────
 async function showApp(membre) {
   document.getElementById('loginPage').style.display = 'none';
+
+  // Membre non encore validé par le bureau
+  if (!membre.actif) {
+    document.getElementById('loginPage').style.display = 'flex';
+    document.getElementById('loginPage').innerHTML = `
+      <div style="text-align:center;padding:40px 24px;max-width:400px;margin:auto;">
+        <img src="logo_ul.png" alt="Ultras Lutetia" style="width:80px;margin-bottom:24px;">
+        <h2 style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:.05em;margin-bottom:16px;">Compte en attente</h2>
+        <div class="info-box" style="text-align:left;margin-bottom:24px;">
+          \u2705 Ton adresse email a bien \u00e9t\u00e9 confirm\u00e9e.<br><br>
+          \u23f3 Ton compte est en cours de validation par le bureau des Ultras Lutetia. Tu recevras un email d\u00e8s que ton acc\u00e8s sera activ\u00e9.
+        </div>
+        <button class="btn btn-secondary" onclick="doLogout()">Se d\u00e9connecter</button>
+      </div>`;
+    return;
+  }
+
   document.getElementById('appContainer').style.display = 'block';
   document.getElementById('headerUser').textContent = '@' + membre.pseudo_telegram;
 
