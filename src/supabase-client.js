@@ -4,7 +4,7 @@
 // ============================================================
 
 const SUPABASE_URL = 'https://afgriuvrtdkklluvtswg.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_nE0Xqxqx8DTRalIKGsqAMA_Gmnvclh7';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmZ3JpdXZydGRra2xsdXZ0c3dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MTkwODgsImV4cCI6MjA5NzI5NTA4OH0.3jXUyJD87MjhFJctzceMVoeHWGCSqGmVy3TPuXGQebc';
 
 // ── Init client Supabase ──────────────────────────────────────
 const { createClient } = supabase;
