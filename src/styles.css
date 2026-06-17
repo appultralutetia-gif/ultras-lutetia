@@ -176,7 +176,7 @@ html, body {
 }
 
 /* ── Session cards ──────────────────────────────────────────── */
-.session-card {
+.tifo-card {
   background: var(--surface-2);
   border: 1px solid var(--border-card);
   border-radius: var(--radius);
@@ -185,11 +185,11 @@ html, body {
   cursor: pointer;
   transition: all var(--transition);
 }
-.session-card:hover {
+.tifo-card:hover {
   border-color: var(--bleu-mid);
   background: var(--navy-mid);
 }
-.session-card.open {
+.tifo-card.open {
   border-color: var(--vert);
   background: rgba(16,185,129,.07);
 }
@@ -580,7 +580,7 @@ select option { background: var(--navy); color: var(--blanc); }
 .star.empty  { color: var(--surface-4); font-size: 16px; }
 
 /* ── Session admin bar ──────────────────────────────────────── */
-.session-admin-bar {
+.tifo-admin-bar {
   display: flex; gap: 6px; flex-wrap: wrap;
   margin-top: 10px; padding-top: 10px;
   border-top: 1px solid var(--border-card);
