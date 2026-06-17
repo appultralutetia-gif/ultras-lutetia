@@ -41,6 +41,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/ultras-lutetia/sw.js').catch(() => {});
   }
+
+  // Gérer le token de confirmation email dans l'URL
+  const params = new URLSearchParams(window.location.search);
+  const tokenHash = params.get('token_hash');
+  const type = params.get('type');
+  if (tokenHash && type === 'email') {
+    try {
+      showLoading();
+      const { error } = await UL.sb.auth.verifyOtp({ token_hash: tokenHash, type: 'email' });
+      hideLoading();
+      if (error) {
+        showLoginPage();
+        toast('Lien de confirmation invalide ou expiré', 'error');
+        return;
+      }
+      // Nettoyer l'URL
+      window.history.replaceState({}, '', window.location.pathname);
+    } catch(e) {
+      hideLoading();
+      showLoginPage();
+      return;
+    }
+  }
+
   const { membre } = await UL.initSession();
   membre ? showApp(membre) : showLoginPage();
 });
