@@ -291,8 +291,11 @@ async function loadDemandes() {
 async function validerDemande(membreId, nouveauStatut) {
   const label = nouveauStatut === 'draft' ? 'Draft' : nouveauStatut === 'sympathisant' ? 'Sympathisant' : 'Confirmé';
   try {
-    await UL.updateMembre(membreId, { statut: nouveauStatut, actif: true });
+    const membre = await UL.updateMembre(membreId, { statut: nouveauStatut, actif: true });
     toast(`Membre accepté en tant que ${label} ✅`, 'success');
+    if (membre && membre.email) {
+      UL.envoyerEmailValidation(membre).catch(() => {});
+    }
     await loadDemandes();
   } catch(e) { toast(e.message || 'Une erreur est survenue', 'error'); }
 }
@@ -2143,8 +2146,11 @@ async function loadDemandesAdmin() {
 
 async function validerDemandeAdmin(membreId, statut) {
   try {
-    await UL.updateMembre(membreId, { statut, actif: true });
+    const membre = await UL.updateMembre(membreId, { statut, actif: true });
     toast(`Membre accepté → ${statut} ✅`, 'success');
+    if (membre && membre.email) {
+      UL.envoyerEmailValidation(membre).catch(() => {});
+    }
     loadDemandesAdmin();
   } catch(e) { toast('Impossible de valider la demande', 'error'); }
 }
