@@ -78,6 +78,11 @@
       <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Connexion</button>
+    <div style="text-align:center;margin-top:12px;">
+      <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="ouvrirModalMdpOublie()">
+        Mot de passe oublié ?
+      </span>
+    </div>
     <div style="text-align:center;margin-top:16px;">
       <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="showInscription()">
         Pas encore membre ? S'inscrire
@@ -547,6 +552,40 @@
     </div>
     <button class="btn btn-primary" onclick="doChangeMdp()">Enregistrer</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalMdp')">Annuler</button>
+  </div>
+</div>
+
+<!-- Modal Mot de passe oublié — demande de pseudo -->
+<div class="modal-overlay" id="modalMdpOublie" style="display:none;" onclick="closeModalOutside(event,'modalMdpOublie')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title">Mot de passe oublié</h3>
+    <p style="font-size:13px;color:var(--gris);margin-bottom:14px;">
+      Indique ton pseudo Telegram, on t'envoie un lien par email pour choisir un nouveau mot de passe.
+    </p>
+    <div class="form-group">
+      <label>Pseudo Telegram</label>
+      <input type="text" id="mdpOublieTelegram" placeholder="@pseudo" autocomplete="username">
+    </div>
+    <button class="btn btn-primary" onclick="doDemandeResetMdp()">Envoyer le lien</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalMdpOublie')">Annuler</button>
+  </div>
+</div>
+
+<!-- Modal Réinitialiser mot de passe — après clic sur le lien reçu par email -->
+<div class="modal-overlay" id="modalResetMdp" style="display:none;">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title">Choisir un nouveau mot de passe</h3>
+    <div class="form-group">
+      <label>Nouveau mot de passe</label>
+      <input type="password" id="resetMdpNew" placeholder="Minimum 8 caractères" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label>Confirmer</label>
+      <input type="password" id="resetMdpConfirm" placeholder="Répète le mot de passe" autocomplete="new-password">
+    </div>
+    <button class="btn btn-primary" onclick="doResetMdp()">Enregistrer mon mot de passe</button>
   </div>
 </div>
 
