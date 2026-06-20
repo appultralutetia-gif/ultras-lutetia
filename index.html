@@ -372,7 +372,6 @@
         <button class="filter-btn active" onclick="filtrerMatos('tous')">Tous</button>
         <button class="filter-btn" onclick="filtrerMatos('textile')">Textile</button>
         <button class="filter-btn" onclick="filtrerMatos('accessoire')">Accessoire</button>
-        <button class="filter-btn" onclick="filtrerMatos('collector')">Collector</button>
       </div>
       <!-- Bouton admin -->
       <div id="btnAddProduit" style="display:none;margin-bottom:12px;">
@@ -394,11 +393,6 @@
       <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;scrollbar-width:none;">
         <button class="filter-btn active" onclick="filtrerSticks('tous')">Tous</button>
         <button class="filter-btn" onclick="filtrerSticks('sticker')">Stickers</button>
-        <button class="filter-btn" onclick="filtrerSticks('collector')">Collectors</button>
-      </div>
-      <!-- Bouton admin distribution -->
-      <div id="btnDistribuerStick" style="display:none;margin-bottom:12px;">
-        <button class="btn btn-primary" onclick="showModal('modalDistribuer')">+ Enregistrer une distribution</button>
       </div>
       <div id="sticksCatalogue"></div>
       <div class="section-title" style="margin-top:20px;">Mes sticks reçus</div>
@@ -510,8 +504,8 @@
       <div class="section-title">🛍️ Matos</div>
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showPage('pageBoutique')">📋 Gérer la boutique matos</button>
           <button class="btn btn-secondary" onclick="showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
+          <button class="btn btn-secondary" onclick="showPage('pageBoutique')">📋 Gérer la boutique matos</button>
         </div>
       </div>
     </div>
@@ -521,8 +515,8 @@
       <div class="section-title">🎟️ Sticks</div>
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="btn btn-secondary" onclick="showModal('modalCreerStick');loadSectionsForModalStick()">+ Ajouter un stick</button>
           <button class="btn btn-secondary" onclick="showPage('pageBoutique');setTimeout(()=>switchBoutiqueTab('sticks'),100)">📋 Gérer la boutique sticks</button>
-          <button class="btn btn-secondary" onclick="showModal('modalDistribuer');loadDistribuerModal()">+ Enregistrer une distribution</button>
         </div>
       </div>
     </div>
@@ -916,7 +910,6 @@
       <select id="pCat">
         <option value="textile">Textile</option>
         <option value="accessoire">Accessoire</option>
-        <option value="collector">Collector</option>
       </select>
     </div>
     <div class="form-group"><label>Prix (€)</label><input type="number" id="pPrix" placeholder="25"></div>
@@ -953,6 +946,52 @@
     </div>
     <button class="btn btn-primary" onclick="doCreerProduit()">Ajouter l'article</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerProduit')">Annuler</button>
+  </div>
+</div>
+
+<!-- Modal Créer Stick (Admin/Cellule Sticks) -->
+<div class="modal-overlay" id="modalCreerStick" style="display:none;" onclick="closeModalOutside(event,'modalCreerStick')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title">Ajouter un stick</h3>
+    <div class="form-group"><label>Nom du stick</label><input type="text" id="stNom" placeholder="ex: Sticker tag 2026"></div>
+    <div class="form-group">
+      <label>Visuel du stick</label>
+      <div id="photoPreviewStick" style="display:none;margin-bottom:8px;">
+        <img id="photoPreviewImgStick" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--surface-4);">
+      </div>
+      <input type="file" id="stPhoto" accept="image/*" onchange="previewPhoto(this,'stick')"
+        style="background:var(--surface-2);border:1.5px dashed var(--surface-4);border-radius:9px;padding:10px;color:var(--gris);width:100%;cursor:pointer;">
+    </div>
+    <div class="form-group"><label>Catégorie</label>
+      <select id="stCat">
+        <option value="sticker">Sticker</option>
+        <option value="fumigene">Fumigène</option>
+        <option value="drapeau">Drapeau</option>
+        <option value="echarpe">Écharpe</option>
+        <option value="autre">Autre</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Série (optionnel)</label><input type="text" id="stSerie" placeholder="ex: Série Derby"></div>
+    <div class="form-group"><label>Prix (€) — laisser vide si gratuit</label><input type="number" id="stPrix" placeholder="5"></div>
+    <div class="form-group"><label>Stock disponible</label><input type="number" id="stStock" placeholder="0"></div>
+    <div class="form-group"><label>Quota par membre (optionnel)</label><input type="number" id="stQuota" placeholder="ex: 2"></div>
+    <div class="form-group">
+      <label>Niveau d'accès</label>
+      <select id="stAcces" onchange="toggleSectionSelectStick()">
+        <option value="tous">Généraliste — tout le monde</option>
+        <option value="section">Section spécifique</option>
+      </select>
+    </div>
+    <div class="form-group" id="sectionSelectGroupStick" style="display:none;">
+      <label>Section concernée</label>
+      <select id="stSection">
+        <option value="">Chargement...</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Lien HelloAsso (optionnel)</label><input type="url" id="stHelloasso" placeholder="https://www.helloasso.com/..."></div>
+    <button class="btn btn-primary" onclick="doCreerStick()">Ajouter le stick</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerStick')">Annuler</button>
   </div>
 </div>
 
