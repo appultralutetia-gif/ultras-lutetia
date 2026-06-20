@@ -311,8 +311,70 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 
 ---
 
+## 18. `doVerifyOtp()` validait encore `code.length < 6` — résidu de l'ancien `maxlength="6"`
+
+**Symptôme** : aucun, en l'état actuel (un code à 8 chiffres passe largement le seuil `< 6`) — repéré par relecture de code lors d'une confirmation de flux, pas par un dysfonctionnement observé.
+
+**Cause** : lors du fix du bug #17, `maxlength="6"` → `maxlength="8"` avait été corrigé côté `index.html`, mais le commentaire au-dessus du check JS dans `app.js` indiquait explicitement une intention différente : garder `code.length < 6` *volontairement* laxiste, pour ne pas avoir à retoucher le JS si Supabase changeait un jour la longueur par défaut du code (seul `maxlength` dans le HTML devait borner réellement la saisie). Cette intention n'avait pas été relue avant de "corriger" la valeur en session suivante.
+
+**Décision prise cette session** : resserré à `code.length < 8` quand même, sur demande explicite de Remi, en connaissance de cause — le bénéfice (message d'erreur "Code requis" immédiat sur une saisie de 6-7 chiffres, plutôt que de laisser Supabase renvoyer une erreur moins claire) a été jugé supérieur à la flexibilité face à un changement hypothétique côté Supabase.
+
+**Point de vigilance pour la suite** : si Supabase change un jour la longueur du code OTP, il faudra modifier **les deux** : `maxlength` dans `index.html` ET `code.length < 8` dans `doVerifyOtp()` (plus de séparation volontaire entre les deux comme c'était le cas avant cette session).
+
+**Fichiers concernés** : `src/app.js` (`doVerifyOtp`).
+
+---
+
+## 19. `getProduits()` / `getSticks()` — détection Admin/Bureau/Membre Cellule via `membre.statut` au lieu de `roles_app[]`
+
+**Symptôme** : aucun symptôme rapporté par un utilisateur — trouvé lors d'un audit de la hiérarchie à 6 niveaux demandé par Remi, en confrontant la matrice de droits théorique au code réel.
+
+**Cause** : les deux fonctions comparaient `membre.statut` à `'admin'`, `'bureau'`, `'membre_cellule'` pour décider si le membre voit tout le catalogue Matos/Sticks sans restriction. Or `membre.statut` ne contient **jamais** ces valeurs — confirmé par le commentaire de `admin.js` ("Statut UL : seulement sympathisant/draft/confirme") et par l'absence totale de ces 3 chaînes ailleurs dans le code applicatif. Admin/Bureau/Membre Cellule sont détectés exclusivement via `roles_app[]` (`isAdmin()`/`isBureau()`/`isCellule()` dans `app.js`). Conséquence réelle : un Admin/Bureau/Membre Cellule qui n'a *que* son rôle dans `roles_app` (le cas normal — personne n'a en plus `statut: 'confirme'` par construction) était traité comme un Confirmé simple pour l'accès aux produits/sticks de niveau "section", au lieu de tout voir sans restriction.
+
+**Fix** (`src/supabase-client.js`) : remplacement de `['admin','bureau','membre_cellule'].includes(statut)` par `isAdmin(membre) || isBureau(membre) || isCellule(membre)` dans les deux fonctions. `isCellule()` est volontairement inclus (pas seulement `isAdmin`/`isBureau`) car un Membre Cellule simple doit aussi voir tout le catalogue, par hiérarchie.
+
+**Découverte connexe lors du même audit** : `getProduits()` était dupliquée **mot pour mot** deux fois dans le fichier — la seconde déclaration écrasait silencieusement la première en JS (pas d'erreur, juste du code mort). La première occurrence a été supprimée.
+
+**Point de vigilance pour la suite** : avant d'écrire toute logique de droits qui distingue Admin/Bureau/Membre Cellule, ne jamais comparer `membre.statut` — toujours passer par `isAdmin()`/`isBureau()`/`isCellule()`. Et avant d'ajouter une fonction dans `supabase-client.js`, `grep` son nom dans le fichier entier : au moins une duplication exacte y vivait silencieusement.
+
+**Fichiers concernés** : `src/supabase-client.js` (`getProduits`, `getSticks`).
+
+---
+
+## 20. `rattacherCellule()` / table `membres_cellules` — code mort jamais branché, avec écriture de statut invalide
+
+**Symptôme** : aucun — fonction jamais appelée par aucun bouton de l'UI, trouvée lors du même audit de hiérarchie que le bug #19 (`grep` de `rattacherCellule` et `getCellules` dans tous les fichiers `src/*.js` + `index.html` : zéro résultat d'appel, seulement la déclaration et l'export).
+
+**Cause** : `rattacherCellule(membreId, celluleId, role)` tentait d'écrire `membre.statut = 'membre_cellule'` via `updateStatutMembre()` — exactement le même défaut conceptuel que le bug #19 (une valeur que `membre.statut` ne gère jamais). Il s'agissait d'un système parallèle basé sur la table relationnelle `membres_cellules` (membre ↔ cellule ↔ rôle), probablement une première tentative de gérer l'appartenance multi-cellule, abandonnée en cours de route au profit du système plus simple `roles_app[]` (tableau de strings, qui permet déjà nativement à un membre d'appartenir à plusieurs cellules — chaque `hasCellule*()` dans `app.js` est un test indépendant, pas un `if/else` exclusif).
+
+**Vérification effectuée avant suppression** : confirmé avec Remi que le besoin réel ("un membre peut être membre de plusieurs cellules, ex: Tifo + Matos, et doit voir les deux panneaux admin") fonctionne déjà nativement via `roles_app[]` — testé par lecture de `applyRights()` dans `app.js`, qui empile des `if` indépendants (pas de branche exclusive) pour chaque `adminSection*`.
+
+**Fix** : suppression de `getCellules()` et `rattacherCellule()` dans `supabase-client.js`, retrait de leur export, et retrait des jointures `membres_cellules(...)` dans `getMembre()`/`getAllMembres()` (leur résultat n'était lu/affiché nulle part côté UI). La table `membres_cellules` existe toujours côté base Supabase — non supprimée, seulement débranchée du code.
+
+**Point de vigilance pour la suite** : si un jour `membres_cellules` doit être réintroduite (ex: pour différencier un "responsable de cellule" d'un "membre simple" au sein d'une même cellule — un besoin que `roles_app[]` ne couvre pas, lui n'étant qu'un simple booléen par cellule), repartir d'un schéma neuf plutôt que de réutiliser les anciennes fonctions : elles contenaient le bug de `statut` invalide en plus d'être déconnectées de toute UI.
+
+**Fichiers concernés** : `src/supabase-client.js` (`getCellules`, `rattacherCellule` supprimées ; `getMembre`, `getAllMembres` allégées).
+
+---
+
+## 21. Notation par cellule — emoji fixe `🖌️` au lieu de varier selon la catégorie
+
+**Symptôme** : capture d'écran montrant des pinceaux 🖌️ pour la notation des Sympathisants et des Drafts dans le panneau Comité de passage, alors que `EVAL_EMOJI` (défini dans `profil.js`) prévoit 💙 pour `comite_sympa` et 🚀 pour `comite_draft`.
+
+**Cause** : `renderCarteEvaluation(m, categorie)`, écrite pour être générique et partagée entre Tifo et Comité, utilisait `'🖌️'.repeat(n)` en dur au lieu de `EVAL_EMOJI[categorie].repeat(n)` — un oubli de branchement lors de l'écriture initiale (la constante `EVAL_EMOJI` existait déjà, mais n'avait pas été consultée par cette fonction).
+
+**Fix** (`src/tifos.js`) : `const emoji = EVAL_EMOJI[categorie] || '🖌️';` au début de `renderCarteEvaluation()`, utilisé ensuite dans le rendu des 3 boutons. Le fallback `|| '🖌️'` couvre le seul appel sans correspondance dans `EVAL_EMOJI` (catégorie `'tifo'`, qui y est bien définie — donc le fallback n'est en réalité jamais activé en usage normal, gardé par prudence si une future catégorie est ajoutée sans être encore déclarée dans `EVAL_EMOJI`).
+
+**Point de vigilance pour la suite** : toute fonction de rendu générique partagée entre plusieurs cellules doit être testée visuellement (capture d'écran) pour **chaque** catégorie qu'elle gère, pas seulement vérifiée par lecture de code — ce bug n'a pas été détecté par `validate.js` (pas d'erreur de syntaxe, juste un mauvais choix d'emoji), ni par une relecture initiale du code.
+
+**Fichiers concernés** : `src/tifos.js` (`renderCarteEvaluation`).
+
+---
+
 - **Reproduire un bug exige parfois un état précis** (ex: un tifo où l'on n'est *pas encore* inscrit) — un test sur le mauvais état peut masquer le vrai bug derrière un comportement différent mais correct (ex: doublon d'inscription qui ressemble au bug recherché mais n'en est pas la cause).
 - **Un renommage en masse de fichiers (GitHub web, script) peut introduire un caractère invisible (espace en tête) sans qu'aucun affichage standard ne le révèle** — si toutes les requêtes vers un dossier entier renvoient 404 alors que le déploiement est confirmé réussi et le chemin visuellement correct, vérifier l'URL "Raw" d'un seul fichier individuel avant de chercher plus loin.
 - **Un fallback de Service Worker ou de routeur qui retombe sur la page d'accueil en cas d'échec réseau peut maquiller une vraie 404 en "redirection"** — si une ressource semble "rediriger vers l'app" au lieu d'afficher une erreur claire, soupçonner un `catch()`/fallback générique avant de chercher un bug applicatif.
 - **Un message d'erreur générique ("Token has expired or is invalid", "No API key found in request") peut être renvoyé pour des causes complètement différentes de ce qu'il suggère littéralement** — avant d'investiguer la piste évidente (expiration, clé API), vérifier d'abord que les *paramètres envoyés* sont strictement corrects (type, longueur, casse) : un mismatch de paramètre produit souvent le même message générique qu'une vraie expiration/erreur d'auth, côté GoTrue/Supabase comme côté beaucoup d'API tierces.
 - **Ne jamais coder en dur une contrainte de format (longueur de code, structure de token) par analogie avec un usage "habituel" sans la vérifier dans la documentation officielle ou directement dans la donnée réelle reçue** — l'hypothèse "OTP = 6 chiffres" (vraie pour SMS/Google Auth) a fait perdre du temps face à un OTP email Supabase qui en génère 8 par défaut ; comparer le contenu brut reçu (ex: email complet) avec ce que le champ de saisie accepte est le test le plus rapide pour détecter une troncature silencieuse.
+- **Un champ de statut/enum avec un nombre limité de valeurs valides doit être vérifié à la source (commentaire de code, contrainte SQL, ou test direct) avant d'écrire une comparaison dessus** — deux bugs distincts cette session (#19, #20) venaient de la même confusion entre `membre.statut` (3 valeurs seulement) et les niveaux de droits réels gérés par `roles_app[]` (un tableau, pas un statut). Une recherche globale (`grep`) des valeurs supposées valides dans tout le code applicatif aurait révélé l'absence totale de `'admin'`/`'bureau'`/`'membre_cellule'` comme valeurs de `statut`, avant même d'écrire le correctif.
+- **Du code non branché à l'UI (fonction exportée mais jamais appelée) peut survivre longtemps sans être détecté, et accumuler ses propres bugs en silence** — `rattacherCellule()` contenait un bug de statut invalide en plus d'être totalement déconnectée ; un simple `grep` du nom de fonction dans `src/*.js` + `index.html` suffit à vérifier si une fonction est réellement utilisée avant de lui faire confiance ou de la corriger en place.
