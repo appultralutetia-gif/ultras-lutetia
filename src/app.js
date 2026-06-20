@@ -47,15 +47,11 @@ let allMembres = [];
 // est donc protégé, et on réessaie après DOMContentLoaded si besoin.
 let appDejaInitialisee = false;
 function appliquerAffichageResetMdp() {
-  console.log('[UL DEBUG] appliquerAffichageResetMdp() appelée');
   const loginPage = document.getElementById('loginPage');
   const appContainer = document.getElementById('appContainer');
   const champNew = document.getElementById('resetMdpNew');
   const champConfirm = document.getElementById('resetMdpConfirm');
-  if (!loginPage || !appContainer || !champNew || !champConfirm) {
-    console.log('[UL DEBUG] éléments DOM manquants, retour false');
-    return false;
-  }
+  if (!loginPage || !appContainer || !champNew || !champConfirm) return false;
 
   hideLoading();
   loginPage.style.display = 'flex';
@@ -63,13 +59,11 @@ function appliquerAffichageResetMdp() {
   champNew.value = '';
   champConfirm.value = '';
   showModal('modalResetMdp');
-  console.log('[UL DEBUG] modal modalResetMdp affiché, display =', document.getElementById('modalResetMdp').style.display);
   return true;
 }
 
 let recoveryEnAttente = false;
 window.UL_ON_PASSWORD_RECOVERY = function() {
-  console.log('[UL DEBUG] UL_ON_PASSWORD_RECOVERY appelée, appDejaInitialisee =', appDejaInitialisee);
   recoveryEnAttente = true;
   // Si l'app a déjà fini son initialisation normale (showApp/showLoginPage
   // déjà exécuté) au moment où cet événement arrive, on rattrape tout de
@@ -85,19 +79,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   showLoading();
   const { membre } = await UL.initSession();
   hideLoading();
-  console.log('[UL DEBUG] après initSession, recoveryEnAttente =', recoveryEnAttente, ', membre =', membre ? membre.pseudo_telegram : null);
   window.history.replaceState({}, '', window.location.pathname);
 
   // PASSWORD_RECOVERY a pu arriver pendant ou après UL.initSession() ci-dessus.
   // Dans tous les cas, le modal de reset prime sur l'affichage normal.
   if (recoveryEnAttente) {
-    console.log('[UL DEBUG] branche recovery prise');
     appliquerAffichageResetMdp();
     appDejaInitialisee = true;
     return;
   }
 
-  console.log('[UL DEBUG] branche normale prise (showApp ou showLoginPage)');
   appDejaInitialisee = true;
   membre ? showApp(membre) : showLoginPage();
 });
