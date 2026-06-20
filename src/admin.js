@@ -63,6 +63,7 @@ async function openEditMembre(id) {
   // Statut UL : seulement sympathisant/draft/confirme
   const statutUL = ['sympathisant','draft','confirme'].includes(m.statut) ? m.statut : 'confirme';
   document.getElementById('editStatut').value = statutUL;
+  document.getElementById('editValideTifo').checked = !!m.valide_tifo;
 
   // Section (charger la liste + sélectionner la section du membre)
   try {
@@ -129,6 +130,7 @@ async function doSauvegarderMembre() {
       pseudo_telegram: document.getElementById('editTelegram').value.trim(),
       email: document.getElementById('editEmail').value.trim() || null,
       statut: document.getElementById('editStatut').value,
+      valide_tifo: document.getElementById('editValideTifo').checked,
       section_id: document.getElementById('editSection').value || null,
       roles_app: Array.from(_rolesActifs),
     });
