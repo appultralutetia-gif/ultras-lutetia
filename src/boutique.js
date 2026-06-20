@@ -273,10 +273,12 @@ function appliquerFiltresSticks() {
 
 function renderSticks(sticks) {
   const el = document.getElementById('sticksCatalogue');
+  const m = UL.getCurrentMembre();
+  const peutEncaisser = hasCelluleSticks(m);
   if (!sticks.length) { el.innerHTML = '<div class="empty-state"><div>🎟️</div>Aucun stick disponible</div>'; return; }
   el.innerHTML = sticks.map(s => `
     <div class="stick-card">
-      <div style="font-size:32px;flex-shrink:0;">${s.visuel_url ? `<img src="${s.visuel_url}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;">` : '🎟️'}</div>
+      <div style="font-size:32px;flex-shrink:0;">${s.visuel_url ? `<img src="${s.visuel_url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;">` : '🎟️'}</div>
       <div style="flex:1;min-width:0;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(s.nom)}</div>
         <div style="font-size:12px;color:var(--gris);">
@@ -289,20 +291,61 @@ function renderSticks(sticks) {
       <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
         ${s.stock > 0 || s.mode === 'precommande' ? `
         ${s.lien_helloasso ? `<a href="${s.lien_helloasso}" target="_blank"><button class="btn btn-sm btn-primary">HelloAsso</button></a>` : ''}
-        <button class="btn btn-sm btn-secondary" onclick="demanderStickCash('${s.id}','${esc(s.nom)}')">${s.mode === 'precommande' ? '📋 Précommander' : 'Cash'}</button>` : ''}
-        ${hasCelluleSticks(UL.getCurrentMembre()) ? `<button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${s.id}','stick')">🖼️</button>` : ''}
+        ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirCashStick('${s.id}','${esc(s.nom)}')">Cash</button>` : ''}` : ''}
+        ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${s.id}','stick')">🖼️</button>` : ''}
       </div>
     </div>`).join('');
 }
 
-async function demanderStickCash(stickId, nom) {
-  const qte = parseInt(prompt(`Quantité souhaitée pour "${nom}" (cash, à remettre en présentiel) :`, '1'));
-  if (!qte || qte < 1) return;
+// ── Valider un cash (Admin/Bureau/Cellule Sticks) ──────────────
+let _allMembresCashStick = [];
+
+async function ouvrirCashStick(stickId, nom) {
+  document.getElementById('cashStickId').value = stickId;
+  document.getElementById('cashStickTitre').textContent = `Valider un cash — ${nom}`;
+  document.getElementById('cashStickSearch').value = '';
+  document.getElementById('cashStickListeMembres').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  showModal('modalCashStick');
   try {
-    await UL.demanderStick(stickId, 'cash', qte);
-    toast('Demande enregistrée ✅ — à régler en présentiel', 'success');
+    _allMembresCashStick = await UL.getAllMembres();
+    renderListeMembresCashStick(_allMembresCashStick);
+  } catch(e) { toast('Erreur chargement membres', 'error'); }
+}
+
+function filtrerMembresCashStick() {
+  const recherche = document.getElementById('cashStickSearch').value.trim().toLowerCase();
+  if (!recherche) return renderListeMembresCashStick(_allMembresCashStick);
+  const filtres = _allMembresCashStick.filter(m => {
+    const champs = [m.nom, m.prenom, m.pseudo_telegram].filter(Boolean).join(' ').toLowerCase();
+    return champs.includes(recherche);
+  });
+  renderListeMembresCashStick(filtres);
+}
+
+function renderListeMembresCashStick(membres) {
+  const el = document.getElementById('cashStickListeMembres');
+  if (!membres.length) { el.innerHTML = '<div class="empty-state"><div>👥</div>Aucun membre trouvé</div>'; return; }
+  el.innerHTML = membres.map(m => `
+    <div class="card" style="margin-bottom:6px;padding:10px;cursor:pointer;" onclick="doValiderCashStick('${m.id}','${esc(m.prenom)} ${esc(m.nom)}')">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="avatar" style="width:30px;height:30px;font-size:12px;flex-shrink:0;">${((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase()}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;">${esc(m.prenom)} ${esc(m.nom)}</div>
+          <div style="font-size:11px;color:var(--gris);">@${esc(m.pseudo_telegram)}</div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+async function doValiderCashStick(membreId, nomMembre) {
+  const stickId = document.getElementById('cashStickId').value;
+  if (!confirm(`Valider le cash reçu de ${nomMembre} ?`)) return;
+  try {
+    await UL.distribuerStickAdmin(stickId, membreId, 1, 'cash');
+    toast(`Cash validé pour ${nomMembre} ✅`, 'success');
+    closeModal('modalCashStick');
     loadSticks();
-  } catch(e) { toast(e.message || 'Erreur', 'error'); }
+  } catch(e) { toast(e.message || 'Impossible de valider le cash', 'error'); }
 }
 
 function renderMesSticks(distribs) {
