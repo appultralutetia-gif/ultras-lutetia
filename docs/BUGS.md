@@ -256,7 +256,31 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 
 
 
-- **Toujours vérifier le Network tab (status + body de réponse)** avant de supposer la cause d'un échec d'auth — un message client générique ("introuvable", "identifiants incorrects") peut masquer des causes très différentes (normalisation, RLS, format de clé, JWT, lien expiré...).
+## 15. Accès Tifos restreint par statut (`valide_tifo`) + bug de déblocage checkbox charte
+
+**Contexte** : ajout d'une restriction d'accès à la page Tifos — Sympathisant jamais, Draft seulement si validé manuellement par cellule Tifo/Bureau/Admin, Confirmé automatique. Nouvelle colonne `membres.valide_tifo` (boolean, défaut `false`), nouvelle fonction `peutVoirTifos(membre)` dans `app.js`, vérifiée à la fois dans `loadTifos()` (page dédiée) et dans le bloc "Prochains Tifos" de l'accueil (`loadAccueil()`) — un seul des deux avait été oublié au premier passage, attention à toujours chercher les deux points d'entrée d'un même contenu (accueil + page dédiée) avant de considérer une restriction d'accès comme complète.
+
+**Effet de bord découvert pendant le test du gate charte (sans lien avec le code)** : en testant avec un compte `draft` jamais signé, la checkbox "Je certifie avoir lu..." semblait bloquée indéfiniment même après scroll. Le vrai diagnostic (`scrollHeight`/`clientHeight`/`scrollTop` vérifiés en Console) a montré que le mécanisme fonctionnait correctement — le test précédent avait simplement été fait avant d'avoir scrollé jusqu'au tout dernier pixel (seuil strict `scrollHeight - 20`). Pas un bug, mais le timing de calcul initial (`requestAnimationFrame` seul, juste après l'injection du HTML) a quand même été renforcé par précaution : un `setTimeout(recheck, 300)` et un écouteur `resize` ont été ajoutés dans `afficherCharteGate()`, au cas où une police web ou une image non encore chargée fausse `scrollHeight` au moment du tout premier calcul.
+
+**Fichiers concernés** : `src/app.js` (`peutVoirTifos`, bloc Tifos de `loadAccueil`, robustesse `afficherCharteGate`/`checkCharteScroll`), `src/tifos.js` (`loadTifos` avec message différencié sympathisant/draft non-validé), `src/admin.js` + `index.html` (checkbox "Validé Tifo" dans la fiche membre), `docs/sql_migration_valide_tifo.sql`.
+
+---
+
+## 16. 404 sur tous les logos malgré un déploiement confirmé — espace parasite en tête de nom de fichier
+
+**Symptôme** : tous les logos de clubs (`assets/logos/*.png`) renvoient 404 dans la Console malgré un dossier bien présent à la racine du repo, un déploiement GitHub Pages marqué succès (coche verte), et un chemin d'URL identique à celui utilisé dans le SQL d'insertion. Premier indice trompeur : ouvrir l'URL d'un logo manquant dans le navigateur semblait "rediriger vers l'app" plutôt que d'afficher une 404 classique — en réalité c'est `404.html` (prévu pour rattraper les liens magiques Supabase avec `#access_token`) qui redirige systématiquement toute 404 vers la racine, masquant ainsi la vraie nature de l'erreur.
+
+**Cause réelle** : lors d'un renommage en masse des fichiers logos sur l'interface web GitHub (`angers.png` → `assets/logos/angers.png`), un espace s'est glissé en tête de chaque nouveau chemin (`assets/logos/ angers.png`, espace après le `/`). Invisible dans la colonne "Name" du Table Editor GitHub à l'œil nu, mais confirmé en cliquant sur le bouton "Raw" d'un fichier : l'URL générée contenait `%20angers.png` (espace encodé). Le message de commit généré automatiquement par GitHub (`"Rename angers.png to assets/logos/ angers.png"`) portait déjà la même trace, repérable a posteriori.
+
+**Méthode de diagnostic qui a fonctionné** : DevTools → Console (liste des 404 avec chemins complets) → vérifier le déploiement GitHub Actions (succès, dossier présent) → cliquer "Raw" sur un fichier individuel pour voir l'URL réellement générée par GitHub. C'est cette dernière étape qui a révélé l'espace, invisible dans tous les affichages précédents (liste de fichiers, message de commit tronqué à l'écran).
+
+**Point de vigilance pour la suite** : un renommage en masse de fichiers (scripté ou via une suite de clics) doit être vérifié au moins une fois via le bouton "Raw"/l'URL brute réelle, pas seulement via le nom affiché dans l'interface — la colonne "Name" de GitHub peut tronquer ou ne pas rendre visible un espace en début de chaîne.
+
+**Fichiers concernés** : aucun fichier de code (problème purement côté contenu du repo — noms de fichiers dans `assets/logos/`). Documenté ici car le temps de diagnostic a été long et la cause est non-évidente.
+
+---
+
+
 - **Le cache du Service Worker est un suspect quasi systématique** quand un déploiement semble "ne rien changer" — vérifier via `document.getElementById(...)` en console avant de chercher un bug de logique JS.
 - **Les logs `console.log` de debug temporaires sont efficaces** pour tracer un ordre d'exécution incertain (ex: race conditions entre événements SDK et DOM) — à retirer systématiquement une fois le bug confirmé corrigé.
 - **Tester avec des liens/tokens fraîchement générés** quand le débogage implique plusieurs allers-retours — les tokens à courte durée de vie (reset password, confirmation email) expirent vite en situation de test prolongé.
@@ -265,3 +289,5 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 - **Du code exporté dans `window.UL` mais jamais appelé côté front est invisible jusqu'à l'audit** — chercher systématiquement les usages réels (`grep` sur le nom de fonction dans tous les fichiers `src/*.js` + `index.html`) avant de faire confiance à la seule présence d'une fonction dans le fichier.
 - **`JSON.stringify()` ne doit jamais être injecté brut dans un attribut HTML** (`onclick="...${JSON.stringify(x)}..."`) — toujours passer par `esc()` pour échapper les guillemets doubles produits par le JSON.
 - **Reproduire un bug exige parfois un état précis** (ex: un tifo où l'on n'est *pas encore* inscrit) — un test sur le mauvais état peut masquer le vrai bug derrière un comportement différent mais correct (ex: doublon d'inscription qui ressemble au bug recherché mais n'en est pas la cause).
+- **Un renommage en masse de fichiers (GitHub web, script) peut introduire un caractère invisible (espace en tête) sans qu'aucun affichage standard ne le révèle** — si toutes les requêtes vers un dossier entier renvoient 404 alors que le déploiement est confirmé réussi et le chemin visuellement correct, vérifier l'URL "Raw" d'un seul fichier individuel avant de chercher plus loin.
+- **Un fallback de Service Worker ou de routeur qui retombe sur la page d'accueil en cas d'échec réseau peut maquiller une vraie 404 en "redirection"** — si une ressource semble "rediriger vers l'app" au lieu d'afficher une erreur claire, soupçonner un `catch()`/fallback générique avant de chercher un bug applicatif.
