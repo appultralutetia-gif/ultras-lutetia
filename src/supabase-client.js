@@ -397,10 +397,13 @@ async function signerCharte(charteId) {
   if (error && error.code !== '23505') throw error; // 23505 = duplicate, already signed
   // Mettre à jour le membre (flag dénormalisé, pratique pour l'affichage
   // rapide côté admin/liste, mais jamais utilisé seul pour le blocage —
-  // voir checkConformiteCharte()).
+  // voir checkConformiteCharte()). Uniquement `charte_signee` : c'est la
+  // seule colonne confirmée exister dans `membres` (cf. bug du même type
+  // que `cree_par`/`updated_at`/`etoiles` — voir BUGS.md). La date exacte
+  // de signature est disponible via signatures_charte.created_at, pas
+  // besoin de la dénormaliser en plus sur membres.
   await updateMembre(currentUser.id, {
     charte_signee: true,
-    charte_signee_at: new Date().toISOString()
   });
   currentMembre = await getMembre(currentUser.id);
   return { success: true };
@@ -414,6 +417,46 @@ async function getMembresNonSignataires() {
   const sigIds = (signataires || []).map(s => s.membre_id);
   const { data } = await sb.from('membres').select('*').not('id', 'in', `(${sigIds.join(',')})`);
   return data || [];
+}
+
+// Publie une nouvelle version de la charte (édition de contenu par le
+// Bureau/Admin). Ne modifie JAMAIS la ligne existante en place : crée
+// une nouvelle ligne `chartes` active et désactive l'ancienne. C'est
+// ce qui garantit, sans aucune logique supplémentaire, que toutes les
+// signatures existantes deviennent automatiquement invalides — voir
+// checkConformiteCharte() qui compare l'id de la charte signée à l'id
+// de la charte active courante. Chaque membre devra donc resigner.
+//
+// Pas de vraie transaction multi-statements disponible côté client
+// PostgREST : on désactive d'abord l'ancienne, puis on insère la
+// nouvelle. Si l'insertion échoue après la désactivation, on retente
+// de réactiver l'ancienne pour ne pas laisser l'app sans charte active
+// (le pire des deux scénarios : tout le monde bloqué sans recours).
+async function publierNouvelleCharte({ nom, contenu, dateFin }) {
+  const ancienne = await getCharteActive();
+
+  if (ancienne) {
+    const { error: errDesactivation } = await sb.from('chartes')
+      .update({ active: false }).eq('id', ancienne.id);
+    if (errDesactivation) throw errDesactivation;
+  }
+
+  const { data, error } = await sb.from('chartes').insert({
+    nom,
+    contenu,
+    active: true,
+    date_fin_validite: dateFin,
+  }).select().single();
+
+  if (error) {
+    // Rollback manuel : on réactive l'ancienne pour éviter un état où
+    // personne n'a de charte active à signer.
+    if (ancienne) {
+      await sb.from('chartes').update({ active: true }).eq('id', ancienne.id);
+    }
+    throw error;
+  }
+  return data;
 }
 
 // ============================================================
@@ -1267,7 +1310,7 @@ window.UL = {
   // Calendrier
   getCalendar, addMatch, getMatchs, deleteMatch,
   // Charte
-  getCharteActive, signerCharte, getMembresNonSignataires, checkConformiteCharte,
+  getCharteActive, signerCharte, getMembresNonSignataires, checkConformiteCharte, publierNouvelleCharte,
   // Sessions Tifo
   getUpcomingSessions, getPastSessions, getSessionDetails,
   inscrire, desinscrire, validerPresence, savePizzaChoice,
