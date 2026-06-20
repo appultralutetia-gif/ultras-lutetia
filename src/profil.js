@@ -78,21 +78,20 @@ async function doChangeMdp() {
 // signature / validité.
 async function loadCharte() {
   try {
-    const charte = await UL.getCharteActive();
+    const { charteActive, signature } = await UL.checkConformiteCharte();
     const infoEl = document.getElementById('charteStatutInfo');
-    if (!charte) {
+    if (!charteActive) {
       document.getElementById('charteTexte').textContent = 'Aucune charte active pour le moment.';
       if (infoEl) infoEl.textContent = '';
       return;
     }
-    document.getElementById('charteTexte').textContent = charte.contenu || '';
+    document.getElementById('charteTexte').innerHTML = renderCharteHTML(charteActive.contenu);
     if (infoEl) {
-      const m = UL.getCurrentMembre();
-      const dateSignature = m?.charte_signee_at
-        ? new Date(m.charte_signee_at).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
+      const dateSignature = signature?.created_at
+        ? new Date(signature.created_at).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
         : null;
-      const dateValidite = charte.date_fin_validite
-        ? new Date(charte.date_fin_validite).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
+      const dateValidite = charteActive.date_fin_validite
+        ? new Date(charteActive.date_fin_validite).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
         : null;
       infoEl.innerHTML = [
         dateSignature ? `✅ Signée le ${dateSignature}` : '',
