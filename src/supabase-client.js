@@ -287,26 +287,8 @@ async function supprimerMembre(membreId) {
   return { success: true };
 }
 
-// Évaluations
-async function setEvaluation(membreId, celluleId, note, commentaire = '') {
-  const { data, error } = await sb.from('evaluations').upsert({
-    membre_id: membreId,
-    cellule_id: celluleId,
-    note,
-    note_par: currentUser.id,
-    commentaire,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'membre_id,cellule_id' });
-  if (error) throw error;
-  return data;
-}
-
-async function getEvaluations(membreId) {
-  const { data } = await sb.from('evaluations')
-    .select('*, cellule:cellules(nom)')
-    .eq('membre_id', membreId);
-  return data || [];
-}
+// Évaluations : voir noterMembre / getEvaluationsMembre / getHistoriqueEvaluation
+// (système par catégorie + historique, cf. table evaluations)
 
 // ============================================================
 // SECTIONS & CELLULES
@@ -465,12 +447,12 @@ async function desinscrire(sessionId) {
   return { success: true };
 }
 
-async function validerPresence(sessionId, code) {
+async function validerPresence(sessionId, code, pizza = null, pinte = null) {
   const { data: session } = await sb.from('sessions_tifo')
     .select('code_validation').eq('id', sessionId).single();
   if (!session || session.code_validation !== code) throw new Error('Code incorrect');
   const { error } = await sb.from('inscriptions_session')
-    .update({ statut: 'present', updated_at: new Date().toISOString() })
+    .update({ statut: 'present', pizza, pinte })
     .eq('session_id', sessionId)
     .eq('membre_id', currentUser.id);
   if (error) throw error;
@@ -479,7 +461,7 @@ async function validerPresence(sessionId, code) {
 
 async function savePizzaChoice(sessionId, pizza) {
   const { error } = await sb.from('inscriptions_session')
-    .update({ pizza, updated_at: new Date().toISOString() })
+    .update({ pizza })
     .eq('session_id', sessionId)
     .eq('membre_id', currentUser.id);
   if (error) throw error;
@@ -1239,7 +1221,7 @@ window.UL = {
   getMembre, getAllMembres, updateMembre, updateStatutMembre,
   updateSectionMembre, toggleBlocageMembre,
   noterMembre, getEvaluationsMembre, getHistoriqueEvaluation,
-  adminResetPassword, updateMembreMdp, supprimerMembre, setEvaluation, getEvaluations,
+  adminResetPassword, updateMembreMdp, supprimerMembre,
   // Référentiels
   getSections, getCellules, rattacherCellule,
   // Calendrier
