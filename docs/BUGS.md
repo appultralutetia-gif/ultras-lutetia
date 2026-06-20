@@ -237,7 +237,24 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 
 ---
 
-## Pièges génériques à garder en tête
+## 14. Calendrier matchs — `statut_date`, `saisirScoreMatch` manquante, et calendrier officiel 2026-2027
+
+**Contexte** : import du calendrier complet Ligue 1 2026/2027 du Paris FC (34 journées, domicile + extérieur) avec logos adverses, suite à la publication du calendrier officiel LFP le 10 juin 2026.
+
+**Bug latent découvert (pas introduit par cette session)** : `calendrier.js` appelait déjà `UL.saisirScoreMatch(matchId, dom, ext)` (fonction `saisirScore()`), mais cette fonction n'existait pas dans `supabase-client.js` — aucun export ne la couvrait non plus dans `window.UL`. Le bouton "⚽ Saisir le score" aurait donc planté avec un `TypeError` au premier clic, en prod, sans qu'aucun test l'ait révélé jusqu'ici. Ajoutée dans cette session.
+
+**Nouvelle fonctionnalité — statut de date** : la LFP publie des dates de journée fermes très en amont, mais l'horaire précis du coup d'envoi (et parfois la date elle-même, en cas de déplacement TV/sécurité) n'est annoncé que 2-3 semaines avant. Ajout d'une colonne `matchs.statut_date` (`a_confirmer` / `confirmee`, contrainte CHECK) :
+- Tous les matchs insérés depuis le calendrier officiel démarrent en `a_confirmer`.
+- Bureau+ confirme via le modal "Calendrier matchs" (admin) — bouton "✅ Confirmer" sur chaque match `a_confirmer`, qui bascule le formulaire d'ajout en mode "confirmation" (champs adversaire/type masqués, seuls date/horaire/stade restent éditables) plutôt que de dupliquer un modal HTML.
+- Le bouton "Fermer" du modal appelle systématiquement `annulerConfirmerDate()` avant `closeModal()`, pour ne jamais laisser le formulaire collé en mode confirmation à la prochaine ouverture.
+
+**Point de vigilance non couvert** : le clic *en dehors* du modal (`closeModalOutside`, partagé par tous les modals de l'app) ne déclenche pas ce reset — seul le bouton "Fermer" le fait. Risque mineur : un admin ouvre "Confirmer" sur le match A, clique en dehors sans valider, puis ouvre "+ Ajouter un match" depuis l'accueil → le formulaire pourrait rester en mode confirmation collé au match A. Pas corrigé volontairement pour éviter de complexifier `closeModalOutside()` globalement (utilisé par ~15 modals) pour un cas d'usage admin marginal — à surveiller si ça arrive réellement en usage réel.
+
+**Fichiers concernés** : `src/supabase-client.js` (`saisirScoreMatch`, `confirmerDateMatch`, `rouvrirConfirmationMatch`), `src/admin.js` (gestion modal `modalMatchs` double-mode), `src/calendrier.js` (badge "⏳ Date à confirmer" + bouton confirmation sur les cards), `index.html` (modal `modalMatchs` enrichi), `docs/sql_migration_statut_date.sql`, `docs/sql_insertion_calendrier_complet_2026_2027.sql`.
+
+---
+
+
 
 - **Toujours vérifier le Network tab (status + body de réponse)** avant de supposer la cause d'un échec d'auth — un message client générique ("introuvable", "identifiants incorrects") peut masquer des causes très différentes (normalisation, RLS, format de clé, JWT, lien expiré...).
 - **Le cache du Service Worker est un suspect quasi systématique** quand un déploiement semble "ne rien changer" — vérifier via `document.getElementById(...)` en console avant de chercher un bug de logique JS.
