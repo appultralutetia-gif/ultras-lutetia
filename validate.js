@@ -68,6 +68,8 @@ const REQUIRED_BY_MODULE = {
     'doPublierAnnonce',
     'loadGererCharte', 'doSauvegarderCharte',
     'loadMembresComite', 'filtrerMembresComite', 'renderMembresComiteListe', 'toggleMembreComite',
+    'filtrerStatutComite', 'filtrerNiveauComite', 'filtrerSectionComite',
+    'copierListeMembresComite', 'exporterCsvMembresComite',
   ],
   'src/profil.js': [
     'loadProfil', 'loadCharte',
