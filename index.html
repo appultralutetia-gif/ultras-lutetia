@@ -183,9 +183,14 @@
     <!-- Annonces -->
     <div id="annoncesContainer"></div>
 
-    <!-- Bouton publier annonce (Bureau+) -->
-    <div id="btnPublierAnnonce" style="display:none;margin-bottom:12px;">
-      <button class="btn btn-sm btn-secondary" onclick="showModal('modalAnnonce')">📣 Publier une annonce</button>
+    <!-- Bouton publier annonce (Bureau+) + Charte (tous) -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <div id="btnPublierAnnonce" style="display:none;flex:1;">
+        <button class="btn btn-sm btn-secondary" style="width:100%;" onclick="showModal('modalAnnonce')">📣 Publier une annonce</button>
+      </div>
+      <div style="flex:1;">
+        <button class="btn btn-sm btn-secondary" style="width:100%;" onclick="showPage('pageCharte')">📋 Charte</button>
+      </div>
     </div>
 
     <!-- Demandes d'inscription en attente (Admin/Bureau/Comité de passage) -->
@@ -261,12 +266,12 @@
     </div>
   </div>
 
-  <!-- ── PAGE CHARTE (consultation, depuis Profil) ──────────── -->
+  <!-- ── PAGE CHARTE (consultation, depuis Accueil ou Profil) ── -->
   <div id="pageCharte" class="page">
     <h2 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.05em;margin-bottom:8px;">Charte des Ultras Lutetia</h2>
     <div id="charteStatutInfo" style="font-size:13px;color:var(--gris);margin-bottom:14px;"></div>
     <div class="charte-content" id="charteTexte"></div>
-    <button class="btn btn-secondary" style="margin-top:16px;" onclick="showPage('pageProfil')">Retour</button>
+    <button class="btn btn-secondary" style="margin-top:16px;" onclick="showPage('pageAccueil')">Retour</button>
   </div>
 
   <!-- ── PAGE MEMBRES (Admin) ───────────────────────────────── -->
