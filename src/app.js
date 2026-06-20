@@ -37,32 +37,41 @@ let allMembres = [];
 
 
 // ─── Init ────────────────────────────────────────────────────
+
+// Déclenché par supabase-client.js dès que le SDK émet l'événement
+// PASSWORD_RECOVERY (clic sur le lien reçu par email). Plus fiable que de
+// lire window.location.hash nous-mêmes : le SDK le parse et le nettoie tout
+// seul, parfois avant que notre propre code n'ait eu la main.
+window.UL_ON_PASSWORD_RECOVERY = function() {
+  hideLoading();
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('appContainer').style.display = 'none';
+  document.getElementById('resetMdpNew').value = '';
+  document.getElementById('resetMdpConfirm').value = '';
+  showModal('modalResetMdp');
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/ultras-lutetia/sw.js').catch(() => {});
   }
 
-  // Si hash access_token présent, attendre que Supabase JS le traite
+  // Si un hash d'auth est présent (confirmation email ou lien de reset),
+  // on laisse le SDK le traiter. Pour le cas recovery, c'est l'événement
+  // PASSWORD_RECOVERY (ci-dessus) qui prendra le relais, pas ce timer.
   const hash = window.location.hash;
-  const isRecovery = hash && hash.includes('type=recovery');
   if (hash && hash.includes('access_token')) {
     showLoading();
     await new Promise(r => setTimeout(r, 1500));
-    hideLoading();
     window.history.replaceState({}, '', window.location.pathname);
   }
 
   const { membre } = await UL.initSession();
+  hideLoading();
 
-  // Lien de récupération mot de passe : on bloque sur le choix du nouveau
-  // mot de passe avant de laisser entrer dans l'app, même si une session
-  // temporaire de recovery est déjà active.
-  if (isRecovery && membre) {
-    document.getElementById('loginPage').style.display = 'flex';
-    document.getElementById('appContainer').style.display = 'none';
-    showModal('modalResetMdp');
-    return;
-  }
+  // Si le modal de reset est déjà affiché (PASSWORD_RECOVERY déclenché
+  // pendant l'attente ci-dessus), on ne casse pas l'affichage en lançant showApp.
+  if (document.getElementById('modalResetMdp').style.display === 'flex') return;
 
   membre ? showApp(membre) : showLoginPage();
 });
