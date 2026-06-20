@@ -19,6 +19,16 @@ async function refreshTifosActions(sessions, prefix='') {
 }
 
 async function loadTifos() {
+  const m = UL.getCurrentMembre();
+  if (!peutVoirTifos(m)) {
+    const message = m?.statut === 'draft'
+      ? '<div>🔒</div>Les tifos sont réservés aux Confirmés et Draft validés.<br>Contacte un membre de la cellule Tifo pour demander l\'accès.'
+      : '<div>🔒</div>Les tifos sont réservés aux Confirmés et Draft.';
+    document.getElementById('tifosListe').innerHTML = `<div class="empty-state">${message}</div>`;
+    const histEl = document.getElementById('tifosHistorique');
+    if (histEl) histEl.innerHTML = '';
+    return;
+  }
   document.getElementById('tifosListe').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
     const [sessions, past] = await Promise.all([
