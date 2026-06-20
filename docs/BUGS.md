@@ -4,6 +4,27 @@
 
 ---
 
+## 📍 État de session — reprise
+
+**Module Boutique Sticks** : flux de création + validation cash terminé et fonctionnel (bugs #22-26 ci-dessous). Reste **non démarré** : audit du module Calendrier (4 fonctions manquantes déjà identifiées et corrigées en passant, cf. #23, mais le module lui-même n'a pas eu son audit complet comme Tifos/Boutique).
+
+**Action en attente côté Remi avant de continuer à tester Sticks** :
+```sql
+-- Nettoyage complet des sticks de test avant de repartir propre
+delete from sticks_distribution;
+delete from sticks_catalogue;
+```
+(portion déjà prête dans `sql_nettoyage_avant_lancement.sql`, section 5 — copiée ici isolément pour usage immédiat sans toucher au reste de l'app).
+
+**Dette technique connue, non bloquante** :
+- `modalDistribuer`/`doDistribuerStick()` ne sont plus accessibles depuis aucun bouton de l'UI (remplacés par le flux Cash dédié) — code mort, à supprimer si confirmé inutile à terme.
+- `demanderStick()` (ancien flux d'auto-demande cash côté membre) n'a plus aucun appelant depuis le passage au flux "Cash validé par Admin uniquement" — code mort, et n'a pas été mise à jour pour la décrémentation de stock (cf. #26) puisque débranchée.
+- Update à corriger côté SQL : sticks/produits créés **avant** le fix #25 ont potentiellement un `quota_par_membre` parasite en base (`update sticks_catalogue set quota_par_membre = null where quota_par_membre is not null;` + équivalent `produits`).
+
+**Prochaine session suggérée** : audit complet du module Calendrier (sur le modèle Tifos/Boutique), puis vérifier si Matos a les mêmes trous de quota/stock que Sticks (déjà en bonne partie corrigé en cohérence cette session, mais jamais testé de bout en bout comme Sticks l'a été).
+
+---
+
 ## 1. Login par pseudo Telegram échoue malgré un compte existant
 
 **Symptôme** : `loginByTelegram('Remi VF', ...)` retourne "Pseudo Telegram introuvable" alors que le compte existe bien en base avec exactement ce pseudo.
@@ -371,6 +392,87 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 
 ---
 
+## 22. Module Boutique — `createProduit` jamais écrite, code legacy dupliqué et mort
+
+**Symptôme** : aucun symptôme rapporté par un utilisateur — trouvé lors de l'audit du module Boutique (suite logique après l'audit Tifos), en croisant chaque `UL.xxx` appelé par `boutique.js` contre l'export réel de `supabase-client.js`.
+
+**Cause** : `doCreerProduit()` (bouton "+ Ajouter un article", Cellule Matos) appelait `UL.createProduit({...})`, qui n'existait nulle part — ni en définition, ni en export. Le formulaire entier (nom, prix, catégorie, photo, tailles, accès section, quota) était fonctionnel côté UI mais ne pouvait rien sauvegarder ; aurait planté avec `UL.createProduit is not a function` au premier clic en prod. Invisible pour `validate.js`, qui ne croise jamais les modules applicatifs avec `supabase-client.js`.
+
+**Découverte connexe lors du même audit** : trois fonctions legacy mortes exportées mais jamais appelées par aucun module (`getSticksCatalogue`, `distribuerStick`, `validerCotisation` — remplacées respectivement par `getSticks`, `distribuerStickAdmin`, `validerCotisationCash`/`validerCotisationHelloAsso` sans que l'ancien code ait été supprimé), plus trois fonctions dupliquées mot pour mot deux fois dans le fichier (`passerCommande`, `getMesCommandes`, `getMaCotisation` — la seconde déclaration écrasait silencieusement la première en JS).
+
+**Fix** (`src/supabase-client.js`) : ajout de `createProduit(produit)` (insert + select + gestion d'erreur, même pattern que `updateProduit`). Suppression du bloc legacy entier (~90 lignes : anciennes `passerCommande(items)`, `getMesCommandes`, `getSticksCatalogue`, `distribuerStick`, `getMaCotisation(saison)`, `validerCotisation`). Export `window.UL` dédupliqué (`getProduits` n'apparaît plus qu'une fois) et `createProduit` ajoutée.
+
+**Point de vigilance pour la suite** : avant de considérer un module audité comme "fini", croiser systématiquement chaque `UL.xxx` appelé contre le bloc d'export `window.UL` (script Python rapide : extraire les noms des deux côtés, `set` diff) — c'est la seule méthode qui révèle ce type de trou, ni `validate.js` ni une relecture visuelle ne le détectent.
+
+**Fichiers concernés** : `src/supabase-client.js` (`createProduit` ajoutée ; legacy Matos/Sticks/Cotisations supprimé).
+
+---
+
+## 23. Calendrier — `getEvenement(s)`/`saveEvenement`/`deleteEvenement` jamais écrites ; Tifos — `desinscrireMembreSession` jamais écrite
+
+**Symptôme** : aucun symptôme rapporté — trouvé par le même croisement systématique `UL.xxx` appelé vs exporté, étendu à l'ensemble des modules après la correction du bug #22, par précaution.
+
+**Cause** : `calendrier.js` (`loadCalendrier`, `ouvrirModifierEvenement`, `doSauvegarderEvenement`, `doSupprimerEvenement`) appelait `UL.getEvenements`, `UL.getEvenement`, `UL.saveEvenement`, `UL.deleteEvenement` — aucune des quatre n'existait, alors que le module Calendrier n'avait pas encore été audité (cohérent, pas une anomalie). `tifos.js` (`doDesinscrireAdmin`, bouton "✕" sur la liste des inscrits, action Cellule Tifo+) appelait `UL.desinscrireMembreSession(sessionId, membreId)` — absente, alors que `desinscrire(sessionId)` (auto-désinscription, sans `membreId`) existait déjà mais avec une signature différente (action sur soi-même, pas sur un autre membre). Ce dernier cas est plus surprenant : le module Tifos avait déjà été audité et validé avant cette découverte — signe qu'un audit "validé" peut quand même laisser passer un trou si le croisement export/appels n'a pas été fait de façon exhaustive sur 100% du fichier.
+
+**Fix** (`src/supabase-client.js`) : `getEvenements()`, `getEvenement(id)`, `saveEvenement(data, id=null)` (id fourni → update, sinon insert avec `publie_par: currentUser.id`), `deleteEvenement(id)` ajoutées dans la section CALENDRIER, juste après `getCalendar` (qui lisait déjà la table `evenements` mais n'était elle-même appelée par aucun module — laissée en place, inoffensive). `desinscrireMembreSession(sessionId, membreId)` ajoutée juste après `desinscrire`, même requête avec `membreId` explicite au lieu de `currentUser.id`. Toutes les quatre ajoutées à l'export.
+
+**Point de vigilance pour la suite** : un module marqué "audité et validé" mérite quand même le croisement export/appels en passe finale avant de le considérer clos — un audit fonctionnel (lecture du code, tests visuels) et un audit de cohérence d'API (chaque appel a-t-il sa définition) sont deux vérifications indépendantes, l'une ne couvre pas l'autre.
+
+**Fichiers concernés** : `src/supabase-client.js` (`getEvenements`, `getEvenement`, `saveEvenement`, `deleteEvenement`, `desinscrireMembreSession` ajoutées).
+
+---
+
+## 24. Buckets Storage et colonnes manquantes côté Supabase — schéma réel jamais synchronisé avec le code écrit
+
+**Contexte** : lors de la construction de la création de stick (nouvelle fonctionnalité — modale `modalCreerStick`, `doCreerStick()`, `createStick()`), une cascade de blocages a révélé que le code avait été écrit en se basant sur un schéma de base supposé, jamais vérifié à la source avant cette session.
+
+**Cascade de symptômes rencontrés, dans l'ordre** :
+1. `Erreur upload: Bucket not found` — le bucket Storage `sticks` n'existait pas (seul `matos` avait été créé). Fix : `insert into storage.buckets (id, name, public) values ('sticks', 'sticks', true)` + policies `select`/`insert`/`update` sur `storage.objects` pour ce bucket.
+2. `Could not find the 'lot' column of 'sticks_catalogue'` — `lot` et `mode` (nouveaux champs du formulaire) n'existaient pas en base. Fix : `alter table ... add column if not exists`.
+3. `Could not find the 'niveau_acces' column` — cette colonne, pourtant déjà lue par `getSticks()` avant cette session (donc supposée exister), n'existait en réalité pas non plus. Fix : `ALTER TABLE` exhaustif couvrant toutes les colonnes attendues (`nom, niveau_acces, section_id, prix, lot, stock, mode, lien_helloasso, statut, visuel_url, quota_par_membre, categorie, serie`), toutes en `add column if not exists` pour rester sans danger même si certaines existaient déjà.
+4. `new row violates row-level security policy for table "sticks_catalogue"` — aucune policy `INSERT`/`UPDATE` n'existait sur `sticks_catalogue` (ni sur `produits`, son équivalent Matos — confirmé en testant : même erreur). Seule une policy `SELECT` ("lecture authentifiés") avait été créée. Fix : policies `INSERT`/`UPDATE` strictes basées sur `roles_app[]` (`membres.roles_app && array['admin_app','bureau_app','cellule_matos']` via `exists (select 1 from membres where membres.id = auth.uid() and ...)`), répliquées à l'identique sur les deux tables.
+5. `Could not find the 'distribue_par' column of 'sticks_distribution'` — même cause que le point 3, sur une table différente (`sticks_distribution`), pour une fonction (`distribuerStickAdmin`) qui existait déjà avant cette session. Fix : `alter table sticks_distribution add column if not exists distribue_par uuid references membres(id)`.
+
+**Cause racine commune aux 5 points** : aucun outil de ce projet (`validate.js`, audit manuel du code applicatif) ne vérifie le schéma réel de la base contre ce que le code JS suppose. Le seul moyen fiable de détecter ces trous est de tester réellement le flux de bout en bout (créer un objet via l'UI) — une relecture de code, même attentive, ne peut pas voir qu'une colonne référencée n'existe pas en base.
+
+**Méthode qui a permis de résoudre rapidement sans itérer erreur par erreur** : avant de proposer un `ALTER TABLE`, lancer une requête `select column_name, data_type from information_schema.columns where table_name = 'X'` et comparer son résultat à la liste exhaustive des colonnes utilisées dans le code (`grep` du nom de table dans `supabase-client.js`) — évite de découvrir les colonnes manquantes une par une au fil des tests utilisateur.
+
+**Point de vigilance pour la suite** : avant d'écrire toute nouvelle fonction `supabase-client.js` qui insère/met à jour une table existante, vérifier le schéma réel via `information_schema.columns` (ou Table Editor) plutôt que de supposer une colonne par cohérence avec le code JS déjà écrit ailleurs — le bug #7 avait déjà identifié ce risque, mais visiblement seulement pour les colonnes *ajoutées* par du nouveau code, pas pour les colonnes *déjà lues* par du code préexistant qui n'avait, en réalité, jamais été testé en conditions réelles d'écriture.
+
+**Fichiers concernés** : aucun fichier de code (entièrement côté SQL/Dashboard Supabase — buckets Storage, `ALTER TABLE`, policies RLS sur `sticks_catalogue`, `produits`, `sticks_distribution`).
+
+---
+
+## 25. Quota par membre — valeur par défaut parasite en base, champ absent des deux formulaires de création
+
+**Symptôme** : `Quota dépassé pour ce membre (max X)` au premier essai de validation cash sur un stick tout juste créé, alors qu'aucun quota n'avait été saisi nulle part.
+
+**Cause** : `quota_par_membre` n'a jamais été un champ visible dans `modalCreerProduit` (Matos) ni dans `modalCreerStick` (Sticks) — ni avant cette session, ni dans la première version de la modale Sticks construite cette session. La colonne en base héritait donc systématiquement d'une valeur par défaut non-null (probablement `1`), jamais corrigée car jamais visible ni questionnée jusqu'à ce qu'un test réel de validation cash déclenche la vérification `if (stick?.quota_par_membre)`.
+
+**Fix** : ajout du champ "Quota par membre (optionnel — vide = pas de limite)" dans les deux modales (`modalCreerProduit` et `modalCreerStick`), lu et envoyé par `doCreerProduit()`/`doCreerStick()` (`parseInt(...) || null` — vide ou non-numérique → `null`, jamais une valeur parasite). Ne corrige que les *futures* créations — un `update ... set quota_par_membre = null where quota_par_membre is not null` reste nécessaire côté SQL pour les lignes déjà créées avant ce fix.
+
+**Point de vigilance pour la suite** : un champ lu par une fonction de vérification métier (ici, le contrôle de quota dans `distribuerStickAdmin`/`passerCommande`) doit toujours avoir un chemin de saisie correspondant dans le formulaire de création — sinon la valeur en base part d'un défaut arbitraire, invisible jusqu'au jour où la vérification se déclenche en conditions réelles. Vérifier l'aller-retour complet (formulaire → fonction de lecture → fonction de vérification) avant de considérer un champ "branché".
+
+**Fichiers concernés** : `index.html` (`pQuota` dans `modalCreerProduit`, `stQuota` dans `modalCreerStick`), `src/boutique.js` (`doCreerProduit`, `doCreerStick`).
+
+---
+
+## 26. Stock jamais décrémenté automatiquement — comportement préexistant des deux côtés (Matos et Sticks), corrigé sur demande
+
+**Contexte** (pas un bug de régression — comportement déjà présent dans tout le code antérieur à cette session, découvert en testant le flux Cash Sticks de bout en bout) : ni `passerCommande` (Matos) ni `distribuerStickAdmin`/`demanderStick` (Sticks) n'ont jamais mis à jour `produits.stock`/`sticks_catalogue.stock` à aucune étape de leur cycle de vie. Le stock était conçu comme un champ géré exclusivement à la main par l'admin (bouton 📦 "Stock", `modifierStock()` avec `prompt()`) — confirmé en lisant `passerCommande` (Matos, le module le plus ancien et déjà en usage), qui ne touche jamais à `produits.stock` malgré une vérification de quota dans la même fonction.
+
+**Décision prise cette session** : décrémentation automatique demandée explicitement, avec une règle de timing précise validée avant codage — le stock baisse uniquement quand le paiement est **confirmé**, jamais à la simple création d'une demande :
+- **Matos** : `updateCommandeStatut(id, statut)` décrémente le stock de chaque `commande_items` uniquement lors de la transition **vers** `'validee'` (jamais si déjà à ce statut ou au-delà, pour éviter une double décrémentation en cas de rappel/double-clic).
+- **Sticks, mode cash/gratuit** : `distribuerStickAdmin` décrémente immédiatement à l'insertion — le paiement est par construction déjà confirmé (encaissé en présentiel via la modale de validation).
+- **Sticks, mode HelloAsso** : la distribution est créée en `statut: 'en_attente'` sans toucher au stock ; la décrémentation n'a lieu que dans `validerPaiementStick`, au moment de la confirmation du paiement.
+- Toutes les décrémentations utilisent `Math.max(0, stock - quantite)` pour ne jamais passer en négatif.
+
+**Point de vigilance pour la suite** : ce changement ne couvre que les chemins de code identifiés cette session (`updateCommandeStatut`, `distribuerStickAdmin`, `validerPaiementStick`). `demanderStick` (ancien flux d'auto-demande cash côté membre, retiré de l'UI cette session — cf. changement de flux Cash vers validation Admin-only) n'a pas été mise à jour en cohérence, mais n'a plus aucun appelant donc le risque est nul tant qu'elle n'est pas réintroduite dans l'UI sans vérification préalable.
+
+**Fichiers concernés** : `src/supabase-client.js` (`updateCommandeStatut`, `distribuerStickAdmin`, `validerPaiementStick`).
+
+---
+
 - **Reproduire un bug exige parfois un état précis** (ex: un tifo où l'on n'est *pas encore* inscrit) — un test sur le mauvais état peut masquer le vrai bug derrière un comportement différent mais correct (ex: doublon d'inscription qui ressemble au bug recherché mais n'en est pas la cause).
 - **Un renommage en masse de fichiers (GitHub web, script) peut introduire un caractère invisible (espace en tête) sans qu'aucun affichage standard ne le révèle** — si toutes les requêtes vers un dossier entier renvoient 404 alors que le déploiement est confirmé réussi et le chemin visuellement correct, vérifier l'URL "Raw" d'un seul fichier individuel avant de chercher plus loin.
 - **Un fallback de Service Worker ou de routeur qui retombe sur la page d'accueil en cas d'échec réseau peut maquiller une vraie 404 en "redirection"** — si une ressource semble "rediriger vers l'app" au lieu d'afficher une erreur claire, soupçonner un `catch()`/fallback générique avant de chercher un bug applicatif.
@@ -378,3 +480,5 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 - **Ne jamais coder en dur une contrainte de format (longueur de code, structure de token) par analogie avec un usage "habituel" sans la vérifier dans la documentation officielle ou directement dans la donnée réelle reçue** — l'hypothèse "OTP = 6 chiffres" (vraie pour SMS/Google Auth) a fait perdre du temps face à un OTP email Supabase qui en génère 8 par défaut ; comparer le contenu brut reçu (ex: email complet) avec ce que le champ de saisie accepte est le test le plus rapide pour détecter une troncature silencieuse.
 - **Un champ de statut/enum avec un nombre limité de valeurs valides doit être vérifié à la source (commentaire de code, contrainte SQL, ou test direct) avant d'écrire une comparaison dessus** — deux bugs distincts cette session (#19, #20) venaient de la même confusion entre `membre.statut` (3 valeurs seulement) et les niveaux de droits réels gérés par `roles_app[]` (un tableau, pas un statut). Une recherche globale (`grep`) des valeurs supposées valides dans tout le code applicatif aurait révélé l'absence totale de `'admin'`/`'bureau'`/`'membre_cellule'` comme valeurs de `statut`, avant même d'écrire le correctif.
 - **Du code non branché à l'UI (fonction exportée mais jamais appelée) peut survivre longtemps sans être détecté, et accumuler ses propres bugs en silence** — `rattacherCellule()` contenait un bug de statut invalide en plus d'être totalement déconnectée ; un simple `grep` du nom de fonction dans `src/*.js` + `index.html` suffit à vérifier si une fonction est réellement utilisée avant de lui faire confiance ou de la corriger en place.
+- **Le schéma réel de la base (colonnes, buckets Storage, policies RLS) doit être vérifié par une requête `information_schema`/Table Editor avant d'écrire toute nouvelle fonction d'écriture** — une fonction de *lecture* préexistante qui semblait fonctionner (`getSticks()` lisant `niveau_acces`) ne prouve pas que la colonne existe réellement ; elle peut simplement n'avoir jamais été testée avec des données réelles. Le bug #24 a cumulé cinq variantes de ce même piège en une seule session.
+- **Un champ utilisé par une logique de vérification métier doit avoir un chemin de saisie dans le formulaire correspondant, vérifié explicitement** — sinon la valeur en base part d'un défaut arbitraire qui ne se révèle que le jour où la vérification se déclenche réellement (bug #25 : quota jamais saisi, jamais à zéro, bloquant silencieusement le premier test venu).
