@@ -211,7 +211,7 @@ async function changePassword(newPassword) {
 async function getMembre(id) {
   const { data, error } = await sb
     .from('membres')
-    .select('*, section:sections(nom), membres_cellules(cellule_id, role, cellule:cellules(nom))')
+    .select('*, section:sections(nom)')
     .eq('id', id || currentUser?.id)
     .single();
   if (error) return null;
@@ -228,7 +228,7 @@ async function getMembreByTelegram(pseudo) {
 
 async function getAllMembres(filters = {}) {
   let query = sb.from('membres')
-    .select('*, section:sections(nom), membres_cellules(cellule:cellules(nom))')
+    .select('*, section:sections(nom)')
     .order('nom');
   if (filters.statut) query = query.eq('statut', filters.statut);
   if (filters.section_id) query = query.eq('section_id', filters.section_id);
@@ -366,25 +366,14 @@ async function getSections() {
   return data || [];
 }
 
-async function getCellules() {
-  const { data } = await sb.from('cellules').select('*').eq('actif', true).order('nom');
-  return data || [];
-}
-
-async function rattacherCellule(membreId, celluleId, role = 'membre') {
-  const { error } = await sb.from('membres_cellules').upsert({
-    membre_id: membreId,
-    cellule_id: celluleId,
-    role,
-  }, { onConflict: 'membre_id,cellule_id' });
-  if (error) throw error;
-  // Mettre à jour le statut si pas encore membre_cellule
-  const m = await getMembre(membreId);
-  if (!['membre_cellule','bureau','admin'].includes(m.statut)) {
-    await updateStatutMembre(membreId, 'membre_cellule');
-  }
-  return { success: true };
-}
+// getCellules() / rattacherCellule() ont été supprimées — système parallèle
+// basé sur la table membres_cellules, jamais branché à aucun bouton de
+// l'UI, qui faisait doublon avec roles_app[] (qui gère nativement le
+// multi-cellule : un membre peut avoir plusieurs entrées dans son tableau
+// roles_app, chaque hasCellule*() étant un test indépendant — voir
+// applyRights() dans app.js). rattacherCellule tentait en plus d'écrire
+// membre.statut = 'membre_cellule', une valeur que le reste de l'app ne
+// gère jamais (statut ne prend que 'sympathisant'/'draft'/'confirme').
 
 // ============================================================
 // CALENDRIER
@@ -834,43 +823,10 @@ async function getListeBusTelegram(deplacementId) {
 // ============================================================
 // MATOS
 // ============================================================
-
-async function getProduits() {
-  const membre = currentMembre;
-  if (!membre) return [];
-
-  const statut = membre.statut;
-  const sectionId = membre.section_id;
-
-  // Admin et Bureau voient tout
-  const isAdminBureau = ['admin', 'bureau', 'membre_cellule'].includes(statut);
-  const isConfirme = ['confirme', 'membre_cellule', 'bureau', 'admin'].includes(statut);
-
-  // Récupérer tous les produits disponibles avec leur section
-  const { data } = await sb.from('produits')
-    .select('*, section:sections(id, nom)')
-    .eq('statut', 'disponible')
-    .order('nom');
-
-  return (data || []).filter(p => {
-    // Admin/Bureau voient tout
-    if (isAdminBureau) return true;
-
-    // Généraliste → tout le monde (Sympathisant inclus)
-    if (p.niveau_acces === 'tous') return true;
-
-    // Section spécifique :
-    // ✅ Confirmé+ (toutes sections) OU Draft de la bonne section
-    if (p.niveau_acces === 'section') {
-      if (isConfirme) return true;
-      // Draft : uniquement si dans la bonne section
-      if (statut === 'draft' && sectionId && p.section_id === sectionId) return true;
-      return false;
-    }
-
-    return false;
-  });
-}
+// getProduits() — voir la section "BOUTIQUE — MATOS" plus bas dans ce
+// fichier. (Une première version, dupliquée et avec un bug de détection
+// Admin/Bureau, vivait ici — supprimée pour ne garder qu'une seule
+// implémentation, la version corrigée ci-dessous.)
 
 async function passerCommande(items) {
   // items = [{produit_id, quantite, taille}]
@@ -1027,14 +983,20 @@ async function getProduits() {
   if (!membre) return [];
   const statut = membre.statut;
   const sectionId = membre.section_id;
-  const isAdminBureau = ['admin', 'bureau', 'membre_cellule'].includes(statut);
-  const isConfirme = ['confirme', 'membre_cellule', 'bureau', 'admin'].includes(statut);
+  // Admin/Bureau/Membre Cellule sont identifiés via roles_app[] (isAdmin/
+  // isBureau/isCellule, définis dans app.js), PAS via membre.statut — qui
+  // ne contient que 'sympathisant'/'draft'/'confirme'. L'ancienne version
+  // comparait statut à 'admin'/'bureau'/'membre_cellule', des valeurs que
+  // ce champ ne prend jamais : un Admin/Bureau n'ayant que son rôle dans
+  // roles_app (cas normal) tombait alors dans la branche restreinte.
+  const isAdminBureauCellule = isAdmin(membre) || isBureau(membre) || isCellule(membre);
+  const isConfirme = statut === 'confirme' || isAdminBureauCellule;
   const { data } = await sb.from('produits')
     .select('*, section:sections(id, nom)')
     .eq('statut', 'disponible')
     .order('nom');
   return (data || []).filter(p => {
-    if (isAdminBureau) return true;
+    if (isAdminBureauCellule) return true;
     if (p.niveau_acces === 'tous') return true;
     if (p.niveau_acces === 'section') {
       if (isConfirme) return true;
@@ -1128,14 +1090,16 @@ async function getSticks() {
   if (!membre) return [];
   const statut = membre.statut;
   const sectionId = membre.section_id;
-  const isAdminBureau = ['admin', 'bureau', 'membre_cellule'].includes(statut);
-  const isConfirme = ['confirme', 'membre_cellule', 'bureau', 'admin'].includes(statut);
+  // Même correctif que getProduits — voir le commentaire détaillé là-bas :
+  // détection via roles_app[] (isAdmin/isBureau/isCellule), pas via statut.
+  const isAdminBureauCellule = isAdmin(membre) || isBureau(membre) || isCellule(membre);
+  const isConfirme = statut === 'confirme' || isAdminBureauCellule;
   const { data } = await sb.from('sticks_catalogue')
     .select('*, section:sections(id, nom)')
     .eq('statut', 'disponible')
     .order('nom');
   return (data || []).filter(s => {
-    if (isAdminBureau) return true;
+    if (isAdminBureauCellule) return true;
     if (s.niveau_acces === 'tous') return true;
     if (s.niveau_acces === 'section') {
       if (isConfirme) return true;
@@ -1409,7 +1373,7 @@ window.UL = {
   noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
   adminResetPassword, updateMembreMdp, supprimerMembre,
   // Référentiels
-  getSections, getCellules, rattacherCellule,
+  getSections,
   // Calendrier
   getCalendar, addMatch, getMatchs, deleteMatch,
   saisirScoreMatch, confirmerDateMatch, rouvrirConfirmationMatch,
