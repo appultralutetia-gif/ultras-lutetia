@@ -309,6 +309,37 @@ async function getEvaluationsCourantesBatch(membreIds) {
   return parMembre;
 }
 
+// Compteurs de participation Tifo/Déplacement pour N membres en une
+// seule requête par table (utilisé par la page Membres Comité, pour
+// donner un contexte objectif d'engagement avant notation) :
+// { [membreId]: { tifoPresent, tifoAbsent, deplPaye, deplNonPaye } }
+// Tifo : 'present' = présence confirmée, 'absent' = no-show réel —
+// 'inscrit' (en attente de traitement) n'est compté dans aucun des deux.
+// Déplacement : 'paye_cash'/'paye_helloasso' = payé, 'en_attente' = non
+// payé (assimilé à un no-show, cf. demande explicite Comité de passage).
+async function getParticipationBatch(membreIds) {
+  if (!membreIds || !membreIds.length) return {};
+  const [{ data: sessions, error: e1 }, { data: depls, error: e2 }] = await Promise.all([
+    sb.from('inscriptions_session').select('membre_id, statut').in('membre_id', membreIds),
+    sb.from('inscriptions_deplacement').select('membre_id, statut_paiement').in('membre_id', membreIds),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  const parMembre = {};
+  const ensure = (id) => parMembre[id] || (parMembre[id] = { tifoPresent: 0, tifoAbsent: 0, deplPaye: 0, deplNonPaye: 0 });
+  (sessions || []).forEach(s => {
+    const m = ensure(s.membre_id);
+    if (s.statut === 'present') m.tifoPresent++;
+    else if (s.statut === 'absent') m.tifoAbsent++;
+  });
+  (depls || []).forEach(d => {
+    const m = ensure(d.membre_id);
+    if (d.statut_paiement === 'paye_cash' || d.statut_paiement === 'paye_helloasso') m.deplPaye++;
+    else m.deplNonPaye++;
+  });
+  return parMembre;
+}
+
 // Historique complet d'une catégorie pour un membre (qui a noté, quand)
 async function getHistoriqueEvaluation(membreId, categorie) {
   const { data, error } = await sb.from('evaluations')
@@ -1371,6 +1402,7 @@ window.UL = {
   getMembre, getAllMembres, updateMembre, updateStatutMembre,
   updateSectionMembre, toggleBlocageMembre,
   noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
+  getParticipationBatch,
   adminResetPassword, updateMembreMdp, supprimerMembre,
   // Référentiels
   getSections,
