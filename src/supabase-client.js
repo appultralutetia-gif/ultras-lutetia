@@ -5,6 +5,11 @@
 
 const SUPABASE_URL = 'https://afgriuvrtdkklluvtswg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmZ3JpdXZydGRra2xsdXZ0c3dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MTkwODgsImV4cCI6MjA5NzI5NTA4OH0.3jXUyJD87MjhFJctzceMVoeHWGCSqGmVy3TPuXGQebc';
+// Clé publishable au nouveau format (sb_publishable_...) — requise spécifiquement
+// pour les appels aux Edge Functions utilisant withSupabase({auth:'publishable'}),
+// qui ne reconnaît pas l'ancien format JWT legacy ci-dessus. Ne pas confondre :
+// SUPABASE_ANON_KEY reste utilisée pour tous les appels PostgREST classiques (sb.from...).
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_nE0Xqxqx8DTRalIKGsqAMA_Gmnvclh7';
 
 // ── Init client Supabase ──────────────────────────────────────
 const { createClient } = supabase;
@@ -52,7 +57,7 @@ async function loginByTelegram(pseudoTelegram, password) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY, // withSupabase({auth:['publishable']}) attend la clé sur apikey, pas Authorization
+        'apikey': SUPABASE_PUBLISHABLE_KEY, // format sb_publishable_... requis par withSupabase
       },
       body: JSON.stringify({ pseudo_telegram: pseudo }),
     });
