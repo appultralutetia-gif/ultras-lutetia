@@ -390,9 +390,15 @@
 
     <!-- ─ STICKS ─ -->
     <div id="sectionSticks" style="display:none;">
-      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;scrollbar-width:none;">
-        <button class="filter-btn active" onclick="filtrerSticks('tous')">Tous</button>
-        <button class="filter-btn" onclick="filtrerSticks('sticker')">Stickers</button>
+      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px;scrollbar-width:none;">
+        <button class="filter-btn active" onclick="filtrerSticksStatut('tous')">Tous statuts</button>
+        <button class="filter-btn" onclick="filtrerSticksStatut('draft_confirme')">Draft + Confirmés</button>
+        <button class="filter-btn" onclick="filtrerSticksStatut('confirme')">Confirmés</button>
+      </div>
+      <div style="margin-bottom:12px;">
+        <select id="filtreSticksSection" onchange="filtrerSticksSection(this.value)" style="background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;">
+          <option value="">Toutes sections</option>
+        </select>
       </div>
       <div id="sticksCatalogue"></div>
       <div class="section-title" style="margin-top:20px;">Mes sticks reçus</div>
@@ -957,36 +963,34 @@
     <div class="form-group"><label>Nom du stick</label><input type="text" id="stNom" placeholder="ex: Sticker tag 2026"></div>
     <div class="form-group">
       <label>Visuel du stick</label>
+      <p style="font-size:11px;color:var(--gris);margin:2px 0 6px;">Format JPG ou PNG, idéalement carré (ex: 400×400px)</p>
       <div id="photoPreviewStick" style="display:none;margin-bottom:8px;">
         <img id="photoPreviewImgStick" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--surface-4);">
       </div>
-      <input type="file" id="stPhoto" accept="image/*" onchange="previewPhoto(this,'stick')"
+      <input type="file" id="stPhoto" accept="image/png,image/jpeg" onchange="previewPhoto(this,'stick')"
         style="background:var(--surface-2);border:1.5px dashed var(--surface-4);border-radius:9px;padding:10px;color:var(--gris);width:100%;cursor:pointer;">
     </div>
     <div class="form-group"><label>Catégorie</label>
       <select id="stCat">
-        <option value="sticker">Sticker</option>
-        <option value="fumigene">Fumigène</option>
-        <option value="drapeau">Drapeau</option>
-        <option value="echarpe">Écharpe</option>
-        <option value="autre">Autre</option>
+        <option value="tous">Tous les membres</option>
+        <option value="draft_confirme">Draft + Confirmés (de la section)</option>
+        <option value="confirme">Confirmés uniquement (de la section)</option>
       </select>
     </div>
-    <div class="form-group"><label>Série (optionnel)</label><input type="text" id="stSerie" placeholder="ex: Série Derby"></div>
-    <div class="form-group"><label>Prix (€) — laisser vide si gratuit</label><input type="number" id="stPrix" placeholder="5"></div>
-    <div class="form-group"><label>Stock disponible</label><input type="number" id="stStock" placeholder="0"></div>
-    <div class="form-group"><label>Quota par membre (optionnel)</label><input type="number" id="stQuota" placeholder="ex: 2"></div>
     <div class="form-group">
-      <label>Niveau d'accès</label>
-      <select id="stAcces" onchange="toggleSectionSelectStick()">
-        <option value="tous">Généraliste — tout le monde</option>
-        <option value="section">Section spécifique</option>
-      </select>
-    </div>
-    <div class="form-group" id="sectionSelectGroupStick" style="display:none;">
-      <label>Section concernée</label>
+      <label>Section</label>
       <select id="stSection">
         <option value="">Chargement...</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Prix (€) — laisser vide si gratuit</label><input type="number" id="stPrix" placeholder="5"></div>
+    <div class="form-group"><label>Nombre de sticks par lot</label><input type="number" id="stLot" placeholder="1" value="1" min="1"></div>
+    <div class="form-group"><label>Stock disponible (en nombre de sticks)</label><input type="number" id="stStock" placeholder="0"></div>
+    <div class="form-group">
+      <label>Mode</label>
+      <select id="stMode">
+        <option value="stock">En stock</option>
+        <option value="precommande">Précommande</option>
       </select>
     </div>
     <div class="form-group"><label>Lien HelloAsso (optionnel)</label><input type="url" id="stHelloasso" placeholder="https://www.helloasso.com/..."></div>
