@@ -308,8 +308,7 @@ async function voirInscrits(id, nom, e) {
       <h3 class="modal-title">👥 ${esc(nom)}</h3>
       <div style="font-size:13px;color:var(--gris);margin-bottom:12px;">✅ ${presents.length} présents · Total: ${inscrits.length}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
-        <button class="btn btn-sm btn-secondary" onclick="copierInscrits(${JSON.stringify(inscrits.map(i=>i.membre?.pseudo_telegram||'?'))})">📋 Liste Telegram</button>
-        <button class="btn btn-sm btn-secondary" onclick="copierListeComplete(${JSON.stringify(inscrits.map(i=>({pseudo:i.membre?.pseudo_telegram||'?',prenom:i.membre?.prenom||'',nom:i.membre?.nom||'',statut:i.membre?.statut||'',section:i.membre?.section?.nom||'',presence:i.statut})))})">📄 Liste complète</button>
+        <button class="btn btn-sm btn-secondary" onclick="copierListeComplete(${esc(JSON.stringify(inscrits.map(i=>({pseudo:i.membre?.pseudo_telegram||'?',prenom:i.membre?.prenom||'',nom:i.membre?.nom||'',statut:i.membre?.statut||'',section:i.membre?.section?.nom||'',presence:i.statut}))))})">📋 Liste complète</button>
       </div>
       ${inscrits.map(i => `
         <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);">
@@ -388,7 +387,7 @@ async function voirCommandesPizza(sessionId, nom, e) {
     document.getElementById('modalAdminSessionContent').innerHTML = `
       <h3 class="modal-title">🍕 Commandes — ${esc(nom)}</h3>
       <div style="font-size:13px;color:var(--gris);margin-bottom:12px;">${presents.length} présent${presents.length>1?'s':''}</div>
-      <button class="btn btn-sm btn-secondary" style="margin-bottom:16px;" onclick="navigator.clipboard.writeText(${JSON.stringify(texteCopie)}).then(()=>toast('Copié !','success'))">📋 Copier la liste</button>
+      <button class="btn btn-sm btn-secondary" style="margin-bottom:16px;" onclick="navigator.clipboard.writeText(${esc(JSON.stringify(texteCopie))}).then(()=>toast('Copié !','success'))">📋 Copier la liste</button>
       <div class="section-title" style="margin-bottom:8px;">Pizzas</div>
       ${pizzaHtml || '<p style="color:var(--gris);font-size:13px;">Aucune commande</p>'}
       <div class="section-title" style="margin-top:16px;margin-bottom:8px;">Pintes</div>
