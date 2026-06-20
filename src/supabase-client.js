@@ -150,20 +150,24 @@ async function inscription(data) {
   return { success: true };
 }
 
-// Vérifie le code à 6 chiffres envoyé par email à l'inscription (type
-// 'signup' natif Supabase). Remplace le lien cliquable historique — voir
-// BUGS.md : les liens de confirmation cliquables étaient parfois
-// consommés automatiquement par des scanners de sécurité côté
-// destinataire avant que le membre ne clique lui-même, via le SMTP
-// custom Brevo (dont le tracking de clics ne peut pas être désactivé
-// sur le canal transactionnel). Le template "Confirm signup" dans
-// Supabase doit utiliser {{ .Token }} au lieu de {{ .ConfirmationURL }}
-// pour que ce code soit bien envoyé dans l'email.
+// Vérifie le code à 6 chiffres envoyé par email à l'inscription. Remplace
+// le lien cliquable historique — voir BUGS.md : les liens de confirmation
+// cliquables étaient parfois consommés automatiquement par des scanners
+// de sécurité côté destinataire avant que le membre ne clique lui-même,
+// via le SMTP custom Brevo (dont le tracking de clics ne peut pas être
+// désactivé sur le canal transactionnel). Le template "Confirm signup"
+// dans Supabase doit utiliser {{ .Token }} au lieu du lien classique pour
+// que ce code soit bien envoyé dans l'email.
+// IMPORTANT : type doit être 'email', pas 'signup' — 'signup'/'magiclink'
+// sont dépréciés côté verifyOtp pour une vérification par email (la doc
+// Supabase et plusieurs guides à jour confirment 'email' comme type
+// correct ; 'signup' donnait un message trompeur "Token has expired or
+// is invalid" même avec un code tout juste reçu et jamais utilisé).
 async function verifierCodeInscription(email, code) {
   const { data, error } = await sb.auth.verifyOtp({
     email,
     token: code,
-    type: 'signup',
+    type: 'email',
   });
   if (error) throw new Error(error.message || 'Code invalide ou expiré');
   // verifyOtp ouvre une session active, mais le compte reste actif=false
