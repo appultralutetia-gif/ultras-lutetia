@@ -77,7 +77,15 @@ async function resolvePseudoToEmail(pseudoTelegram, emailADoubleVerifier) {
     body: JSON.stringify(payload),
   });
   const body = await resp.json();
-  if (!resp.ok) throw new Error(body.error || 'Identifiants incorrects');
+  // L'Edge Function peut répondre HTTP 200 même en cas d'échec applicatif
+  // (message + code dans le corps plutôt qu'un vrai statut d'erreur) — ne
+  // jamais se fier uniquement à resp.ok : vérifier aussi que body.email
+  // est bien présent, sinon on continue avec un email undefined qui finit
+  // par faire planter signInWithPassword plus loin avec une erreur trompeuse
+  // ("No API key found in request") qui n'a rien à voir avec la vraie cause.
+  if (!resp.ok || !body.email) {
+    throw new Error(body.message || body.error || 'Identifiants incorrects');
+  }
   return body.email;
 }
 
@@ -139,6 +147,41 @@ async function inscription(data) {
     statut: 'sympathisant',
   });
   if (membreError) throw new Error(membreError.message);
+  return { success: true };
+}
+
+// Vérifie le code à 6 chiffres envoyé par email à l'inscription (type
+// 'signup' natif Supabase). Remplace le lien cliquable historique — voir
+// BUGS.md : les liens de confirmation cliquables étaient parfois
+// consommés automatiquement par des scanners de sécurité côté
+// destinataire avant que le membre ne clique lui-même, via le SMTP
+// custom Brevo (dont le tracking de clics ne peut pas être désactivé
+// sur le canal transactionnel). Le template "Confirm signup" dans
+// Supabase doit utiliser {{ .Token }} au lieu de {{ .ConfirmationURL }}
+// pour que ce code soit bien envoyé dans l'email.
+async function verifierCodeInscription(email, code) {
+  const { data, error } = await sb.auth.verifyOtp({
+    email,
+    token: code,
+    type: 'signup',
+  });
+  if (error) throw new Error(error.message || 'Code invalide ou expiré');
+  // verifyOtp ouvre une session active, mais le compte reste actif=false
+  // tant que Bureau n'a pas validé (workflow inchangé) — on déconnecte
+  // donc immédiatement pour forcer un retour à l'écran de login normal,
+  // plutôt que de laisser une session "fantôme" en mémoire.
+  await sb.auth.signOut();
+  return { success: true };
+}
+
+// Renvoie un nouveau code à 6 chiffres (limité par Supabase à une demande
+// par 60 secondes par défaut — voir Auth > Providers > Email > rate limits).
+async function renvoyerCodeInscription(email) {
+  const { error } = await sb.auth.resend({
+    type: 'signup',
+    email,
+  });
+  if (error) throw new Error(error.message || 'Impossible de renvoyer le code');
   return { success: true };
 }
 
@@ -1335,6 +1378,7 @@ window.UL = {
   initSession,
   // Auth
   loginByTelegram, logout, changePassword, inscription, demanderResetMdp,
+  verifierCodeInscription, renvoyerCodeInscription,
   // Membres
   getMembre, getAllMembres, updateMembre, updateStatutMembre,
   updateSectionMembre, toggleBlocageMembre,
