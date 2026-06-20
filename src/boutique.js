@@ -632,7 +632,6 @@ async function doCreerStick() {
 
   if (!nom) return toast('Nom requis', 'error');
   if (niveauAcces !== 'tous' && !sectionId) return toast('Sélectionne une section', 'error');
-  if (prix && !lienHelloasso) return toast('Lien HelloAsso requis pour un stick payant', 'error');
 
   try {
     showLoading();
