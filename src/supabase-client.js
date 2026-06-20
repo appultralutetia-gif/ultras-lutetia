@@ -152,7 +152,10 @@ async function logout() {
 
 async function changePassword(newPassword) {
   const { error } = await sb.auth.updateUser({ password: newPassword });
-  if (error) throw new Error('Erreur changement mot de passe');
+  if (error) {
+    console.error('[UL DEBUG] changePassword error:', error);
+    throw new Error('Erreur changement mot de passe : ' + error.message);
+  }
   return { success: true };
 }
 
