@@ -414,53 +414,26 @@ async function doSauvegarderCharte() {
   } catch(e) { toast(e.message || 'Impossible de publier la charte', 'error'); }
 }
 
-// ─── COMITÉ DE PASSAGE — Évaluation membres ────────────────────
-// Note manuelle 1-3 attribuée aux membres en cours d'évaluation pour
-// un passage de statut : 'sympathisant' → catégorie comite_sympa,
-// 'draft' → catégorie comite_draft. renderCarteEvaluation et
-// doNoterMembre sont définis dans tifos.js (modules en globals
-// window-exposed, pas d'ES6 modules sur ce projet — partage normal).
-async function ouvrirEvaluationMembresComite() {
-  document.getElementById('modalAdminSessionContent').innerHTML = `
-    <h3 class="modal-title">🔔 Évaluation membres — Comité de passage</h3>
-    <div class="card-label" style="margin-top:4px;">💙 Sympathisants</div>
-    <div id="evalComiteSympaListe" style="margin-bottom:16px;"><div class="empty-state"><div>⏳</div>Chargement…</div></div>
-    <div class="card-label">🚀 Drafts</div>
-    <div id="evalComiteDraftListe"><div class="empty-state"><div>⏳</div>Chargement…</div></div>`;
-  showModal('modalAdminSession');
-  try {
-    const [sympas, drafts] = await Promise.all([
-      UL.getAllMembres({ statut: 'sympathisant', actif: true }),
-      UL.getAllMembres({ statut: 'draft', actif: true }),
-    ]);
-    const evals = await UL.getEvaluationsCourantesBatch([...sympas, ...drafts].map(m => m.id));
-    sympas.forEach(m => { m._evalCourante = evals[m.id] || {}; });
-    drafts.forEach(m => { m._evalCourante = evals[m.id] || {}; });
-
-    document.getElementById('evalComiteSympaListe').innerHTML = sympas.length
-      ? sympas.map(m => renderCarteEvaluation(m, 'comite_sympa')).join('')
-      : '<div class="empty-state"><div>💙</div>Aucun sympathisant</div>';
-    document.getElementById('evalComiteDraftListe').innerHTML = drafts.length
-      ? drafts.map(m => renderCarteEvaluation(m, 'comite_draft')).join('')
-      : '<div class="empty-state"><div>🚀</div>Aucun draft</div>';
-  } catch(e) {
-    document.getElementById('evalComiteSympaListe').innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>';
-    document.getElementById('evalComiteDraftListe').innerHTML = '';
-  }
-}
-
-// ─── COMITÉ DE PASSAGE — Page Membres (vue allégée) ────────────
-// Contrairement à pageMembres (Bureau+, gestion complète : modifier
-// fiche, reset mdp, supprimer compte), cette page n'expose que la
-// consultation + le blocage/déblocage, et JAMAIS sur un membre
-// Bureau/Admin — ces niveaux restent hors de portée du Comité de
-// passage, qui ne gère que sympathisant/draft/confirme/membre_cellule.
+// ─── COMITÉ DE PASSAGE — Page Membres (vue unique) ─────────────
+// Fusion de l'ancienne modal "Évaluation membres" (notation 1-3) et de
+// la page "Gérer les membres" (recherche + blocage) — un seul écran,
+// une seule liste. Contrairement à pageMembres (Bureau+, gestion
+// complète : modifier fiche, reset mdp, supprimer compte), cette page
+// n'expose que : la notation (Sympathisant/Draft uniquement — les
+// autres niveaux n'ont pas de catégorie de notation, ils ont déjà
+// passé l'évaluation), et le blocage/déblocage, JAMAIS sur un membre
+// Bureau/Admin — ces niveaux restent hors de portée du Comité.
+// renderCarteEvaluation/doNoterMembre sont définis dans tifos.js
+// (modules en globals window-exposed, partage normal sur ce projet).
 let _allMembresComite = [];
 
 async function loadMembresComite() {
   document.getElementById('membresComiteList').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
-    _allMembresComite = await UL.getAllMembres();
+    const membres = await UL.getAllMembres();
+    const evals = await UL.getEvaluationsCourantesBatch(membres.map(m => m.id));
+    membres.forEach(m => { m._evalCourante = evals[m.id] || {}; });
+    _allMembresComite = membres;
     renderMembresComiteListe(_allMembresComite);
   } catch(e) { toast('Erreur chargement membres', 'error'); }
 }
@@ -473,8 +446,8 @@ function filtrerMembresComite() {
   ].filter(Boolean).join(' ').toLowerCase().includes(q)));
 }
 
-// Tri identique à l'évaluation : niveau hiérarchique d'abord (Admin en
-// tête, Sympathisant en dernier), alphabétique au sein d'un même niveau.
+// Tri : niveau hiérarchique d'abord (Admin en tête, Sympathisant en
+// dernier), alphabétique au sein d'un même niveau.
 const ORDRE_STATUT_COMITE = { admin: 0, bureau: 1, membre_cellule: 2, confirme: 3, draft: 4, sympathisant: 5 };
 function niveauMembreComite(m) {
   if (isAdmin(m)) return 0;
@@ -498,6 +471,13 @@ function renderMembresComiteListe(membres) {
 const STATUT_LABEL_COMITE = {
   sympathisant: '💙 Sympathisant', draft: '🚀 Draft', confirme: '🏅 Confirmé',
 };
+// Catégorie de notation applicable selon le statut — null si aucune
+// (Confirmé+ a déjà passé l'évaluation, pas de catégorie pour lui ici).
+function categorieNotationComite(m) {
+  if (m.statut === 'sympathisant') return 'comite_sympa';
+  if (m.statut === 'draft') return 'comite_draft';
+  return null;
+}
 function renderMembreComiteCard(m) {
   // Niveau protégé = Bureau ou Admin (via roles_app[]) — jamais bloqué
   // par le Comité de passage, quel que soit le statut affiché.
@@ -506,6 +486,7 @@ function renderMembreComiteCard(m) {
     : isBureau(m) ? '🏆 Bureau'
     : isCellule(m) ? '🛡️ Membre Cellule'
     : STATUT_LABEL_COMITE[m.statut] || m.statut;
+  const categorie = categorieNotationComite(m);
   return `<div class="card" style="margin-bottom:8px;padding:12px;">
     <div style="display:flex;align-items:center;gap:10px;">
       <div class="avatar" style="width:36px;height:36px;font-size:13px;flex-shrink:0;">${((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase()}</div>
@@ -517,6 +498,15 @@ function renderMembreComiteCard(m) {
       </div>
       <span class="badge ${m.actif?'badge-vert':'badge-rouge'}" style="flex-shrink:0;font-size:10px;">${m.actif?'✅ Actif':'⛔ Bloqué'}</span>
     </div>
+    ${categorie ? `
+    <div style="display:flex;gap:4px;margin-top:10px;" data-eval-boutons="${categorie}_${m.id}">
+      ${[1,2,3].map(n => {
+        const emoji = EVAL_EMOJI[categorie];
+        const actif = (m._evalCourante?.[categorie] ?? null) === n;
+        return `<button class="btn btn-sm ${actif?'btn-primary':'btn-secondary'}" style="padding:4px 10px;font-size:12px;"
+          onclick="doNoterMembre('${m.id}','${categorie}',${n},this)">${emoji.repeat(n)}</button>`;
+      }).join('')}
+    </div>` : ''}
     ${!protege ? `
     <div style="margin-top:10px;">
       <button class="btn btn-sm ${m.actif?'btn-danger':'btn-success'}" onclick="toggleMembreComite('${m.id}',${!m.actif})">
