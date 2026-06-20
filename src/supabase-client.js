@@ -442,7 +442,6 @@ async function savePizzaChoice(sessionId, pizza) {
 async function createSession(sessionData) {
   const { data, error } = await sb.from('sessions_tifo').insert({
     ...sessionData,
-    cree_par: currentUser.id,
   }).select().single();
   if (error) throw error;
   return data;
