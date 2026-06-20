@@ -92,7 +92,8 @@ async function loadTifoActions(sessionId, btn, prefix='') {
   const originalText = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    const { session: s, monInscrit } = await UL.getSessionDetails(sessionId);
+    const { session: s, monInscrit, inscrits } = await UL.getSessionDetails(sessionId);
+    console.log('[UL DEBUG] loadTifoActions', { sessionId, prefix, monInscrit, currentUser: UL.getCurrentUser ? UL.getCurrentUser() : null, inscrits });
     const estInscrit  = !!monInscrit;
     const estPresent  = monInscrit?.statut === 'present';
     const isOpen      = s.statut === 'en_cours';
@@ -257,6 +258,7 @@ async function doInscrire(id, btn) {
   if (!id && btn) id = btn.getAttribute('data-session-id');
   if (!id) id = currentSessionId;
   if (!id) return toast('Erreur : tifo introuvable', 'error');
+  console.log('[UL DEBUG] doInscrire start', { id, currentUser: UL.getCurrentUser(), currentMembre: UL.getCurrentMembre() });
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.inscrire(id);
@@ -265,7 +267,7 @@ async function doInscrire(id, btn) {
     // Mettre à jour uniquement la zone actions de ce tifo sans recharger toute la liste
     // Rafraîchir silencieusement la zone actions (sans passer de bouton)
     await loadTifoActions(id, null);
-    loadAccueil();
+    await loadAccueil();
   } catch(e) {
     toast(e.message || 'Impossible de s\'inscrire', 'error');
     if (btn) { btn.disabled = false; btn.textContent = "S'inscrire"; }
@@ -529,4 +531,3 @@ async function doModifierSession() {
 function loadAdminTifos() {
   if (document.getElementById('pageTifos')?.classList.contains('active')) loadTifos();
 }
-
