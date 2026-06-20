@@ -43,29 +43,33 @@ function normalizePseudo(pseudoTelegram) {
     .trim();
 }
 
-async function loginByTelegram(pseudoTelegram, password) {
+// Résout un pseudo Telegram en email via l'Edge Function resolve-pseudo
+// (la table membres est protégée par RLS, lecture réservée à 'authenticated' —
+// impossible de lire l'email directement avant connexion avec le client anon).
+// Utilisée par loginByTelegram() et demanderResetMdp().
+async function resolvePseudoToEmail(pseudoTelegram) {
   const pseudo = normalizePseudo(pseudoTelegram);
   if (!pseudo) throw new Error('Pseudo Telegram requis');
 
-  // La table membres est protégée par RLS (lecture réservée à 'authenticated'),
-  // donc impossible de lire l'email directement avant connexion. On passe par
-  // une Edge Function qui fait la résolution pseudo→email côté serveur avec
-  // la Service Role Key, sans jamais exposer cette clé au client.
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/resolve-pseudo`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_PUBLISHABLE_KEY, // format sb_publishable_... requis par withSupabase
+    },
+    body: JSON.stringify({ pseudo_telegram: pseudo }),
+  });
+  const body = await resp.json();
+  if (!resp.ok) throw new Error(body.error || 'Identifiants incorrects');
+  return body.email;
+}
+
+async function loginByTelegram(pseudoTelegram, password) {
   let email;
   try {
-    const resp = await fetch(`${SUPABASE_URL}/functions/v1/resolve-pseudo`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_PUBLISHABLE_KEY, // format sb_publishable_... requis par withSupabase
-      },
-      body: JSON.stringify({ pseudo_telegram: pseudo }),
-    });
-    const body = await resp.json();
-    if (!resp.ok) throw new Error(body.error || 'Identifiants incorrects');
-    email = body.email;
+    email = await resolvePseudoToEmail(pseudoTelegram);
   } catch (e) {
-    throw new Error(e.message || 'Pseudo Telegram introuvable : ' + pseudo);
+    throw new Error(e.message || 'Pseudo Telegram introuvable');
   }
 
   const { data, error } = await sb.auth.signInWithPassword({ 
@@ -77,6 +81,20 @@ async function loginByTelegram(pseudoTelegram, password) {
   currentUser = data.user;
   currentMembre = await getMembre(data.user.id);
   return { success: true, membre: currentMembre };
+}
+
+// Envoie l'email de réinitialisation de mot de passe via Supabase Auth.
+// redirectTo passe par le même mécanisme de callback que la confirmation
+// d'inscription (404.html → ultras-lutetia/?...#access_token&type=recovery),
+// que app.js détecte au démarrage pour afficher le modal de reset.
+async function demanderResetMdp(pseudoTelegram) {
+  const email = await resolvePseudoToEmail(pseudoTelegram); // laisse throw si pseudo introuvable
+
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: 'https://appultralutetia-gif.github.io/ultras-lutetia/',
+  });
+  if (error) throw new Error(error.message);
+  return { success: true };
 }
 
 async function inscription(data) {
@@ -1134,7 +1152,7 @@ async function updatePhotoStick(stickId, visuelUrl) {
 window.UL = {
   initSession,
   // Auth
-  loginByTelegram, logout, changePassword, inscription,
+  loginByTelegram, logout, changePassword, inscription, demanderResetMdp,
   // Membres
   getMembre, getAllMembres, updateMembre, updateStatutMembre,
   updateSectionMembre, setEtoilesMembre, toggleBlocageMembre,
