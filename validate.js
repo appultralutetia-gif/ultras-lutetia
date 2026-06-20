@@ -68,6 +68,7 @@ const REQUIRED_BY_MODULE = {
     'doPublierAnnonce',
     'loadGererCharte', 'doSauvegarderCharte',
     'ouvrirEvaluationMembresComite',
+    'loadMembresComite', 'filtrerMembresComite', 'renderMembresComiteListe', 'toggleMembreComite',
   ],
   'src/profil.js': [
     'loadProfil', 'loadCharte',
