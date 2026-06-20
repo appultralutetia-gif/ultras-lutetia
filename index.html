@@ -1,1144 +1,293 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#07003D">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Ultras Lutetia">
-  <title>Ultras Lutetia</title>
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="src/styles.css">
-  <style>
-    /* ── Boutique buttons fix ───────────────────────────── */
-    .btn-tab {
-      flex: 1; padding: 8px 10px;
-      border: none;
-      background: transparent;
-      color: #94A3B8;
-      font-family: 'Barlow Condensed', -apple-system, sans-serif;
-      font-size: 13px; font-weight: 700;
-      letter-spacing: .04em; text-transform: uppercase;
-      cursor: pointer; border-radius: 6px;
-      transition: all .15s ease;
-      white-space: nowrap;
-      -webkit-appearance: none; appearance: none; outline: none;
+// ════════════════════════════════════════════════════════════
+// ULTRAS LUTETIA — Edge Function : helloasso-create-checkout
+// ────────────────────────────────────────────────────────────
+// Périmètre : Déplacements uniquement (module prioritaire — cf.
+// plan_helloasso.md §3-4). À dupliquer pour Matos/Cartage une fois ce
+// module validé en sandbox puis en prod (cf. TODO_HELLOASSO.md).
+//
+// Appelée par le front via :
+//   sb.functions.invoke('helloasso-create-checkout', { body: { deplacementId } })
+//
+// Rôle :
+//   1. Récupère/rafraîchit un access_token HelloAsso (cache en table,
+//      pour respecter la limite de 20 tokens simultanés par clé API)
+//   2. Crée (ou réutilise) la ligne d'inscription en 'en_attente'
+//   3. Appelle POST /v5/organizations/{slug}/checkout-intents
+//   4. Stocke le checkout_intent_id sur l'inscription
+//   5. Renvoie redirectUrl au front, qui redirige le membre
+//
+// ⚠️ TODO BLOQUANTS — marqués avec « TODO[ACCÈS] » partout où une
+// valeur réelle (clé API, slug, URL) est nécessaire pour que ce code
+// fonctionne. Tant que ces TODO ne sont pas résolus, cette fonction
+// échouera proprement (erreur claire) mais ne cassera rien côté app
+// existante puisqu'elle n'est appelée par aucun code actif encore.
+// Voir TODO_HELLOASSO.md pour la liste consolidée.
+// ════════════════════════════════════════════════════════════
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// ── Configuration ────────────────────────────────────────────
+// TODO[ACCÈS] : renseigner ces secrets via `supabase secrets set` une fois
+// les accès HelloAsso obtenus. Ne JAMAIS les committer en dur dans le code.
+//   supabase secrets set HELLOASSO_CLIENT_ID=xxx
+//   supabase secrets set HELLOASSO_CLIENT_SECRET=xxx
+//   supabase secrets set HELLOASSO_ORG_SLUG=xxx
+//   supabase secrets set HELLOASSO_API_BASE=https://api.helloasso-sandbox.com  (sandbox d'abord !)
+//                                         ou https://api.helloasso.com         (prod, une fois validé)
+const HELLOASSO_CLIENT_ID = Deno.env.get('HELLOASSO_CLIENT_ID') ?? '';
+const HELLOASSO_CLIENT_SECRET = Deno.env.get('HELLOASSO_CLIENT_SECRET') ?? '';
+const HELLOASSO_ORG_SLUG = Deno.env.get('HELLOASSO_ORG_SLUG') ?? '';
+// TODO[ACCÈS] : basculer sur https://api.helloasso.com une fois testé en sandbox.
+const HELLOASSO_API_BASE = Deno.env.get('HELLOASSO_API_BASE') ?? 'https://api.helloasso-sandbox.com';
+
+// TODO[ACCÈS] : ces 3 URLs doivent pointer vers de vraies pages de l'app.
+// backUrl/errorUrl/returnUrl sont obligatoires côté HelloAsso (InitCheckoutBody).
+// Le plus simple : une page de retour unique qui lit le query param `code`
+// pour afficher "paiement en cours de confirmation" (rappel : ce code n'est
+// PAS fiable pour valider le paiement, cf. plan §2.4 — seul le webhook fait foi).
+const APP_BASE_URL = 'https://appultralutetia-gif.github.io/ultras-lutetia';
+const RETURN_URL = `${APP_BASE_URL}/?helloasso=return`;
+const BACK_URL = `${APP_BASE_URL}/?helloasso=cancel`;
+const ERROR_URL = `${APP_BASE_URL}/?helloasso=error`;
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+// ── Cache du token OAuth2 ─────────────────────────────────────
+// HelloAsso limite à 20 access_tokens simultanés par clé API et interdit
+// d'en redemander un nouveau à chaque appel (cf. doc "S'authentifier").
+// On les stocke dans une table dédiée (1 seule ligne, pas par utilisateur —
+// c'est un token applicatif, pas un token membre) pour survivre aux cold
+// starts de l'Edge Function (la mémoire en cours d'exécution ne suffit pas).
+//
+// Table à créer (cf. migration séparée, pas dans le périmètre SQL
+// "déplacements" ci-dessus puisqu'elle est partagée par tous les modules
+// HelloAsso) :
+//
+//   create table if not exists helloasso_tokens (
+//     id int primary key default 1,
+//     access_token text not null,
+//     refresh_token text not null,
+//     expires_at timestamptz not null,
+//     constraint single_row check (id = 1)
+//   );
+//
+// TODO[ACCÈS] : créer cette table avant le premier déploiement réel de
+// cette fonction (elle n'est pas dans migration_helloasso_deplacements.sql
+// car elle ne concerne pas spécifiquement les déplacements).
+
+async function getValidAccessToken(supabaseAdmin) {
+  const { data: tokenRow } = await supabaseAdmin
+    .from('helloasso_tokens')
+    .select('*')
+    .eq('id', 1)
+    .maybeSingle();
+
+  const now = Date.now();
+  // Marge de sécurité de 60s avant l'expiration réelle (token valide 30min /
+  // 1799s d'après la doc) pour éviter d'utiliser un token expiré pile au
+  // moment de l'appel.
+  if (tokenRow && new Date(tokenRow.expires_at).getTime() - 60_000 > now) {
+    return tokenRow.access_token;
+  }
+
+  if (tokenRow?.refresh_token) {
+    // Refresh : le refresh_token est valide 30 jours, et un nouveau
+    // refresh_token est renvoyé à chaque utilisation (cf. doc — il faut
+    // bien le réenregistrer, l'ancien devient invalide après 2 sauts).
+    const resp = await fetch(`${HELLOASSO_API_BASE}/oauth2/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: tokenRow.refresh_token,
+      }),
+    });
+    if (resp.ok) {
+      const json = await resp.json();
+      await saveToken(supabaseAdmin, json);
+      return json.access_token;
     }
-    .btn-tab:hover { color: #E2E8F0; }
-    .btn-tab.active { background: #1A56DB; color: #FFFFFF; }
-
-    .filter-btn {
-      padding: 6px 14px;
-      border: 1px solid rgba(255,255,255,.12);
-      background: #1F2937;
-      color: #94A3B8;
-      font-family: 'Barlow Condensed', -apple-system, sans-serif;
-      font-size: 12px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .04em;
-      border-radius: 20px; cursor: pointer;
-      transition: all .15s ease;
-      white-space: nowrap; flex-shrink: 0;
-      -webkit-appearance: none; appearance: none; outline: none;
-    }
-    .filter-btn:hover { border-color: #3B82F6; color: #E2E8F0; }
-    .filter-btn.active { background: #1A56DB; border-color: #1A56DB; color: #FFFFFF; }
-
-    /* Sous-onglets wrapper */
-    .boutique-tabs-wrap {
-      display: flex; gap: 0;
-      margin-bottom: 16px;
-      background: #111827;
-      border-radius: 9px;
-      padding: 3px;
-      border: 1px solid rgba(255,255,255,.08);
-    }
-  </style>
-</head>
-<body>
-
-<!-- ══════════════════════════════════════════════════════════
-     LOGIN
-══════════════════════════════════════════════════════════ -->
-<div id="loginPage" class="login-page">
-  <div class="login-logo">
-    <img src="logo_ul.png" alt="Ultras Lutetia" style="width:100px;height:100px;object-fit:contain;">
-  </div>
-  <h1 class="login-title">Ultras Lutetia</h1>
-  <p class="login-subtitle">Paris FC — Espace Membre</p>
-
-  <div class="login-form" id="loginForm">
-    <div class="form-group">
-      <label>Pseudo Telegram</label>
-      <input type="text" id="loginTelegram" placeholder="@pseudo" autocomplete="username">
-    </div>
-    <div class="form-group">
-      <label>Mot de passe</label>
-      <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
-    </div>
-    <button class="btn btn-primary" onclick="doLogin()">Connexion</button>
-    <div style="text-align:center;margin-top:12px;">
-      <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="ouvrirModalMdpOublie()">
-        Mot de passe oublié ?
-      </span>
-    </div>
-    <div style="text-align:center;margin-top:16px;">
-      <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="showInscription()">
-        Pas encore membre ? S'inscrire
-      </span>
-    </div>
-  </div>
-
-  <div class="login-form" id="inscriptionForm" style="display:none;">
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.05em;margin-bottom:20px;text-align:center;">Inscription</h2>
-    <div class="form-group">
-      <label>Prénom</label>
-      <input type="text" id="regPrenom" placeholder="Ton prénom">
-    </div>
-    <div class="form-group">
-      <label>Nom</label>
-      <input type="text" id="regNom" placeholder="Ton nom">
-    </div>
-    <div class="form-group">
-      <label>Pseudo Telegram</label>
-      <input type="text" id="regTelegram" placeholder="@pseudo">
-    </div>
-    <div class="form-group">
-      <label>Email</label>
-      <input type="email" id="regEmail" placeholder="email@exemple.fr" required>
-    </div>
-    <div class="form-group">
-      <label>Ville</label>
-      <input type="text" id="regVille" placeholder="Paris">
-    </div>
-    <div class="form-group">
-      <label>Code Postal</label>
-      <input type="text" id="regCodePostal" placeholder="75001" maxlength="10">
-    </div>
-    <div class="form-group">
-      <label>Mot de passe</label>
-      <input type="password" id="regPassword" placeholder="Minimum 8 caractères">
-    </div>
-    <div class="form-group">
-      <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.12);border-radius:9px;cursor:pointer;" onclick="document.getElementById('regRgpd').click()">
-        <input type="checkbox" id="regRgpd" style="width:20px;height:20px;flex-shrink:0;margin-top:1px;cursor:pointer;accent-color:#1A56DB;" onclick="event.stopPropagation()">
-        <span style="font-size:13px;color:#CBD5E1;line-height:1.5;">J'accepte que mes données soient utilisées pour la gestion des Ultras Lutetia (RGPD)</span>
-      </div>
-    </div>
-    <button class="btn btn-primary" onclick="doInscription()">Créer mon compte</button>
-    <div style="text-align:center;margin-top:12px;">
-      <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="showLogin()">Déjà membre ? Se connecter</span>
-    </div>
-  </div>
-
-  <div class="login-form" id="otpForm" style="display:none;">
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.05em;margin-bottom:10px;text-align:center;">Confirme ton email</h2>
-    <p style="font-size:13px;color:var(--gris);text-align:center;margin-bottom:20px;">
-      Un code à 8 chiffres a été envoyé à <strong id="otpEmailAffiche"></strong>.<br>
-      Vérifie aussi tes spams.
-    </p>
-    <div class="form-group">
-      <label>Code reçu par email</label>
-      <input type="text" id="otpCode" placeholder="••••••••" maxlength="8" inputmode="numeric" autocomplete="one-time-code" style="text-align:center;font-size:22px;letter-spacing:.3em;">
-    </div>
-    <button class="btn btn-primary" onclick="doVerifyOtp()">Confirmer</button>
-    <div style="text-align:center;margin-top:12px;">
-      <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="doRenvoyerOtp()">Je n'ai pas reçu le code, renvoyer</span>
-    </div>
-    <div style="text-align:center;margin-top:8px;">
-      <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="showLogin()">Retour à la connexion</span>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════════════
-     CHARTE GATE — overlay bloquant plein écran
-     Affiché tant que le membre n'a pas signé la charte ACTIVE
-     en cours de validité. Pas de nav, pas de bouton fermer :
-     c'est un mur, pas une page consultable depuis le menu.
-══════════════════════════════════════════════════════════ -->
-<div id="charteGate" class="login-page" style="display:none;">
-  <div style="width:100%;max-width:480px;margin:0 auto;padding:24px 20px;">
-    <div style="text-align:center;margin-bottom:18px;">
-      <img src="logo_ul.png" alt="Ultras Lutetia" style="width:64px;margin-bottom:14px;">
-      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.05em;margin-bottom:4px;">Charte des Ultras Lutetia</h2>
-      <p id="charteGateSousTitre" style="font-size:12px;color:var(--gris);">Lis attentivement jusqu'en bas avant de signer.</p>
-    </div>
-    <div class="charte-content" id="charteGateTexte" onscroll="checkCharteScroll(this)"></div>
-    <div class="form-group" style="margin-top:16px;">
-      <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.12);border-radius:9px;" id="charteGateCheckWrap">
-        <input type="checkbox" id="charteGateAccept" style="width:20px;height:20px;flex-shrink:0;margin-top:1px;cursor:pointer;accent-color:#1A56DB;" disabled onclick="event.stopPropagation()">
-        <span style="font-size:13px;color:#CBD5E1;line-height:1.5;">Je certifie avoir lu et j'accepte la charte des Ultras Lutetia dans son intégralité, sans réserve.</span>
-      </div>
-    </div>
-    <button class="btn btn-primary" id="btnSignerCharteGate" onclick="signerCharteGate()" disabled style="width:100%;">Signer la charte</button>
-    <div style="text-align:center;margin-top:14px;">
-      <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="doLogout()">Se déconnecter</span>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════════════
-     APP
-══════════════════════════════════════════════════════════ -->
-<div id="appContainer" class="app-container" style="display:none;">
-
-  <!-- Header -->
-  <header class="app-header">
-    <div class="app-logo">
-      <img src="logo_ul.png" alt="UL" style="width:32px;height:32px;object-fit:contain;border-radius:6px;">
-      <span>Ultras Lutetia</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <span id="headerUser" style="font-size:12px;color:var(--gris);"></span>
-      <button onclick="doLogout()" class="btn-logout">← Quitter</button>
-    </div>
-  </header>
-
-  <!-- ── PAGE ACCUEIL ───────────────────────────────────────── -->
-  <div id="pageAccueil" class="page active">
-
-    <!-- Annonces -->
-    <div id="annoncesContainer"></div>
-
-    <!-- Bouton publier annonce (Bureau+) + Charte (tous) -->
-    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-      <div id="btnPublierAnnonce" style="display:none;flex:1;">
-        <button class="btn btn-sm btn-secondary" style="width:100%;" onclick="showModal('modalAnnonce')">📣 Publier une annonce</button>
-      </div>
-      <div style="flex:1;">
-        <button class="btn btn-sm btn-secondary" style="width:100%;" onclick="showPage('pageCharte')">📋 Charte</button>
-      </div>
-    </div>
-
-    <!-- Demandes d'inscription en attente (Admin/Bureau/Comité de passage) -->
-    <div id="demandesSection" style="display:none;">
-      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
-        <span>🔔 Demandes d'inscription</span>
-        <span id="demandesBadge" class="badge badge-orange" style="display:none;"></span>
-      </div>
-      <div id="demandesListe"></div>
-    </div>
-
-    <div class="section-title">Prochains tifos</div>
-    <div id="tifosAccueil"></div>
-
-    <div class="section-title">Prochain déplacement</div>
-    <div id="deplAccueil"></div>
-
-    <div class="section-title">Mes stats</div>
-    <div class="stats-grid" id="mesStats"></div>
-  </div>
-
-  <!-- ── PAGE SESSIONS ──────────────────────────────────────── -->
-  <div id="pageTifos" class="page">
-
-    <!-- Bouton créer session (Bureau+ ou Membre Cellule) -->
-    <div id="btnCreerTifo" style="display:none;margin-bottom:16px;">
-      <button class="btn btn-primary" onclick="showModal('modalCreerSession')">+ Nouveau tifo</button>
-    </div>
-
-    <div class="section-title">Sessions à venir</div>
-    <div id="tifosListe"></div>
-
-    <div class="section-title" style="margin-top:24px;">Historique</div>
-    <div id="tifosHistorique"></div>
-  </div>
-
-  <!-- ── PAGE DÉPLACEMENTS ──────────────────────────────────── -->
-  <div id="pageDeplacements" class="page">
-
-    <!-- Bouton créer déplacement (Bureau+) -->
-    <div id="btnCreerDepl" style="display:none;margin-bottom:16px;">
-      <button class="btn btn-primary" onclick="showModal('modalCreerDepl')">+ Nouveau déplacement</button>
-    </div>
-
-    <div class="section-title">Déplacements</div>
-    <div id="deplacementsListe"></div>
-  </div>
-
-  <!-- ── PAGE PROFIL ────────────────────────────────────────── -->
-  <div id="pageProfil" class="page">
-    <div class="card" id="profilCard"></div>
-
-    <div class="section-title">Mon activité</div>
-    <div class="stats-grid" id="profilStats"></div>
-
-    <div style="margin-top:16px;">
-      <button class="btn btn-secondary" onclick="showModal('modalMdp')">Changer mon mot de passe</button>
-    </div>
-    <div style="margin-top:10px;">
-      <button class="btn btn-secondary" onclick="showPage('pageCharte')">📋 Voir la charte</button>
-    </div>
-
-    <!-- Accès admin (rétrocompat – renvoie vers onglet Admin) -->
-    <div id="sectionAdmin" style="display:none;">
-      <div class="section-title" style="margin-top:24px;">⚙️ Administration</div>
-      <div class="card">
-        <button class="btn btn-secondary" onclick="showPage('pageAdmin')">Aller à l'espace Admin →</button>
-      </div>
-    </div>
-    <div id="sectionStats" style="display:none;">
-      <div class="section-title" style="margin-top:24px;">📊 Stats cellule</div>
-      <button class="btn btn-secondary" onclick="showPage('pageStats')">Voir les statistiques</button>
-    </div>
-  </div>
-
-  <!-- ── PAGE CHARTE (consultation, depuis Accueil ou Profil) ── -->
-  <div id="pageCharte" class="page">
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.05em;margin-bottom:8px;">Charte des Ultras Lutetia</h2>
-    <div id="charteStatutInfo" style="font-size:13px;color:var(--gris);margin-bottom:14px;"></div>
-    <div class="charte-content" id="charteTexte"></div>
-    <button class="btn btn-secondary" style="margin-top:16px;" onclick="showPage('pageAccueil')">Retour</button>
-  </div>
-
-  <!-- ── PAGE MEMBRES (Admin) ───────────────────────────────── -->
-  <div id="pageMembres" class="page">
-    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-      <button class="btn btn-sm btn-secondary" onclick="showPage('pageProfil')">← Retour</button>
-      <input type="text" id="searchMembre" placeholder="Rechercher..." style="flex:1;min-width:120px;" oninput="filtrerMembres()">
-      <select id="filterStatut" onchange="filtrerMembres()" style="flex:1;min-width:110px;">
-        <option value="">Tous statuts</option>
-        <option value="sympathisant">Sympathisant</option>
-        <option value="draft">Draft</option>
-        <option value="confirme">Confirmé</option>
-        <option value="membre_cellule">Membre Cellule</option>
-        <option value="bureau">Bureau</option>
-        <option value="admin">Admin</option>
-      </select>
-    </div>
-    <div id="membresList"></div>
-  </div>
-
-  <!-- ── PAGE MEMBRES — COMITÉ DE PASSAGE ──────────────────────── -->
-  <!-- Vue allégée par rapport à pageMembres (Bureau+) : recherche sur
-       tous les champs identité (nom/prénom/pseudo/email/ville/section),
-       et seule action disponible = bloquer/débloquer, jamais sur un
-       Bureau/Admin (cf. renderMembreComiteCard dans admin.js).
-       Filtres statut/section/niveau + exports (Telegram, CSV) partagent
-       le même état filtré — voir filtrerMembresComite() dans admin.js. -->
-  <div id="pageMembresComite" class="page">
-    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-      <button class="btn btn-sm btn-secondary" onclick="showPage('pageProfil')">← Retour</button>
-      <input type="text" id="searchMembreComite" placeholder="🔎 Nom, prénom, pseudo, email…" style="flex:1;min-width:160px;" oninput="filtrerMembresComite()">
-    </div>
-
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;" id="filtresStatutComite">
-      <button class="filter-btn active" data-statut="" onclick="filtrerStatutComite('')">Tous statuts</button>
-      <button class="filter-btn" data-statut="sympathisant" onclick="filtrerStatutComite('sympathisant')">💙 Sympathisant</button>
-      <button class="filter-btn" data-statut="draft" onclick="filtrerStatutComite('draft')">🚀 Draft</button>
-      <button class="filter-btn" data-statut="confirme" onclick="filtrerStatutComite('confirme')">🏅 Confirmé</button>
-    </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;" id="filtresNiveauComite">
-      <button class="filter-btn active" data-niveau="" onclick="filtrerNiveauComite('')">Tous niveaux</button>
-      <button class="filter-btn" data-niveau="1" onclick="filtrerNiveauComite('1')">1</button>
-      <button class="filter-btn" data-niveau="2" onclick="filtrerNiveauComite('2')">2</button>
-      <button class="filter-btn" data-niveau="3" onclick="filtrerNiveauComite('3')">3</button>
-      <button class="filter-btn" data-niveau="non_note" onclick="filtrerNiveauComite('non_note')">Non noté</button>
-    </div>
-    <select id="filterSectionComite" onchange="filtrerSectionComite()" style="width:100%;margin-bottom:12px;">
-      <option value="">Toutes sections</option>
-    </select>
-
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
-      <button class="btn btn-sm btn-secondary" onclick="copierListeMembresComite()">📋 Liste Telegram</button>
-      <button class="btn btn-sm btn-secondary" onclick="exporterCsvMembresComite()">📄 Export CSV</button>
-    </div>
-
-    <div id="membresComiteList"><div class="empty-state"><div>⏳</div>Chargement…</div></div>
-  </div>
-
-  <!-- ── PAGE STATS ─────────────────────────────────────────── -->
-  <div id="pageStats" class="page">
-    <button class="btn btn-sm btn-secondary" style="margin-bottom:16px;" onclick="showPage('pageProfil')">← Retour</button>
-    <div id="statsContent"><div class="empty-state"><div>⏳</div>Chargement…</div></div>
-  </div>
-
-  <!-- ── PAGE BOUTIQUE ─────────────────────────────────────── -->
-  <div id="pageBoutique" class="page">
-
-    <!-- Sous-onglets -->
-    <div class="boutique-tabs-wrap">
-      <button class="btn-tab active" id="tabMatos" onclick="switchBoutiqueTab('matos')">🛍️ Matos</button>
-      <button class="btn-tab" id="tabSticks" onclick="switchBoutiqueTab('sticks')">🎟️ Sticks</button>
-      <button class="btn-tab" id="tabCotisation" onclick="switchBoutiqueTab('cotisation')">💶 Cotisation</button>
-    </div>
-
-    <!-- ─ MATOS ─ -->
-    <div id="sectionMatos">
-      <!-- Filtres catégorie -->
-      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;scrollbar-width:none;">
-        <button class="filter-btn active" onclick="filtrerMatos('tous')">Tous</button>
-        <button class="filter-btn" onclick="filtrerMatos('textile')">Textile</button>
-        <button class="filter-btn" onclick="filtrerMatos('accessoire')">Accessoire</button>
-      </div>
-      <!-- Bouton admin -->
-      <div id="btnAddProduit" style="display:none;margin-bottom:12px;">
-        <button class="btn btn-primary" onclick="showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
-      </div>
-      <div id="matosCatalogue"></div>
-      <!-- Mes commandes -->
-      <div class="section-title" style="margin-top:20px;">Mes commandes</div>
-      <div id="mesCommandes"></div>
-      <!-- Admin : toutes commandes -->
-      <div id="toutesCommandesSection" style="display:none;">
-        <div class="section-title" style="margin-top:20px;">⚙️ Toutes les commandes</div>
-        <div id="toutesCommandes"></div>
-      </div>
-    </div>
-
-    <!-- ─ STICKS ─ -->
-    <div id="sectionSticks" style="display:none;">
-      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px;scrollbar-width:none;">
-        <button class="filter-btn active" onclick="filtrerSticksStatut('tous')">Tous statuts</button>
-        <button class="filter-btn" onclick="filtrerSticksStatut('draft_confirme')">Draft + Confirmés</button>
-        <button class="filter-btn" onclick="filtrerSticksStatut('confirme')">Confirmés</button>
-      </div>
-      <div style="margin-bottom:12px;">
-        <select id="filtreSticksSection" onchange="filtrerSticksSection(this.value)" style="background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;">
-          <option value="">Toutes sections</option>
-        </select>
-      </div>
-      <div id="sticksCatalogue"></div>
-      <div class="section-title" style="margin-top:20px;">Mes sticks reçus</div>
-      <div id="mesSticks"></div>
-      <!-- Admin : toutes distributions -->
-      <div id="toutesDistribsSection" style="display:none;">
-        <div class="section-title" style="margin-top:20px;">⚙️ Historique distributions</div>
-        <div id="toutesDistribs"></div>
-      </div>
-    </div>
-
-    <!-- ─ COTISATION ─ -->
-    <div id="sectionCotisation" style="display:none;">
-      <!-- Statut membre -->
-      <div id="cotisationStatut" class="card"></div>
-      <!-- Admin : liste membres + config -->
-      <div id="adminCotisationSection" style="display:none;">
-        <div class="section-title" style="margin-top:20px;">⚙️ Gestion cotisations</div>
-        <div class="card" style="margin-bottom:12px;">
-          <div class="card-label">Configuration</div>
-          <div class="form-group"><label>Lien HelloAsso cotisations</label><input type="url" id="configLienCotisation" placeholder="https://www.helloasso.com/..."></div>
-          <div class="form-group"><label>Montant (€)</label><input type="number" id="configMontantCotisation" placeholder="20"></div>
-          <button class="btn btn-primary" onclick="doSauvegarderConfigCotisation()">Enregistrer</button>
-        </div>
-        <div style="display:flex;gap:6px;margin-bottom:12px;">
-          <button class="filter-btn active" onclick="filtrerCotisations('tous')" id="fcTous">Tous</button>
-          <button class="filter-btn" onclick="filtrerCotisations('a_jour')" id="fcAjour">À jour</button>
-          <button class="filter-btn" onclick="filtrerCotisations('en_attente')" id="fcAttente">En attente</button>
-        </div>
-        <div id="listeCotisations"></div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- ── PAGE CALENDRIER ───────────────────────────────────── -->
-  <div id="pageCalendrier" class="page">
-    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;scrollbar-width:none;">
-      <button class="filter-btn active" id="fcalTous" onclick="filtrerCalendrier('tous')">Tous</button>
-      <button class="filter-btn" id="fcalDom" onclick="filtrerCalendrier('domicile')">🏠 Domicile</button>
-      <button class="filter-btn" id="fcalExt" onclick="filtrerCalendrier('exterieur')">✈️ Extérieur</button>
-      <button class="filter-btn" id="fcalEv" onclick="filtrerCalendrier('evenement')">🎉 Événements</button>
-    </div>
-    <div id="calendrierListe"></div>
-  </div>
-
-  <!-- ── PAGE ADMIN ─────────────────────────────────────────── -->
-  <div id="pageAdmin" class="page">
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.05em;margin-bottom:16px;">⚙️ Administration</h2>
-
-    <!-- Membres (Bureau+) -->
-    <div id="adminSectionMembres" style="display:none;">
-      <div class="section-title">👥 Membres</div>
-      <div class="card" style="margin-bottom:12px;">
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showPage('pageMembres')">👤 Gérer les membres</button>
-          <button class="btn btn-secondary" onclick="showPage('pageDemandesAdmin')">🔔 Demandes d'inscription en attente</button>
-          <button class="btn btn-secondary" onclick="showPage('pageCartage')">🗂️ Cartage</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Calendrier (Bureau+) -->
-    <div id="adminSectionCalendrier" style="display:none;">
-      <div class="section-title">📅 Calendrier</div>
-      <div class="card" style="margin-bottom:12px;">
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showModal('modalMatchs');loadMatchsList()">⚽ Gérer le calendrier (matchs)</button>
-          <button class="btn btn-secondary" onclick="ouvrirCreerEvenement()">🎉 Créer un événement</button>
-          <button class="btn btn-secondary" onclick="showModal('modalAnnonce')">📣 Publier une annonce</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Charte (Bureau+) -->
-    <div id="adminSectionCharte" style="display:none;">
-      <div class="section-title">📋 Charte</div>
-      <div class="card" style="margin-bottom:12px;">
-        <button class="btn btn-secondary" onclick="showPage('pageGererCharte')">✏️ Gérer la charte</button>
-      </div>
-    </div>
-
-    <!-- Déplacements (Bureau+ ou cellule_depl) -->
-    <div id="adminSectionDepl" style="display:none;">
-      <div class="section-title">🚌 Déplacements</div>
-      <div class="card" style="margin-bottom:12px;">
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showPage('pageDeplacements')">📋 Gérer les déplacements</button>
-          <button class="btn btn-secondary" onclick="showModal('modalCreerDepl')">+ Créer un déplacement</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sessions (Bureau+ ou cellule_tifo) -->
-    <div id="adminSectionTifos" style="display:none;">
-      <div class="section-title">🎨 Tifos Tifo</div>
-      <div class="card" style="margin-bottom:12px;">
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showModal('modalCreerSession')">+ Nouveau tifo</button>
-          <button class="btn btn-secondary" onclick="ouvrirModifierSession()">✏️ Modifier une session</button>
-          <button class="btn btn-secondary" onclick="showPage('pageTifos')">📋 Gérer les sessions</button>
-          <button class="btn btn-secondary" onclick="ouvrirEvaluationMembresTifo()">⭐ Évaluation membres</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Matos (Bureau+ ou cellule_matos) -->
-    <div id="adminSectionMatos" style="display:none;">
-      <div class="section-title">🛍️ Matos</div>
-      <div class="card" style="margin-bottom:12px;">
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
-          <button class="btn btn-secondary" onclick="showPage('pageBoutique')">📋 Gérer la boutique matos</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sticks (Bureau+ ou cellule_sticks) -->
-    <div id="adminSectionSticks" style="display:none;">
-      <div class="section-title">🎟️ Sticks</div>
-      <div class="card" style="margin-bottom:12px;">
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showModal('modalCreerStick');loadSectionsForModalStick()">+ Ajouter un stick</button>
-          <button class="btn btn-secondary" onclick="showPage('pageBoutique');setTimeout(()=>switchBoutiqueTab('sticks'),100)">📋 Gérer la boutique sticks</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Comité de passage (Bureau+ ou cellule_comite) -->
-    <div id="adminSectionComite" style="display:none;">
-      <div class="section-title">🔔 Comité de passage</div>
-      <div class="card" style="margin-bottom:12px;">
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showPage('pageMembresComite')">🌟 Évaluation des membres</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Stats (Admin + Bureau + Cellule) -->
-    <div id="adminSectionStats" style="display:none;">
-      <div class="section-title">📊 Statistiques</div>
-      <div class="card" style="margin-bottom:12px;">
-        <button class="btn btn-secondary" onclick="showPage('pageStats')">Voir les stats globales</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── PAGE GÉRER LA CHARTE (Bureau+) ──────────────────────── -->
-  <div id="pageGererCharte" class="page">
-    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
-      <button class="btn btn-sm btn-secondary" onclick="showPage('pageAdmin')">← Retour</button>
-      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.05em;margin:0;">✏️ Gérer la charte</h2>
-    </div>
-    <div id="gererCharteInfo" style="font-size:12px;color:var(--gris);margin-bottom:14px;"></div>
-    <div class="form-group">
-      <label>Nom de la charte</label>
-      <input type="text" id="gcNom" placeholder="Charte Membre · Ultras Lutetia 2026/2027">
-    </div>
-    <div class="form-group">
-      <label>Date de fin de validité</label>
-      <input type="date" id="gcDateFin">
-    </div>
-    <div class="form-group">
-      <label>Contenu (format : "Article N · Titre" pour chaque section, "Point d'attention : ..." pour les encadrés)</label>
-      <textarea id="gcContenu" rows="16" style="font-family:monospace;font-size:12px;line-height:1.5;width:100%;"></textarea>
-    </div>
-    <div class="info-box" style="margin-bottom:14px;">
-      ⚠️ Toute modification crée une <strong>nouvelle version</strong> de la charte. Tous les membres devront la resigner avant de pouvoir continuer à utiliser l'app, même ceux ayant déjà signé l'ancienne version.
-    </div>
-    <button class="btn btn-primary" onclick="doSauvegarderCharte()">Publier la nouvelle version</button>
-  </div>
-
-  <!-- ── PAGE DEMANDES ADMIN ──────────────────────────────────── -->
-  <div id="pageDemandesAdmin" class="page">
-    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
-      <button class="btn btn-sm btn-secondary" onclick="showPage('pageAdmin')">← Retour</button>
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;">🔔 Demandes d'inscription</span>
-      <span id="demandesBadge2" class="badge badge-orange" style="display:none;"></span>
-    </div>
-    <div id="demandesListeAdmin"></div>
-  </div>
-
-  <!-- ── PAGE CARTAGE ────────────────────────────────────────── -->
-  <div id="pageCartage" class="page">
-    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
-      <button class="btn btn-sm btn-secondary" onclick="showPage('pageAdmin')">← Retour</button>
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;">🗂️ Cartage</span>
-    </div>
-    <div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;">
-      <button class="filter-btn active" id="fcartTous" onclick="filtrerCartage('tous')">Tous</button>
-      <button class="filter-btn" id="fcartCartes" onclick="filtrerCartage('cartes')">✅ Cartés</button>
-      <button class="filter-btn" id="fcartIncomplets" onclick="filtrerCartage('incomplets')">⚠️ Incomplets</button>
-    </div>
-    <div id="cartageStats" style="display:flex;gap:8px;margin-bottom:14px;font-size:13px;color:var(--gris);"></div>
-    <div id="cartageListe"></div>
-  </div>
-
-  <!-- Bottom nav (7 onglets) -->
-  <nav class="bottom-nav">
-    <div class="nav-item active" onclick="showPage('pageAccueil')" id="nav0">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      <span>Accueil</span>
-    </div>
-    <div class="nav-item" onclick="showPage('pageCalendrier')" id="nav1">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      <span>Calendrier</span>
-    </div>
-    <div class="nav-item" onclick="showPage('pageDeplacements')" id="nav2">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v9a2 2 0 01-2 2h-3"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
-      <span>Dépl.</span>
-    </div>
-    <div class="nav-item" onclick="showPage('pageTifos')" id="nav3">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-      <span>Tifos</span>
-    </div>
-    <div class="nav-item" onclick="showPage('pageBoutique')" id="nav4">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
-      <span>Boutique</span>
-    </div>
-    <div class="nav-item" onclick="showPage('pageProfil')" id="nav5">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      <span>Profil</span>
-    </div>
-    <div class="nav-item" onclick="showPage('pageAdmin')" id="nav6" style="display:none;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-      <span>Admin</span>
-    </div>
-  </nav>
-</div>
-
-<!-- ══════════════════════════════════════════════════════════
-     MODALS
-══════════════════════════════════════════════════════════ -->
-
-<!-- Modal Session Détail -->
-<div class="modal-overlay" id="modalSession" style="display:none;" onclick="closeModalOutside(event,'modalSession')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <div id="modalSessionContent"></div>
-  </div>
-</div>
-
-<!-- Modal Déplacement Détail -->
-<div class="modal-overlay" id="modalDepl" style="display:none;" onclick="closeModalOutside(event,'modalDepl')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <div id="modalDeplContent"></div>
-  </div>
-</div>
-
-<!-- Modal Valider Présence (contenu dynamique selon avecPizza) -->
-<div class="modal-overlay" id="modalPresence" style="display:none;" onclick="closeModalOutside(event,'modalPresence')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">✅ Confirmer ma présence</h3>
-    <div id="modalPresenceBody">
-      <!-- Contenu injecté dynamiquement par ouvrirModalPresence() -->
-    </div>
-  </div>
-</div>
-
-<!-- Modal Changer MDP -->
-<div class="modal-overlay" id="modalMdp" style="display:none;" onclick="closeModalOutside(event,'modalMdp')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Changer mon mot de passe</h3>
-    <div class="form-group">
-      <label>Nouveau mot de passe</label>
-      <input type="password" id="newPassword" placeholder="Minimum 8 caractères">
-    </div>
-    <div class="form-group">
-      <label>Confirmer</label>
-      <input type="password" id="newPasswordConfirm" placeholder="Répète le mot de passe">
-    </div>
-    <button class="btn btn-primary" onclick="doChangeMdp()">Enregistrer</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalMdp')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Mot de passe oublié — demande de pseudo + email -->
-<div class="modal-overlay" id="modalMdpOublie" style="display:none;" onclick="closeModalOutside(event,'modalMdpOublie')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Mot de passe oublié</h3>
-    <p style="font-size:13px;color:var(--gris);margin-bottom:14px;">
-      Indique ton pseudo Telegram et l'email de ton compte, on t'envoie un lien pour choisir un nouveau mot de passe.
-    </p>
-    <div class="form-group">
-      <label>Pseudo Telegram</label>
-      <input type="text" id="mdpOublieTelegram" placeholder="@pseudo" autocomplete="username">
-    </div>
-    <div class="form-group">
-      <label>Email du compte</label>
-      <input type="email" id="mdpOublieEmail" placeholder="email@exemple.fr" autocomplete="email">
-    </div>
-    <button class="btn btn-primary" onclick="doDemandeResetMdp()">Envoyer le lien</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalMdpOublie')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Réinitialiser mot de passe — après clic sur le lien reçu par email -->
-<div class="modal-overlay" id="modalResetMdp" style="display:none;">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Choisir un nouveau mot de passe</h3>
-    <div class="form-group">
-      <label>Nouveau mot de passe</label>
-      <input type="password" id="resetMdpNew" placeholder="Minimum 8 caractères" autocomplete="new-password">
-    </div>
-    <div class="form-group">
-      <label>Confirmer</label>
-      <input type="password" id="resetMdpConfirm" placeholder="Répète le mot de passe" autocomplete="new-password">
-    </div>
-    <button class="btn btn-primary" onclick="doResetMdp()">Enregistrer mon mot de passe</button>
-  </div>
-</div>
-
-<!-- Modal Créer Session (Membre Cellule+) -->
-<div class="modal-overlay" id="modalCreerSession" style="display:none;" onclick="closeModalOutside(event,'modalCreerSession')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Nouveau tifo</h3>
-    <div class="form-group"><label>Nom</label><input type="text" id="sNom" placeholder="Session Peinture #5"></div>
-    <div class="form-group"><label>Date</label><input type="date" id="sDate"></div>
-    <div class="form-group"><label>Heure</label><input type="time" id="sHeure"></div>
-    <div class="form-group"><label>Lieu</label>
-      <select id="sLieu"><option>Paris Sud</option><option>Paris Intra Muros</option><option>Autre</option></select>
-    </div>
-    <div class="form-group"><label>Type</label>
-      <select id="sType"><option>Peinture</option><option>Tracage</option><option>Assemblage</option></select>
-    </div>
-    <div class="form-group"><label>Capacité max</label><input type="number" id="sCapacite" placeholder="25 (optionnel)"></div>
-    <div class="form-group"><label>Lien Telegram</label><input type="url" id="sTelegram" placeholder="https://t.me/..."></div>
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
-        <input type="checkbox" id="sPizza" style="width:20px;height:20px;accent-color:#1A56DB;">
-        <span style="font-size:14px;">🍕 Session avec pizza</span>
-      </label>
-    </div>
-    <div class="form-group"><label>Description</label><textarea id="sDesc" rows="2" placeholder="Optionnel"></textarea></div>
-    <button class="btn btn-primary" onclick="doCreerSession()">Créer la session</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerSession')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Modifier Session -->
-<div class="modal-overlay" id="modalModifierSession" style="display:none;" onclick="closeModalOutside(event,'modalModifierSession')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">✏️ Modifier une session</h3>
-    <div class="form-group">
-      <label>Choisir la session</label>
-      <select id="msSelectSession" onchange="chargerSessionAModifier(this.value)">
-        <option value="">-- Sélectionner --</option>
-      </select>
-    </div>
-    <div id="msFormFields" style="display:none;">
-      <div class="form-group"><label>Nom</label><input type="text" id="msNom"></div>
-      <div class="form-group"><label>Date</label><input type="date" id="msDate"></div>
-      <div class="form-group"><label>Heure</label><input type="time" id="msHeure"></div>
-      <div class="form-group"><label>Lieu</label>
-        <select id="msLieu"><option>Paris Sud</option><option>Paris Intra Muros</option><option>Autre</option></select>
-      </div>
-      <div class="form-group"><label>Type</label>
-        <select id="msType"><option>Peinture</option><option>Tracage</option><option>Assemblage</option></select>
-      </div>
-      <div class="form-group"><label>Capacité max</label><input type="number" id="msCapacite" placeholder="25 (optionnel)"></div>
-      <div class="form-group"><label>Lien Telegram</label><input type="url" id="msTelegram" placeholder="https://t.me/..."></div>
-      <div class="form-group">
-        <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
-          <input type="checkbox" id="msPizza" style="width:20px;height:20px;accent-color:#1A56DB;">
-          <span style="font-size:14px;">🍕 Session avec pizza</span>
-        </label>
-      </div>
-      <div class="form-group"><label>Description</label><textarea id="msDesc" rows="2" placeholder="Optionnel"></textarea></div>
-      <button class="btn btn-primary" onclick="doModifierSession()">💾 Enregistrer</button>
-    </div>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalModifierSession')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Créer Déplacement (Bureau+) -->
-<div class="modal-overlay" id="modalCreerDepl" style="display:none;" onclick="closeModalOutside(event,'modalCreerDepl')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Nouveau déplacement</h3>
-    <div class="form-group"><label>Adversaire</label><input type="text" id="dAdv" placeholder="OGC Nice"></div>
-    <div class="form-group"><label>Date du match</label><input type="date" id="dDate"></div>
-    <div class="form-group"><label>Stade</label><input type="text" id="dStade" placeholder="Allianz Riviera"></div>
-    <div class="form-group"><label>Ville</label><input type="text" id="dVille" placeholder="Nice"></div>
-    <div class="form-group"><label>Point de RDV</label><input type="text" id="dRdv" placeholder="Porte de Vincennes"></div>
-    <div class="form-group"><label>Heure départ bus</label><input type="time" id="dHeure"></div>
-    <div class="form-group"><label>Prix total (€)</label><input type="number" id="dPrix" placeholder="55"></div>
-    <div class="form-group"><label>Places max</label><input type="number" id="dPlaces" placeholder="40"></div>
-    <div class="form-group"><label>Lien HelloAsso</label><input type="url" id="dHelloasso" placeholder="https://www.helloasso.com/..."></div>
-    <div class="form-group"><label>Date limite inscription</label><input type="date" id="dLimite"></div>
-    <div class="form-group"><label>Notes</label><textarea id="dNotes" rows="2" placeholder="Infos complémentaires..."></textarea></div>
-    <button class="btn btn-primary" onclick="doCreerDepl()">Créer le déplacement</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerDepl')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Admin — Gestion session (ouvrir/fermer/inscrits) -->
-<div class="modal-overlay" id="modalAdminSession" style="display:none;" onclick="closeModalOutside(event,'modalAdminSession')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <div id="modalAdminSessionContent"></div>
-  </div>
-</div>
-
-<!-- Modal Admin — Modifier membre -->
-<div class="modal-overlay" id="modalEditMembre" style="display:none;" onclick="closeModalOutside(event,'modalEditMembre')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Modifier le membre</h3>
-    <input type="hidden" id="editMembreId">
-    <div class="form-group"><label>Prénom</label><input type="text" id="editPrenom"></div>
-    <div class="form-group"><label>Nom</label><input type="text" id="editNom"></div>
-    <div class="form-group"><label>Pseudo Telegram</label><input type="text" id="editTelegram"></div>
-    <div class="form-group"><label>Email</label><input type="email" id="editEmail" placeholder="email@exemple.fr"></div>
-
-    <!-- Statut UL (affichage membre) -->
-    <div class="form-group">
-      <label>Statut UL</label>
-      <select id="editStatut">
-        <option value="sympathisant">Sympathisant</option>
-        <option value="draft">Draft</option>
-        <option value="confirme">Confirmé</option>
-      </select>
-    </div>
-
-    <!-- Validation accès Tifo pour les Draft (sans effet sur Confirmé,
-         qui a accès automatique, ni sur Sympathisant, qui n'y a jamais
-         accès) -->
-    <div class="form-group" style="display:flex;align-items:center;gap:8px;">
-      <input type="checkbox" id="editValideTifo" style="width:auto;">
-      <label for="editValideTifo" style="margin:0;cursor:pointer;">✅ Validé Tifo (donne accès aux tifos si statut Draft)</label>
-    </div>
-
-    <div class="form-group">
-      <label>Section</label>
-      <select id="editSection">
-        <option value="">Chargement...</option>
-      </select>
-    </div>
-
-    <!-- Rôles fonctionnels (accès outils) -->
-    <div style="margin-bottom:16px;">
-      <label style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#94A3B8;display:block;margin-bottom:10px;">Rôles Fonctionnels (Accès Outils)</label>
-      <div id="rolesContainer" style="display:flex;flex-direction:column;gap:8px;"></div>
-    </div>
-
-    <button class="btn btn-primary" onclick="doSauvegarderMembre()">Enregistrer</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalEditMembre')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Publier Annonce (Bureau+) -->
-<div class="modal-overlay" id="modalAnnonce" style="display:none;" onclick="closeModalOutside(event,'modalAnnonce')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Publier une annonce</h3>
-    <div class="form-group"><label>Titre</label><input type="text" id="annonceTitre" placeholder="Titre de l'annonce"></div>
-    <div class="form-group"><label>Contenu</label><textarea id="annonceContenu" rows="3" placeholder="Message..."></textarea></div>
-    <div class="form-group"><label>Catégorie</label>
-      <select id="annonceCat">
-        <option value="info">Info</option>
-        <option value="urgent">Urgent</option>
-        <option value="cellule">Cellule</option>
-      </select>
-    </div>
-    <button class="btn btn-primary" onclick="doPublierAnnonce()">Publier</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalAnnonce')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Calendrier Matchs (Admin) -->
-<div class="modal-overlay" id="modalMatchs" style="display:none;" onclick="closeModalOutside(event,'modalMatchs')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title" id="modalMatchsTitre">Calendrier matchs</h3>
-    <div class="card" style="margin-bottom:12px;">
-      <div class="card-label" id="modalMatchsFormLabel">Ajouter un match</div>
-      <div class="form-group" id="mExtGroup"><input type="text" id="mExt" placeholder="Adversaire (ex: OGC Nice)"></div>
-      <div class="form-group"><input type="date" id="mDate"></div>
-      <div class="form-group"><input type="time" id="mHeure"></div>
-      <div class="form-group" id="mTypeGroup">
-        <select id="mType"><option value="exterieur">Extérieur</option><option value="domicile">Domicile</option></select>
-      </div>
-      <div class="form-group"><input type="text" id="mStade" placeholder="Stade"></div>
-      <button class="btn btn-primary btn-sm" id="modalMatchsSubmitBtn" style="width:auto;" onclick="doAjouterMatch()">+ Ajouter</button>
-      <button class="btn btn-secondary btn-sm" id="modalMatchsCancelBtn" style="width:auto;display:none;" onclick="annulerConfirmerDate()">Annuler</button>
-    </div>
-    <div id="matchsList"></div>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="annulerConfirmerDate();closeModal('modalMatchs')">Fermer</button>
-  </div>
-</div>
-
-<!-- Modal Créer/Modifier Produit Matos (Admin/Cellule Matos) -->
-<div class="modal-overlay" id="modalCreerProduit" style="display:none;" onclick="closeModalOutside(event,'modalCreerProduit')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Ajouter un article matos</h3>
-    <div class="form-group"><label>Nom de l'article</label><input type="text" id="pNom" placeholder="ex: Tee-shirt UL 2026"></div>
-    <div class="form-group">
-      <label>Photo de l'article</label>
-      <div id="photoPreviewMatos" style="display:none;margin-bottom:8px;">
-        <img id="photoPreviewImgMatos" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--surface-4);">
-      </div>
-      <input type="file" id="pPhoto" accept="image/*" onchange="previewPhoto(this,'matos')"
-        style="background:var(--surface-2);border:1.5px dashed var(--surface-4);border-radius:9px;padding:10px;color:var(--gris);width:100%;cursor:pointer;">
-    </div>
-    <div class="form-group"><label>Description</label><textarea id="pDesc" rows="2" placeholder="Description optionnelle"></textarea></div>
-    <div class="form-group"><label>Catégorie</label>
-      <select id="pCat">
-        <option value="textile">Textile</option>
-        <option value="accessoire">Accessoire</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Prix (€)</label><input type="number" id="pPrix" placeholder="25"></div>
-    <div class="form-group"><label>Stock disponible</label><input type="number" id="pStock" placeholder="0"></div>
-    <div class="form-group"><label>Quota par membre (optionnel — vide = pas de limite)</label><input type="number" id="pQuota" placeholder="ex: 2" min="1"></div>
-    <div class="form-group">
-      <label>Tailles disponibles</label>
-      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;" onclick="document.getElementById('pTailles').click()">
-        <input type="checkbox" id="pTailles" style="width:20px;height:20px;flex-shrink:0;cursor:pointer;accent-color:var(--bleu);" onclick="event.stopPropagation()">
-        <span style="font-size:14px;">Article avec tailles (S/M/L/XL/XXL)</span>
-      </div>
-    </div>
-    <div class="form-group">
-      <label>Niveau d'accès</label>
-      <select id="pAcces" onchange="toggleSectionSelect()">
-        <option value="tous">Généraliste — tout le monde</option>
-        <option value="section">Section spécifique</option>
-      </select>
-    </div>
-    <div class="form-group" id="sectionSelectGroup" style="display:none;">
-      <label>Section concernée</label>
-      <select id="pSection">
-        <option value="">Chargement...</option>
-      </select>
-      <p style="font-size:11px;color:var(--gris);margin-top:6px;">
-        Draft de cette section + tous les Confirmés pourront voir et commander cet article.
-      </p>
-    </div>
-    <div class="form-group">
-      <label>Mode</label>
-      <select id="pMode">
-        <option value="stock">Stock en temps réel</option>
-        <option value="precommande">Précommande groupée</option>
-      </select>
-    </div>
-    <button class="btn btn-primary" onclick="doCreerProduit()">Ajouter l'article</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerProduit')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Créer Stick (Admin/Cellule Sticks) -->
-<div class="modal-overlay" id="modalCreerStick" style="display:none;" onclick="closeModalOutside(event,'modalCreerStick')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Ajouter un stick</h3>
-    <div class="form-group"><label>Nom du stick</label><input type="text" id="stNom" placeholder="ex: Sticker tag 2026"></div>
-    <div class="form-group">
-      <label>Visuel du stick</label>
-      <p style="font-size:11px;color:var(--gris);margin:2px 0 6px;">Format JPG ou PNG, idéalement carré (ex: 400×400px)</p>
-      <div id="photoPreviewStick" style="display:none;margin-bottom:8px;">
-        <img id="photoPreviewImgStick" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--surface-4);">
-      </div>
-      <input type="file" id="stPhoto" accept="image/png,image/jpeg" onchange="previewPhoto(this,'stick')"
-        style="background:var(--surface-2);border:1.5px dashed var(--surface-4);border-radius:9px;padding:10px;color:var(--gris);width:100%;cursor:pointer;">
-    </div>
-    <div class="form-group"><label>Catégorie</label>
-      <select id="stCat">
-        <option value="tous">Tous les membres</option>
-        <option value="draft_confirme">Draft + Confirmés (de la section)</option>
-        <option value="confirme">Confirmés uniquement (de la section)</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>Section</label>
-      <select id="stSection">
-        <option value="">Chargement...</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Prix (€) — laisser vide si gratuit</label><input type="number" id="stPrix" placeholder="5"></div>
-    <div class="form-group"><label>Nombre de sticks par lot</label><input type="number" id="stLot" placeholder="1" value="1" min="1"></div>
-    <div class="form-group"><label>Quota par membre (optionnel — vide = pas de limite)</label><input type="number" id="stQuota" placeholder="ex: 2" min="1"></div>
-    <div class="form-group"><label>Stock disponible (en nombre de sticks)</label><input type="number" id="stStock" placeholder="0"></div>
-    <div class="form-group">
-      <label>Mode</label>
-      <select id="stMode">
-        <option value="stock">En stock</option>
-        <option value="precommande">Précommande</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Lien HelloAsso (obligatoire si stick payant)</label><input type="url" id="stHelloasso" placeholder="https://www.helloasso.com/..."></div>
-    <button class="btn btn-primary" onclick="doCreerStick()">Ajouter le stick</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerStick')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Commander Matos -->
-<div class="modal-overlay" id="modalCommander" style="display:none;" onclick="closeModalOutside(event,'modalCommander')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <div id="modalCommanderContent"></div>
-  </div>
-</div>
-
-<!-- Modal Distribution Sticks (Admin) -->
-<div class="modal-overlay" id="modalDistribuer" style="display:none;" onclick="closeModalOutside(event,'modalDistribuer')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Enregistrer une distribution</h3>
-    <div class="form-group">
-      <label>Stick / Article</label>
-      <select id="distribStickId"></select>
-    </div>
-    <div class="form-group">
-      <label>Membre</label>
-      <select id="distribMembreId"></select>
-    </div>
-    <div class="form-group">
-      <label>Quantité</label>
-      <input type="number" id="distribQte" value="1" min="1">
-    </div>
-    <div class="form-group">
-      <label>Mode</label>
-      <select id="distribMode">
-        <option value="cash">Cash (en présentiel)</option>
-        <option value="helloasso">HelloAsso (en ligne)</option>
-        <option value="gratuit">Gratuit</option>
-      </select>
-    </div>
-    <button class="btn btn-primary" onclick="doDistribuerStick()">Enregistrer</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalDistribuer')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Valider Cash Stick (Admin/Bureau/Cellule Sticks) -->
-<div class="modal-overlay" id="modalCashStick" style="display:none;" onclick="closeModalOutside(event,'modalCashStick')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title" id="cashStickTitre">Valider un cash</h3>
-    <input type="hidden" id="cashStickId">
-    <div class="form-group">
-      <label>Quantité</label>
-      <input type="number" id="cashStickQte" value="1" min="1">
-    </div>
-    <div class="form-group">
-      <label>Rechercher un membre</label>
-      <input type="text" id="cashStickSearch" placeholder="🔎 Nom, prénom, pseudo…" oninput="filtrerMembresCashStick()">
-    </div>
-    <div id="cashStickListeMembres" style="max-height:280px;overflow-y:auto;margin-bottom:10px;"></div>
-    <button class="btn btn-secondary" onclick="closeModal('modalCashStick')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Créer/Modifier Événement (Bureau+) -->
-<div class="modal-overlay" id="modalEvenement" style="display:none;" onclick="closeModalOutside(event,'modalEvenement')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title" id="modalEvenementTitre">Créer un événement</h3>
-    <input type="hidden" id="evId">
-    <div class="form-group"><label>Nom</label><input type="text" id="evNom" placeholder="ex: BBQ de fin d'année"></div>
-    <div class="form-group"><label>Type</label>
-      <select id="evType">
-        <option value="reunion">🤝 Réunion UL</option>
-        <option value="bbq">🍖 BBQ</option>
-        <option value="fete">🎊 Fête Fin de Saison</option>
-        <option value="autre">🎉 Événement</option>
-      </select>
-    </div>
-    <div class="form-group"><label>Date</label><input type="date" id="evDate"></div>
-    <div class="form-group"><label>Heure</label><input type="time" id="evHeure"></div>
-    <div class="form-group"><label>Lieu</label><input type="text" id="evLieu" placeholder="Paris, Parc des Princes..."></div>
-    <div class="form-group"><label>Description</label><textarea id="evDesc" rows="2" placeholder="Optionnel"></textarea></div>
-    <div class="form-group"><label>Lien HelloAsso (inscriptions)</label><input type="url" id="evHelloasso" placeholder="https://www.helloasso.com/..."></div>
-    <button class="btn btn-primary" onclick="doSauvegarderEvenement()">Enregistrer</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalEvenement')">Annuler</button>
-  </div>
-</div>
-
-<!-- Modal Confirmer Inscription -->
-<div class="modal-overlay" id="modalConfirmInscription" style="display:none;" onclick="closeModalOutside(event,'modalConfirmInscription')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Confirmer l'inscription</h3>
-    <div class="info-box" style="margin-bottom:16px;">
-      ⚠️ Toute inscription est un engagement de présence. Vérifie ta disponibilité avant de confirmer.
-    </div>
-    <button id="btnConfirmerInscription" class="btn btn-primary" style="width:100%;" onclick="doInscrire(this.getAttribute('data-session-id'), this)">
-      ✅ Confirmer mon inscription
-    </button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalConfirmInscription')">Annuler</button>
-  </div>
-</div>
-
-<!-- Styles inline complémentaires -->
-<style>
-.btn-logout {
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  color: var(--gris);
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 12px; font-weight: 700;
-  letter-spacing: .04em; text-transform: uppercase;
-  padding: 5px 12px; cursor: pointer;
-  transition: all .15s;
-}
-.btn-logout:hover { color: white; border-color: rgba(255,255,255,.3); }
-
-.session-admin-bar {
-  display: flex; gap: 6px; flex-wrap: wrap;
-  margin-top: 12px; padding-top: 12px;
-  border-top: 1px solid var(--border);
+    // Si le refresh échoue (refresh_token expiré après 30j sans usage,
+    // par exemple), on retombe sur un nouvel obtain ci-dessous.
+  }
+
+  // Premier appel, ou refresh impossible : on redemande un token complet.
+  // TODO[ACCÈS] : nécessite HELLOASSO_CLIENT_ID / HELLOASSO_CLIENT_SECRET
+  // valides. Avec des placeholders vides, cet appel échouera avec une 401 —
+  // c'est le comportement attendu tant que les accès ne sont pas fournis.
+  const resp = await fetch(`${HELLOASSO_API_BASE}/oauth2/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: HELLOASSO_CLIENT_ID,
+      client_secret: HELLOASSO_CLIENT_SECRET,
+    }),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`HelloAsso OAuth2 échec (${resp.status}): ${errText}`);
+  }
+  const json = await resp.json();
+  await saveToken(supabaseAdmin, json);
+  return json.access_token;
 }
 
-.membre-card {
-  background: var(--glass); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 14px; margin-bottom: 8px;
+async function saveToken(supabaseAdmin, json) {
+  // expires_in est en secondes (doc : 1799s ≈ 30min).
+  const expiresAt = new Date(Date.now() + (json.expires_in ?? 1799) * 1000).toISOString();
+  await supabaseAdmin.from('helloasso_tokens').upsert({
+    id: 1,
+    access_token: json.access_token,
+    refresh_token: json.refresh_token,
+    expires_at: expiresAt,
+  });
 }
-.membre-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.membre-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-</style>
 
-<!-- ══════════════════════════════════════════════════════════
-     SCRIPTS
-══════════════════════════════════════════════════════════ -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="src/config.js"></script>
-<script src="src/supabase-client.js"></script>
-<script src="src/app.js"></script>
-<script src="src/tifos.js"></script>
-<script src="src/deplacements.js"></script>
-<script src="src/boutique.js"></script>
-<script src="src/calendrier.js"></script>
-<script src="src/admin.js"></script>
-<script src="src/profil.js"></script>
-</body>
-</html>
+// ── Handler principal ────────────────────────────────────────
+Deno.serve(async (req) => {
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+  }
+
+  try {
+    const { deplacementId } = await req.json();
+    if (!deplacementId) {
+      return new Response(JSON.stringify({ error: 'deplacementId requis' }), { status: 400 });
+    }
+
+    // Auth de l'utilisateur appelant (JWT transmis automatiquement par
+    // sb.functions.invoke côté front) — on a besoin de savoir QUI s'inscrit.
+    const authHeader = req.headers.get('Authorization');
+    const supabaseUser = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
+      global: { headers: { Authorization: authHeader ?? '' } },
+    });
+    const { data: userData, error: userError } = await supabaseUser.auth.getUser();
+    if (userError || !userData?.user) {
+      return new Response(JSON.stringify({ error: 'Non authentifié' }), { status: 401 });
+    }
+    const membreId = userData.user.id;
+
+    // Client service_role pour les écritures qui doivent bypasser RLS
+    // (même pattern que update-evaluation-deplacement déjà en place).
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Récupère le déplacement pour le montant et le libellé.
+    const { data: depl, error: deplError } = await supabaseAdmin
+      .from('deplacements')
+      .select('*')
+      .eq('id', deplacementId)
+      .single();
+    if (deplError || !depl) {
+      return new Response(JSON.stringify({ error: 'Déplacement introuvable' }), { status: 404 });
+    }
+    if (!depl.prix_total || depl.prix_total <= 0) {
+      return new Response(JSON.stringify({ error: 'Ce déplacement n\'a pas de prix défini' }), { status: 400 });
+    }
+
+    // Crée l'inscription si elle n'existe pas déjà, ou récupère l'existante
+    // (cas: 1ère tentative refusée, le membre relance — on ne veut pas de
+    // doublon en base, l'unicité (deplacement_id, membre_id) doit déjà
+    // exister côté contrainte — cf. error.code 23505 dans sInscrireDeplacements).
+    const { data: existing } = await supabaseAdmin
+      .from('inscriptions_deplacement')
+      .select('*')
+      .eq('deplacement_id', deplacementId)
+      .eq('membre_id', membreId)
+      .maybeSingle();
+
+    if (existing && existing.statut_paiement === 'paye_helloasso') {
+      return new Response(JSON.stringify({ error: 'Déjà inscrit et payé' }), { status: 409 });
+    }
+    if (existing && existing.statut_paiement === 'paye_cash') {
+      return new Response(JSON.stringify({ error: 'Déjà inscrit (payé en cash)' }), { status: 409 });
+    }
+
+    let inscriptionId;
+    if (existing) {
+      // Relance après 'en_attente' ou 'refuse' : on réutilise la ligne,
+      // on met juste à jour l'horodatage de tentative.
+      inscriptionId = existing.id;
+      await supabaseAdmin
+        .from('inscriptions_deplacement')
+        .update({ derniere_tentative_paiement_at: new Date().toISOString() })
+        .eq('id', inscriptionId);
+    } else {
+      const { data: created, error: createError } = await supabaseAdmin
+        .from('inscriptions_deplacement')
+        .insert({
+          deplacement_id: deplacementId,
+          membre_id: membreId,
+          statut_paiement: 'en_attente',
+          derniere_tentative_paiement_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      if (createError) throw createError;
+      inscriptionId = created.id;
+    }
+
+    // ── Appel HelloAsso ──────────────────────────────────────
+    const accessToken = await getValidAccessToken(supabaseAdmin);
+
+    // TODO[ACCÈS] : HELLOASSO_ORG_SLUG doit être renseigné, sinon l'URL
+    // ci-dessous est invalide et HelloAsso renverra une 404.
+    const checkoutUrl = `${HELLOASSO_API_BASE}/v5/organizations/${HELLOASSO_ORG_SLUG}/checkout-intents`;
+
+    const totalAmountCents = Math.round(depl.prix_total * 100);
+
+    const checkoutBody = {
+      totalAmount: totalAmountCents,
+      initialAmount: totalAmountCents, // paiement comptant, pas d'échéances
+      itemName: `Déplacement ${depl.adversaire ?? ''}`.trim().slice(0, 250),
+      backUrl: BACK_URL,
+      errorUrl: ERROR_URL,
+      returnUrl: RETURN_URL,
+      containsDonation: false,
+      metadata: {
+        type: 'deplacement',
+        deplacement_id: deplacementId,
+        membre_id: membreId,
+        inscription_id: inscriptionId,
+      },
+    };
+
+    const checkoutResp = await fetch(checkoutUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(checkoutBody),
+    });
+
+    if (checkoutResp.status === 409) {
+      // Cf. plan §2.3 : association non vérifiée (conformité L561-5).
+      return new Response(JSON.stringify({
+        error: 'L\'association n\'est pas encore vérifiée pour recevoir des paiements HelloAsso. Contacter un admin.',
+      }), { status: 409 });
+    }
+    if (!checkoutResp.ok) {
+      const errText = await checkoutResp.text();
+      throw new Error(`HelloAsso checkout-intents échec (${checkoutResp.status}): ${errText}`);
+    }
+
+    const checkoutJson = await checkoutResp.json();
+    // checkoutJson : { id: number, redirectUrl: string }
+
+    await supabaseAdmin
+      .from('inscriptions_deplacement')
+      .update({ checkout_intent_id: checkoutJson.id })
+      .eq('id', inscriptionId);
+
+    return new Response(JSON.stringify({ redirectUrl: checkoutJson.redirectUrl }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  } catch (e) {
+    console.error('[helloasso-create-checkout] erreur:', e);
+    return new Response(JSON.stringify({ error: e.message ?? 'Erreur interne' }), { status: 500 });
+  }
+});
