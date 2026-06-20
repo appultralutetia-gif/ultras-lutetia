@@ -42,18 +42,44 @@ let allMembres = [];
 // PASSWORD_RECOVERY (clic sur le lien reçu par email). Plus fiable que de
 // lire window.location.hash nous-mêmes : le SDK le parse et le nettoie tout
 // seul, parfois avant que notre propre code n'ait eu la main.
-window.UL_ON_PASSWORD_RECOVERY = function() {
+// Peut se déclencher avant que le DOM soit complètement prêt (le listener
+// est attaché dès l'exécution de supabase-client.js) — chaque accès DOM
+// est donc protégé, et on réessaie après DOMContentLoaded si besoin.
+function appliquerAffichageResetMdp() {
+  const loginPage = document.getElementById('loginPage');
+  const appContainer = document.getElementById('appContainer');
+  const champNew = document.getElementById('resetMdpNew');
+  const champConfirm = document.getElementById('resetMdpConfirm');
+  if (!loginPage || !appContainer || !champNew || !champConfirm) return false;
+
   hideLoading();
-  document.getElementById('loginPage').style.display = 'flex';
-  document.getElementById('appContainer').style.display = 'none';
-  document.getElementById('resetMdpNew').value = '';
-  document.getElementById('resetMdpConfirm').value = '';
+  loginPage.style.display = 'flex';
+  appContainer.style.display = 'none';
+  champNew.value = '';
+  champConfirm.value = '';
   showModal('modalResetMdp');
+  return true;
+}
+
+let recoveryEnAttente = false;
+window.UL_ON_PASSWORD_RECOVERY = function() {
+  if (!appliquerAffichageResetMdp()) {
+    // DOM pas encore prêt — on retente une fois DOMContentLoaded déclenché.
+    recoveryEnAttente = true;
+  }
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/ultras-lutetia/sw.js').catch(() => {});
+  }
+
+  // Si PASSWORD_RECOVERY s'est déclenché avant que le DOM soit prêt
+  // (le listener est attaché dès le chargement de supabase-client.js,
+  // potentiellement avant que le HTML du body soit entièrement parsé).
+  if (recoveryEnAttente) {
+    appliquerAffichageResetMdp();
+    return;
   }
 
   // Si un hash d'auth est présent (confirmation email ou lien de reset),
@@ -64,6 +90,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     showLoading();
     await new Promise(r => setTimeout(r, 1500));
     window.history.replaceState({}, '', window.location.pathname);
+  }
+
+  // Re-vérifier : PASSWORD_RECOVERY peut être arrivé pendant l'attente ci-dessus.
+  if (recoveryEnAttente) {
+    appliquerAffichageResetMdp();
+    return;
   }
 
   const { membre } = await UL.initSession();
