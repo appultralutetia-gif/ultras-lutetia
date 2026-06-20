@@ -411,6 +411,14 @@
       </div>
     </div>
 
+    <!-- Charte (Bureau+) -->
+    <div id="adminSectionCharte" style="display:none;">
+      <div class="section-title">📋 Charte</div>
+      <div class="card" style="margin-bottom:12px;">
+        <button class="btn btn-secondary" onclick="showPage('pageGererCharte')">✏️ Gérer la charte</button>
+      </div>
+    </div>
+
     <!-- Déplacements (Bureau+ ou cellule_depl) -->
     <div id="adminSectionDepl" style="display:none;">
       <div class="section-title">🚌 Déplacements</div>
@@ -464,6 +472,31 @@
         <button class="btn btn-secondary" onclick="showPage('pageStats')">Voir les stats globales</button>
       </div>
     </div>
+  </div>
+
+  <!-- ── PAGE GÉRER LA CHARTE (Bureau+) ──────────────────────── -->
+  <div id="pageGererCharte" class="page">
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
+      <button class="btn btn-sm btn-secondary" onclick="showPage('pageAdmin')">← Retour</button>
+      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.05em;margin:0;">✏️ Gérer la charte</h2>
+    </div>
+    <div id="gererCharteInfo" style="font-size:12px;color:var(--gris);margin-bottom:14px;"></div>
+    <div class="form-group">
+      <label>Nom de la charte</label>
+      <input type="text" id="gcNom" placeholder="Charte Membre · Ultras Lutetia 2026/2027">
+    </div>
+    <div class="form-group">
+      <label>Date de fin de validité</label>
+      <input type="date" id="gcDateFin">
+    </div>
+    <div class="form-group">
+      <label>Contenu (format : "Article N · Titre" pour chaque section, "Point d'attention : ..." pour les encadrés)</label>
+      <textarea id="gcContenu" rows="16" style="font-family:monospace;font-size:12px;line-height:1.5;width:100%;"></textarea>
+    </div>
+    <div class="info-box" style="margin-bottom:14px;">
+      ⚠️ Toute modification crée une <strong>nouvelle version</strong> de la charte. Tous les membres devront la resigner avant de pouvoir continuer à utiliser l'app, même ceux ayant déjà signé l'ancienne version.
+    </div>
+    <button class="btn btn-primary" onclick="doSauvegarderCharte()">Publier la nouvelle version</button>
   </div>
 
   <!-- ── PAGE DEMANDES ADMIN ──────────────────────────────────── -->
