@@ -1092,10 +1092,8 @@ async function getSticks() {
   if (!membre) return [];
   const statut = membre.statut;
   const sectionId = membre.section_id;
-  // Même correctif que getProduits — voir le commentaire détaillé là-bas :
-  // détection via roles_app[] (isAdmin/isBureau/isCellule), pas via statut.
+  // Détection via roles_app[] (isAdmin/isBureau/isCellule), pas via statut.
   const isAdminBureauCellule = isAdmin(membre) || isBureau(membre) || isCellule(membre);
-  const isConfirme = statut === 'confirme' || isAdminBureauCellule;
   const { data } = await sb.from('sticks_catalogue')
     .select('*, section:sections(id, nom)')
     .eq('statut', 'disponible')
@@ -1103,10 +1101,16 @@ async function getSticks() {
   return (data || []).filter(s => {
     if (isAdminBureauCellule) return true;
     if (s.niveau_acces === 'tous') return true;
-    if (s.niveau_acces === 'section') {
-      if (isConfirme) return true;
-      if (statut === 'draft' && sectionId && s.section_id === sectionId) return true;
-      return false;
+    // 'draft_confirme' et 'confirme' sont tous deux restreints à la
+    // section du stick — la différence est le statut minimum requis :
+    // - draft_confirme : Draft ou Confirmé de cette section
+    // - confirme       : Confirmé de cette section uniquement
+    const memeSection = sectionId && s.section_id === sectionId;
+    if (s.niveau_acces === 'draft_confirme') {
+      return memeSection && (statut === 'draft' || statut === 'confirme');
+    }
+    if (s.niveau_acces === 'confirme') {
+      return memeSection && statut === 'confirme';
     }
     return false;
   });
