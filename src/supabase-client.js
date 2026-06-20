@@ -52,7 +52,7 @@ async function loginByTelegram(pseudoTelegram, password) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY, // withSupabase({auth:['publishable']}) attend la clé sur apikey, pas Authorization
       },
       body: JSON.stringify({ pseudo_telegram: pseudo }),
     });
