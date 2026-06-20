@@ -1,5 +1,5 @@
 # SYNTHÈSE DE DÉMARRAGE — Prochaine conversation
-*20/06/2026 — Fin de session : notation par cellule (Tifo + Comité de passage fusionnés), correctif droits Admin/Bureau sur Matos/Sticks, suppression code mort membres_cellules, page unique Comité avec filtres + exports CSV/Telegram + compteurs de participation*
+*21/06/2026 — Fin de session : audit + nettoyage du module Boutique (createProduit manquante, code legacy mort), refonte complète de la création de stick (catégorie/statut+section, lot, quota, mode, visuel), flux de validation cash Sticks réservé Admin/Bureau/Cellule Sticks avec recherche membre, décrémentation automatique du stock (Matos + Sticks) au moment du paiement confirmé*
 
 ---
 
@@ -20,169 +20,105 @@
 12. src/config.js
 13. validate.js
 14. tests.js
-15. docs/BUGS.md          ← journal des bugs, lire avant de débugger quoi que ce soit
+15. docs/BUGS.md          ← journal des bugs, lire avant de débugger quoi que ce soit (entrées #22-26 = cette session)
 16. sw.js
 ```
 
 ## Phrase de démarrage suggérée
 
-> "Lance validate.js, confirme que la page Membres Comité (notation + filtres + exports) tient toujours, et on continue sur [sujet suivant]"
+> "Lance validate.js, confirme que le flux Boutique Sticks (création + cash + stock) tient toujours, et on attaque l'audit du module Calendrier"
+
+---
+
+## ⚠️ ACTION SQL EN ATTENTE CÔTÉ REMI — à faire avant de retester quoi que ce soit sur Sticks
+
+Demandé en fin de session : remise à zéro complète des sticks de test, pour repartir propre avant la prochaine vague de tests.
+
+```sql
+delete from sticks_distribution;
+delete from sticks_catalogue;
+```
+
+Ne touche à rien d'autre (membres, sections, matchs conservés). Portion isolée de `docs/sql_nettoyage_avant_lancement.sql` section 5, à exécuter dès maintenant plutôt qu'au lancement officiel — voir BUGS.md pour la requête de vérification post-exécution si besoin.
+
+**Également en attente** (corrige les sticks/produits créés *avant* le fix du quota, cf. bug #25 dans BUGS.md) :
+```sql
+update sticks_catalogue set quota_par_membre = null where quota_par_membre is not null;
+update produits set quota_par_membre = null where quota_par_membre is not null;
+```
+Si la remise à zéro complète des sticks ci-dessus est exécutée, cette deuxième requête devient sans objet pour `sticks_catalogue` (la table sera vide) — mais reste utile pour `produits` si des articles Matos de test existent déjà.
+
+**⚠️ À ne pas oublier avant le lancement officiel** : le lien HelloAsso a été remis **optionnel** dans `doCreerStick()` en toute fin de session (Remi n'a pas encore les accès HelloAsso). Une fois les accès obtenus, remettre la validation obligatoire pour les sticks payants : dans `src/boutique.js`, réajouter `if (prix && !lienHelloasso) return toast('Lien HelloAsso requis pour un stick payant', 'error');` juste après la vérification de section dans `doCreerStick()`, et remettre le label `index.html` (`id="stHelloasso"`) en "Lien HelloAsso (obligatoire si stick payant)" au lieu de "(optionnel)".
 
 ---
 
 ## ⚠️ CHANGEMENT MAJEUR DE CETTE SESSION — à bien intégrer avant tout
 
-**Le système de notation par cellule (Tifo + Comité de passage) a été construit de zéro**, puis fusionné en une seule page au fil de la session. Si une future session touche à l'évaluation des membres, à `admin.js` autour de `*Comite*`, ou à `tifos.js` autour de `renderCarteEvaluation`/`doNoterMembre`, il faut relire la section "Notation par cellule" ci-dessous avant de modifier quoi que ce soit — l'architecture a changé plusieurs fois en cours de session (modal seule → page seule → fusion modal+page → ajout filtres/exports/compteurs) et seul l'état final décrit ici fait foi.
+**Le module Boutique a basculé d'un état "jamais testé en conditions réelles" à un état fonctionnel de bout en bout**, au prix d'une cascade de découvertes de schéma de base manquant (colonnes, bucket Storage, policies RLS) qui n'avaient jamais été vérifiées avant cette session — voir bug #24 dans BUGS.md, qui détaille les 5 blocages rencontrés dans l'ordre. **Le réflexe à adopter pour toute future fonction d'écriture Supabase** : vérifier le schéma réel (`information_schema.columns`) avant de coder, ne jamais supposer qu'une colonne existe parce qu'une fonction de *lecture* préexistante semblait s'appuyer dessus sans jamais planter (elle n'avait simplement jamais été testée avec un vrai insert).
 
-**Un bug réel (pas juste théorique) a été corrigé sur les droits Matos/Sticks.** Si une future session touche à `getProduits()`/`getSticks()` dans `supabase-client.js`, il faut relire la section "Correctif droits Admin/Bureau" — ne jamais réintroduire une comparaison sur `membre.statut` pour détecter Admin/Bureau/Membre Cellule.
+**Le flux Cash Sticks a changé de nature en cours de session** — si une future session touche à `boutique.js` autour de `renderSticks`/Cash/distribution, relire la section "Flux Cash Sticks" ci-dessous : il n'existe plus de bouton "demander un stick" côté membre (`demanderStickCash` supprimée), tout passe désormais par une validation Admin/Bureau/Cellule Sticks via une modale de recherche membre.
+
+**Le stock est désormais décrémenté automatiquement (Matos ET Sticks)**, ce qui n'était le cas nulle part avant cette session (comportement historique : stock géré uniquement à la main via le bouton 📦). Si une future session touche à `passerCommande`, `updateCommandeStatut`, `distribuerStickAdmin`, ou `validerPaiementStick`, relire la section "Décrémentation du stock" ci-dessous — la règle est stricte : le stock ne baisse **que** quand le paiement est confirmé, jamais à la simple création d'une demande/commande en attente.
 
 ---
 
 ## Contexte — ce qui a été fait dans cette session (par ordre chronologique)
 
-### 1. Confirmation du flux OTP (hérité de la session précédente)
+### 1. Audit du module Boutique (suite logique après l'audit Tifos de la session précédente)
 
-`validate.js` lancé sur les 7 modules — tout propre. Vérification manuelle du flux OTP (`doVerifyOtp`/`verifierCodeInscription`/`renvoyerCodeInscription`) — conforme à la synthèse précédente. Un bug résiduel mineur trouvé et corrigé : `doVerifyOtp()` dans `app.js` validait encore `code.length < 6` (trace de l'ancien bug `maxlength="6"`), alors que le code fait bien 8 chiffres — corrigé en `code.length < 8`.
+Croisement systématique de chaque `UL.xxx` appelé dans `boutique.js` contre l'export réel de `supabase-client.js` (méthode : extraire les deux listes de noms via script, faire un diff d'ensembles — ni `validate.js` ni une relecture visuelle ne révèlent ce type de trou).
 
-### 2. Notation par cellule — construction initiale (Tifo + Comité de passage)
+**Bug trouvé** : `doCreerProduit()` appelait `UL.createProduit({...})`, qui n'existait nulle part. Le formulaire Matos était entièrement fonctionnel côté UI mais ne pouvait rien sauvegarder.
 
-Le backend existait déjà avant cette session (`noterMembre`, `getEvaluationsMembre` dans `supabase-client.js`, catégories `tifo`/`comite_sympa`/`comite_draft` — `deplacement` est noté automatiquement via une Edge Function `update-evaluation-deplacement`, non manuelle). Construit cette session :
-- `getEvaluationsCourantesBatch(membreIds)` — version batch (une requête `.in()`) pour éviter un N+1.
-- `ouvrirEvaluationMembresTifo()` dans `tifos.js` — remplace un placeholder qui ne faisait qu'un toast. Liste de tous les membres actifs + recherche, notation 1-3 inline par clic (pas de bouton "valider" séparé).
-- `renderCarteEvaluation(m, categorie)` et `doNoterMembre(membreId, categorie, note, btnEl)` — fonctions génériques réutilisées ensuite par le Comité (définies dans `tifos.js`, appelées depuis `admin.js` — globals window-exposed, ordre de chargement sans risque car appels uniquement au clic).
-- Panneau admin **Comité de passage créé de zéro** (`adminSectionComite` dans `index.html`, `hasCelluleComite` branché dans `applyRights()` — la fonction de droit existait déjà mais n'était reliée à aucun affichage).
-- Premier bug d'implémentation : tous les emojis de notation étaient en dur `🖌️` au lieu de varier selon la catégorie (`EVAL_EMOJI[categorie]` existait déjà dans `profil.js` mais n'était pas branché dans `renderCarteEvaluation`) — corrigé après capture d'écran montrant des pinceaux à la place de 💙/🚀.
+**Découverte connexe** : trois fonctions legacy mortes exportées mais jamais appelées (`getSticksCatalogue`, `distribuerStick`, `validerCotisation`), plus trois fonctions dupliquées mot pour mot deux fois dans le fichier (`passerCommande`, `getMesCommandes`, `getMaCotisation`).
 
-### 3. Audit de la hiérarchie à 6 niveaux — 3 bugs trouvés, 2 comportements confirmés volontaires
+**Fix** : `createProduit` ajoutée. Bloc legacy entier supprimé (~90 lignes). Export dédupliqué.
 
-Demande de Remi : documenter/vérifier la hiérarchie (Admin/Bureau/Membre Cellule/Confirmé/Draft/Sympathisant), les sections, la matrice de droits, le système d'évaluation par cellule.
+**Étendu ensuite à tous les modules par précaution** (sur demande de Remi, "corrige tout") : même croisement appliqué à Calendrier et Tifos — révèle 4 fonctions manquantes côté Calendrier (`getEvenements`, `getEvenement`, `saveEvenement`, `deleteEvenement` — cohérent, ce module n'a pas encore eu son audit complet) et 1 côté Tifos (`desinscrireMembreSession`, action admin "désinscrire un autre membre", distincte de `desinscrire(sessionId)` qui ne gère que l'auto-désinscription — surprenant car Tifos avait déjà été audité et validé avant cette découverte). Toutes les 5 ajoutées.
 
-**Confirmé conformes (décision explicite de Remi, ne pas "corriger") :**
-- Draft → Sessions Tifo reste conditionné à `membre.valide_tifo` (la matrice théorique dit "accès automatique", mais c'est une restriction volontaire ajoutée lors d'une session antérieure — gardée telle quelle).
-- Draft → Matos/Sticks niveau "section" reste autorisé pour un Draft de la bonne section (la matrice théorique dit ❌ strict, mais l'exception section est gardée telle quelle).
+### 2. Refonte de la création de stick — itérations successives sur le formulaire
 
-**Bug réel n°1 — `getProduits()` / `getSticks()` (supabase-client.js) :**
-Comparaient `membre.statut` à `'admin'/'bureau'/'membre_cellule'`, des valeurs que ce champ ne prend **jamais** (il ne contient que `sympathisant`/`draft`/`confirme` — Admin/Bureau/Membre Cellule sont détectés exclusivement via `roles_app[]`, voir `isAdmin`/`isBureau`/`isCellule` dans `app.js`). Conséquence avant correctif : un Admin/Bureau/Membre Cellule sans statut `confirme` était traité comme un Confirmé simple pour voir le catalogue "section" du Matos/Sticks. Corrigé : remplacé par `isAdmin(membre) || isBureau(membre) || isCellule(membre)`.
+Construction initiale demandée : "Ajouter un stick" sur le même modèle que Matos (nom, visuel, catégorie, prix, stock, quota, photo). Puis plusieurs vagues de retours de Remi ont fait évoluer la structure :
 
-**Doublon de code mort :** `getProduits()` était dupliquée mot pour mot deux fois dans le fichier (la seconde écrasait silencieusement la première). La première occurrence supprimée, un seul `getProduits()` fait foi désormais.
+- **Catégorie** : d'abord pensée comme "Tous/Confirmés", reformulée en cours de discussion en **3 valeurs** (`tous` / `draft_confirme` / `confirme`) — un Draft d'une section peut commander un stick réservé à sa section, mais pas un Confirmé d'une autre section pour un stick "Confirmés uniquement". Section et statut sont deux champs indépendants dans le formulaire (pas un menu combiné).
+- **Section** : select toujours visible (pas conditionnel), pré-sélectionné sur "Ultra Lutetia" au chargement (même pattern que `admin.js`/`editSection` : chercher la section dont le nom contient "ultra lutetia", sélectionner son id).
+- **Lot** (nombre de sticks par lot) et **Mode** (En stock / Précommande) ajoutés en cours de session, sur le même modèle que Matos pour le mode.
+- **Lien HelloAsso** : envisagé obligatoire si le stick a un prix, puis remis en optionnel en toute fin de session — Remi n'a pas encore les accès HelloAsso pour le moment, donc impossible de fournir un lien systématiquement. Reste optionnel quel que soit le prix.
+- **Quota par membre** ajouté en toute fin de session — absent des deux formulaires de création (Matos ET Sticks) depuis toujours, ce qui faisait planter le premier test de validation cash sur un quota parasite jamais saisi (bug #25, BUGS.md).
 
-**Bug réel n°2 — `rattacherCellule()` / table `membres_cellules` :**
-Tentait d'écrire `membre.statut = 'membre_cellule'`, une valeur invalide pour ce champ (même défaut que le bug n°1). Cette fonction + `getCellules()` n'étaient appelées par **aucun bouton** de l'UI — système parallèle jamais branché, faisant doublon avec `roles_app[]` qui gère déjà nativement le multi-cellule (un membre peut avoir plusieurs entrées dans `roles_app`, chaque `hasCellule*()` étant un test indépendant dans `applyRights()` — confirmé que cocher Tifo + Matos donne bien accès aux deux panneaux). Décision de Remi : supprimer ce code mort. `getCellules`/`rattacherCellule` supprimées de `supabase-client.js`, jointures `membres_cellules(...)` retirées de `getMembre()`/`getAllMembres()` (résultat jamais consommé côté UI).
+**Conséquence côté `getSticks()`** : la logique de filtrage a dû évoluer pour gérer 3 cas au lieu de 2 (`tous` / `draft_confirme` restreint à la section / `confirme` restreint à la section), confirmé avec Remi : aucun stick n'existait encore en base avec l'ancienne valeur `'section'`, donc pas de risque de migration de données à gérer.
 
-**Non résolu / non vérifié cette session :**
-- Les seuils de notation automatique Déplacement (2 / 3-7 / >7 déplacements) vivent dans l'Edge Function Supabase `update-evaluation-deplacement` — pas de visibilité sur son code depuis les fichiers fournis, donc pas de vérification possible de la conformité à la matrice théorique.
-- Le filtre `filterStatut` de `pageMembres` (Bureau, page historique — pas la nouvelle page Comité) propose des options "Membre Cellule"/"Bureau"/"Admin" qui ne filtrent jamais rien, même défaut que le bug n°1 mais **pas corrigé** (hors périmètre de la demande, signalé à Remi mais laissé en l'état).
+### 3. Flux Cash Sticks — passage d'un flux membre à un flux Admin-only
 
-### 4. Liste admin Tifo (`voirInscrits`) — affichage note + tri + export reformaté
+Le bouton "Cash" sur chaque carte était initialement accessible à **tout membre** (`demanderStickCash`, créait une demande `en_attente`). Demande de Remi : le retirer pour les membres normaux, le garder uniquement pour Admin/Bureau/Cellule Sticks, avec un parcours différent — clic sur Cash → recherche d'un membre (texte simple, pas les filtres riches façon Comité de passage) → liste cliquable → clic sur un membre → confirmation → distribution validée directement.
 
-- Affichage du niveau pinceaux 🖌️ de chaque inscrit dans la modal admin "Inscrits" d'une session Tifo (ou "Non noté" en gris si pas encore évalué).
-- Tri : niveau décroissant (3 → 2 → 1 → non noté) puis alphabétique au sein d'un même niveau. Notes chargées en une requête batch (`getEvaluationsCourantesBatch`), pas une par membre.
-- `copierListeComplete()` reformatée : nouvelle colonne Niveau en fin de ligne, colonne Présence supprimée (jugée inutile par Remi). Format final : `@Pseudo | Prénom Nom | Statut | Section | Niveau`.
+**Décision actée avec Remi** : le flux "demande en attente" côté membre disparaît complètement (pas de double système en parallèle) — le membre vient voir l'admin en présentiel, qui encaisse et valide directement. `demanderStickCash()` supprimée de `boutique.js`. Nouvelle modale `modalCashStick` (recherche + liste + quantité), nouvelles fonctions `ouvrirCashStick`/`filtrerMembresCashStick`/`renderListeMembresCashStick`/`doValiderCashStick`, réutilisant `UL.distribuerStickAdmin` déjà existante.
 
-### 5. Page Comité de passage — construction, capture, puis fusion en un seul écran
+### 4. Visuel du catalogue Sticks — itéré deux fois en taille
 
-Itération en plusieurs étapes au fil de la session, suite à des retours sur capture d'écran :
-1. Création initiale : panneau Comité avec **deux** boutons séparés — "⭐ Évaluation membres" (modal, notation Sympathisants/Drafts) et "👤 Gérer les membres" (nouvelle page `pageMembresComite`, recherche multi-champs + blocage, **sans** les Confirmés/Bureau/Admin dans le scope de blocage).
-2. Demande Remi : élargir la page "Gérer les membres" pour lister **tous** les statuts (y compris Confirmé/Bureau/Admin), avec blocage possible sur tout le monde **sauf** Bureau/Admin.
-3. Demande Remi (avec capture) : fusionner les deux écrans en un seul — la modal d'évaluation est supprimée, "Gérer les membres" est renommée "🌟 Évaluation des membres" et héberge désormais aussi la notation (boutons 💙/🚀 visibles en permanence sur chaque carte, pas cachés derrière un clic).
-4. Demande Remi (avec capture) : ajout de filtres (statut / section / niveau de notation) + deux boutons d'export (liste Telegram, export CSV) — un seul jeu de filtres partagé par les deux exports, qui portent toujours sur la liste **actuellement affichée/filtrée**, jamais sur la liste complète.
-5. Demande Remi : ajout de compteurs de participation (présences/absences Tifo, déplacements payés/non payés) sur chaque carte **et** dans l'export CSV (pas demandé pour l'export Telegram).
+D'abord agrandi à 80×80px (mise en page côte à côte, image à gauche/texte à droite), jugé encore trop petit par Remi. Refonte complète en "fiche produit" : image pleine largeur en haut (150px de hauteur minimum, `object-fit: cover`), infos en dessous, grille responsive (`auto-fill, minmax(160px,1fr)`). À cette occasion, découverte que les classes `.stick-card`/`.produit-card` utilisées dans le code n'avaient **jamais existé** dans `styles.css` ni dans aucun `<style>` inline — tout le rendu reposait uniquement sur des styles inline directement dans le HTML généré par `boutique.js`. Reconstruit en réutilisant la classe `.card` générique déjà définie (cohérente avec le reste de l'app), pas en créant une nouvelle classe dédiée.
 
-**État final unique** : `pageMembresComite`, accessible via le bouton unique "🌟 Évaluation des membres" du panneau `adminSectionComite`.
+### 5. Décrémentation automatique du stock — comportement nouveau, demandé explicitement
+
+Découverte en testant le flux Cash de bout en bout : ni Matos (`passerCommande`) ni Sticks (`distribuerStickAdmin`/`demanderStick`) n'ont jamais décrémenté le stock à aucune étape — comportement préexistant dans tout le code antérieur, pas une régression de cette session. Confirmé avec Remi que c'était bien voulu à l'origine (stock géré à la main via le bouton 📦/`modifierStock`), puis décision de le rendre automatique, avec une règle de timing précisée avant codage (plusieurs allers-retours pour clarifier — Remi a d'abord dit "dès la commande" puis corrigé en "non, il faut que ce soit payé") :
+
+- **Matos** : `updateCommandeStatut(id, statut)` décrémente uniquement lors de la transition **vers** `'validee'` (jamais répété si déjà à ce statut).
+- **Sticks cash/gratuit** : `distribuerStickAdmin` décrémente immédiatement (paiement déjà confirmé par construction — encaissé en présentiel).
+- **Sticks HelloAsso** : décrémente uniquement dans `validerPaiementStick`, à la confirmation du paiement — jamais à la création de la distribution `en_attente`.
+
+Toutes les décrémentations bornées à 0 minimum (`Math.max(0, stock - quantite)`).
+
+### 6. Mise à jour de BUGS.md
+
+Ajout des entrées #22 à #26 documentant cette session (createProduit manquante + legacy mort, fonctions Calendrier/Tifos manquantes, cascade Storage/colonnes/RLS, quota absent des formulaires, décrémentation de stock), plus une section "📍 État de session — reprise" en tête de fichier et 3 nouvelles leçons générales en fin de fichier.
 
 ---
 
 ## État réel à la reprise — NON CONFIRMÉ
 
-1. Rendu visuel non testé en conditions réelles par Remi : l'empilement recherche + 2 rangées de filtres (statut, niveau) + select section + 2 boutons d'export, en haut de `pageMembresComite`, pourrait être perçu comme too much sur mobile. Proposé si besoin : repli dans un panneau dépliable — pas fait, Remi n'a pas encore testé.
-2. L'export CSV et la liste Telegram n'ont pas été testés avec des données réelles (volume, accents, emoji dans Excel) — seule la génération du Blob/téléchargement a été vérifiée par lecture de code, pas par export réel.
-3. `getParticipationBatch` n'a jamais été exécutée contre la vraie base Supabase — vérifiée uniquement par relecture de la logique des `statut`/`statut_paiement` déjà utilisés ailleurs dans le code. À tester en conditions réelles dès que possible.
-4. Pas de vérification de performance si la base compte beaucoup de membres × beaucoup d'inscriptions — `getParticipationBatch` et `getEvaluationsCourantesBatch` font une requête sans pagination sur `.in('membre_id', [...])`, qui pourrait grossir si le nombre de membres affichés augmente significativement.
-
-Ne pas supposer que tout est testé — repartir de ces 4 points si l'un de ces sujets revient.
-
----
-
-## Chantier explicitement mis de côté (reporté, pas dans cette session)
-
-- Module Comité de passage *fonctionnel métier* (au-delà de la page Évaluation/blocage) — ex: un futur workflow de "proposition de passage de statut" structuré, pas seulement la notation brute.
-- Onglet "Évaluation membres" dans Déplacement — non créé, la notation déplacement reste 100% automatique (Edge Function), pas de saisie manuelle prévue ni demandée.
-- Correctif du filtre `filterStatut` non fonctionnel dans `pageMembres` (Bureau) — signalé, pas corrigé.
-- Ajout des compteurs de participation à l'export Telegram (seul le CSV les a, sur demande explicite de Remi).
-- Vérification non résolue, héritée de sessions précédentes : `createDeplacement` envoie `cree_par` vers `deplacements` — jamais vérifié si la colonne existe.
-- Déplacements pré-remplis à partir du calendrier officiel — jamais traité.
-
----
-
-## Rappels techniques importants
-
-### Structure modules (inchangée dans son découpage, contenu enrichi)
-```
-src/app.js        core : auth (dont inscription OTP), nav, droits (dont hasCelluleComite branché), charte GATE
-src/profil.js     profil + charte CONSULTATION + EVAL_EMOJI/EVAL_LABEL/renderEtoiles (définitions de référence)
-src/admin.js      admin + charte ÉDITION + calendrier matchs + fiche membre (valide_tifo) + PAGE MEMBRES COMITÉ (notation+filtres+exports+compteurs, nouveau bloc volumineux cette session)
-src/tifos.js      tifos + restriction d'accès par statut + ÉVALUATION TIFO (nouveau) + renderCarteEvaluation/doNoterMembre (génériques, partagées avec admin.js)
-src/calendrier.js calendrier matchs (mise en page LFP) + cartage + événements
-src/deplacements.js
-src/boutique.js
-src/supabase-client.js  couche données + Edge Functions + logique charte/matchs/inscription OTP + ÉVALUATIONS (noterMembre/getEvaluationsCourantesBatch/getParticipationBatch, nouveau) + DROITS MATOS/STICKS CORRIGÉS
-```
-
-### Fonctions clés ajoutées cette session
-
-**`supabase-client.js`** :
-- `getEvaluationsCourantesBatch(membreIds)` → `{ [membreId]: { tifo, comite_sympa, comite_draft } }`, une seule requête `.in()`.
-- `getParticipationBatch(membreIds)` → `{ [membreId]: { tifoPresent, tifoAbsent, deplPaye, deplNonPaye } }`, deux requêtes `.in()` (une par table). `tifoAbsent` = statut `'absent'` réel (pas l'inverse de présent — `'inscrit'` non traité n'est compté dans aucun des deux). `deplNonPaye` = `statut_paiement === 'en_attente'`.
-- `getProduits()` / `getSticks()` corrigées (voir section bugs ci-dessus).
-- `getCellules()` / `rattacherCellule()` **supprimées**.
-
-**`tifos.js`** :
-- `ouvrirEvaluationMembresTifo()`, `filtrerEvaluationTifo()`, `renderEvaluationTifoListe()` — liste/recherche/notation Tifo.
-- `renderCarteEvaluation(m, categorie)` — carte générique de notation, utilise `EVAL_EMOJI[categorie]` (défini dans `profil.js`).
-- `doNoterMembre(membreId, categorie, note, btnEl)` — enregistre via `UL.noterMembre`, met à jour l'affichage du bouton actif sans recharger toute la liste (cible `btnEl.closest('[data-eval-boutons]')`).
-- `voirInscrits()` modifiée : affiche le niveau + trie par niveau/alpha.
-- `copierListeComplete()` reformatée (colonne Niveau, plus de colonne Présence).
-
-**`admin.js`** :
-- `loadMembresComite()`, `filtrerMembresComite()`, `filtrerStatutComite()`, `filtrerNiveauComite()`, `filtrerSectionComite()`, `appliquerFiltresComite()` — chargement + filtrage combiné (recherche ET statut ET section ET niveau).
-- `niveauNoteComite(m)`, `categorieNotationComite(m)`, `niveauMembreComite(m)` (tri hiérarchique), `niveauLabelComite(m)` (rendu emoji pour les exports).
-- `renderMembresComiteListe()`, `renderMembreComiteCard()` — carte fusionnée (identité + badge actif + compteurs participation + notation inline si Sympathisant/Draft + blocage si pas Bureau/Admin).
-- `toggleMembreComite()` — blocage/déblocage, jamais sur Bureau/Admin (vérifié côté UI uniquement, pas de garde RLS vérifiée côté Supabase).
-- `copierListeMembresComite()` — export Telegram, format `@Pseudo | Prénom Nom | Statut | Section | Niveau`.
-- `csvEscape()`, `exporterCsvMembresComite()` — export CSV avec BOM UTF-8, colonnes Pseudo/Prénom/Nom/Email/Statut/Section/Niveau/Tifo présents/Tifo absents/Dépl. payés/Dépl. non payés.
-- `ouvrirEvaluationMembresComite()` **supprimée** (fusionnée dans la page).
-
-**`app.js`** :
-- `code.length < 8` (au lieu de `< 6`) dans `doVerifyOtp()`.
-- `hasCelluleComite(membre)` branché dans `applyRights()` → affiche `adminSectionComite`.
-- `pageMembresComite` ajoutée au mapping de navigation (`showPage`) et au lazy-load.
-
-### IDs HTML ajoutés cette session (`index.html`)
-- `adminSectionComite` (bloc panneau, bouton unique "🌟 Évaluation des membres").
-- `pageMembresComite`, `searchMembreComite`, `filtresStatutComite`, `filtresNiveauComite`, `filterSectionComite`, `membresComiteList`.
-- IDs dynamiques (injectés en JS, à connaître pour ne pas les chercher en dur dans `index.html`) : `evalTifoListe`, `evalTifoSearch` — déjà dans `KNOWN_DYNAMIC` de `validate.js`.
-
-### Schéma réel confirmé en base (aucune nouvelle colonne cette session — uniquement lecture/écriture de colonnes existantes)
-- `evaluations` : `membre_id`, `categorie` (`tifo`/`comite_sympa`/`comite_draft`/`deplacement`), `note` (1-3), `notee_par`, `created_at`. Une ligne = une notation horodatée, pas un upsert — l'historique complet est conservé, `getEvaluationsCourantesBatch` ne garde que la plus récente par catégorie.
-- `membres.statut` : confirmé **strictement limité** à `sympathisant`/`draft`/`confirme` — jamais `admin`/`bureau`/`membre_cellule` (ces 3 niveaux n'existent que via `roles_app[]`).
-- `inscriptions_session.statut` : `inscrit`/`present`/`absent`.
-- `inscriptions_deplacement.statut_paiement` : `en_attente`/`paye_cash`/`paye_helloasso`.
-- Table `membres_cellules` : existe toujours en base mais plus aucune fonction du code ne la lit/l'écrit après cette session (jointures retirées de `getMembre`/`getAllMembres`, `rattacherCellule` supprimée) — les lignes existantes, si elles existent, sont orphelines de tout code, mais rien n'a été supprimé côté base.
-
-### URLs (inchangées)
-- App : https://appultralutetia-gif.github.io/ultras-lutetia/
-- Supabase : https://afgriuvrtdkklluvtswg.supabase.co
-
-### Pièges connus (cumulés avec les sessions précédentes)
-- Tous les modules JS sont network-first dans `sw.js` v5 — ajouter tout nouveau module à `NETWORK_FIRST`. *(Pas de nouveau module créé cette session, rien à ajouter ici — vérifier si ça change.)*
-- Un renommage en masse de fichiers peut introduire un espace invisible en tête de nom.
-- Un message d'erreur générique peut cacher une cause totalement différente (mismatch de paramètre type/longueur).
-- Ne jamais coder en dur un format par analogie — vérifier dans la doc officielle ou la donnée brute reçue.
-- Le SMTP Brevo est nécessaire — ne jamais proposer de le désactiver pour résoudre un problème de confirmation email.
-- Toute nouvelle restriction d'accès doit être vérifiée à tous les points d'entrée.
-- **Nouveau cette session** : ne jamais comparer `membre.statut` à `'admin'`/`'bureau'`/`'membre_cellule'` — ces valeurs n'existent jamais sur ce champ. Utiliser `isAdmin()`/`isBureau()`/`isCellule()` (basées sur `roles_app[]`, définies dans `app.js`).
-- **Nouveau cette session** : avant d'ajouter une fonction backend, `grep` le nom dans tout `supabase-client.js` — au moins une duplication exacte de fonction (`getProduits`) existait silencieusement dans le fichier avant cette session.
-- **Nouveau cette session** : `renderCarteEvaluation`/`doNoterMembre` (tifos.js) et `EVAL_EMOJI`/`EVAL_LABEL`/`renderEtoiles` (profil.js) sont des globals partagés inter-modules, utilisés par `admin.js`. Si une future session retire ou renomme l'une de ces fonctions/constantes dans son fichier d'origine sans `grep` les autres fichiers, ça cassera silencieusement (pas d'erreur de syntaxe, juste un crash au clic).
-
-### Phase actuelle
-Key Users toujours en cours. `sql_nettoyage_avant_lancement.sql` reste prêt mais non exécuté — vérifier sa cohérence avec `valide_tifo` et `statut_date` (déjà signalé en session précédente) **et maintenant aussi** avec la table `evaluations` (nettoyer les notes de test avant lancement officiel — pas encore ajouté au script, à faire si jamais reporté/oublié).
+1. **Le flux Cash Sticks n'a été testé qu'une seule fois de bout en bout** par Remi (création stick → cash → décrémentation stock confirmée fonctionnelle sur ce seul essai). Le mode HelloAsso du flux Sticks (`validerPaiementStick`) n'a, lui, jamais été testé en conditions réelles cette session — seulement vérifié par lecture de code.
+2. **Le champ Quota tout juste ajouté aux deux formulaires (Matos + Sticks) n'a pas été retesté après son ajout** — seul le symptôme initial (quota parasite bloquant) a été diagnostiqué et corrigé côté code ; la création d'un nouveau stick/produit avec un quota explicitement saisi n'a pas été vérifiée par Remi.
+3. **`modalDistribuer`/`doDistribuerStick()` restent dans le code mais ne sont plus accessibles depuis aucun bouton de l'UI** (remplacés par le flux Cash dédié) — code mort non supprimé, par prudence (pas confirmé comme définitivement inutile). Idem pour `demanderStick()` (ancien flux d'auto-demande, plus aucun appelant) — non mise à jour pour la décrémentation de stock puisque débranchée, à vérifier si jamais réintroduite.
+4. **`getCalendar()` reste dans `supabase-client.js` sans aucun appelant** (remplacée par `getMatchs()` + `getEvenements()` séparés) — laissée intacte, signalée à Remi en fin d'une session précédente, jamais retirée depuis.
+5. **Le module Calendrier n'a jamais eu d'audit complet** (seulement les 4 fonctions manquantes détectées et corrigées en passant, cf. point 1 du contexte ci-dessus) — contrairement à Tifos et Boutique qui ont chacun eu leur passe dédiée. Suggestion pour la prochaine session.
+6. **Pas vérifié si Matos a les mêmes types de trous que Sticks avant cette session** (colonnes manquantes, policies RLS, bucket Storage) — le bucket `matos` et la table `produits` existaient déjà et semblaient fonctionner pour la lecture, mais seule la création de produit a été testée une fois (en même temps que la découverte du bug RLS sur `produits`, qui a révélé l'absence de policy INSERT — corrigée). Le mode précommande Matos, les tailles, l'upload photo Matos n'ont pas été retestés depuis les changements de cette session.
