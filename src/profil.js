@@ -1,4 +1,14 @@
 // ─── PROFIL ───────────────────────────────────────────────────
+const EVAL_EMOJI = {
+  tifo: '🖌️', deplacement: '🚌', comite_sympa: '💙', comite_draft: '🚀',
+};
+const EVAL_LABEL = {
+  tifo: 'Cellule Tifo', deplacement: 'Déplacements', comite_sympa: 'Évaluation', comite_draft: 'Évaluation',
+};
+function renderEtoiles(emoji, note) {
+  return emoji.repeat(note) + '<span style="opacity:.25;">' + emoji.repeat(3 - note) + '</span>';
+}
+
 async function loadProfil() {
   const m = UL.getCurrentMembre();
   if (!m) return;
@@ -7,7 +17,25 @@ async function loadProfil() {
     sympathisant:'💙 Sympathisant', draft:'🚀 Draft', confirme:'🏅 Confirmé',
     membre_cellule:'🛡️ Membre Cellule', bureau:'🏆 Bureau', admin:'⚙️ Admin'
   };
-  const etoiles = '⭐'.repeat(m.etoiles||0)+'☆'.repeat(3-(m.etoiles||0));
+
+  // Catégories d'évaluation pertinentes pour ce membre :
+  // comité (sympa ou draft selon statut actuel) + tifo/déplacement s'il a une note dans ces catégories.
+  let evaluations = {};
+  try { evaluations = await UL.getEvaluationsMembre(m.id); } catch(e) {}
+
+  const categoriesAAfficher = [];
+  if (m.statut === 'sympathisant' && evaluations.comite_sympa) categoriesAAfficher.push('comite_sympa');
+  if (m.statut === 'draft' && evaluations.comite_draft) categoriesAAfficher.push('comite_draft');
+  if (evaluations.tifo) categoriesAAfficher.push('tifo');
+  if (evaluations.deplacement) categoriesAAfficher.push('deplacement');
+
+  const evaluationsHtml = categoriesAAfficher.length
+    ? categoriesAAfficher.map(cat => `
+        <div style="font-size:13px;margin-bottom:6px;">
+          ${renderEtoiles(EVAL_EMOJI[cat], evaluations[cat])} ${EVAL_LABEL[cat]}
+        </div>`).join('')
+    : '<div style="font-size:13px;margin-bottom:6px;color:var(--gris);">Pas encore d\'évaluation</div>';
+
   document.getElementById('profilCard').innerHTML = `
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
       <div class="avatar" style="width:54px;height:54px;font-size:18px;">${initiales}</div>
@@ -19,7 +47,7 @@ async function loadProfil() {
     </div>
     <div style="height:1px;background:var(--border);margin-bottom:12px;"></div>
     ${m.section ? `<div style="font-size:13px;margin-bottom:6px;">🛡️ Section: <strong>${m.section.nom}</strong></div>` : ''}
-    <div style="font-size:13px;margin-bottom:6px;">${etoiles} Évaluation</div>
+    ${evaluationsHtml}
     <div style="font-size:13px;margin-bottom:6px;">📋 Charte: ${m.charte_signee ? '✅ Signée' : '❌ Non signée'}</div>
     <div style="font-size:13px;">💶 Cotisation: ${m.cotisation_a_jour ? '✅ À jour' : '⏳ En attente'}</div>
   `;
@@ -74,4 +102,3 @@ async function signerCharte() {
     showPage('pageAccueil');
   } catch(e) { toast('Impossible de signer la charte', 'error'); }
 }
-
