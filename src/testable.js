@@ -220,7 +220,7 @@ function renderMatos(produits) {
     return;
   }
   el.innerHTML = produits.map(p => {
-    const icones = { textile:'👕', accessoire:'🎒', collector:'⭐' };
+    const icones = { textile:'👕', accessoire:'🎒' };
     const stockBadge = p.stock <= 3 && p.stock > 0
       ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
       : p.stock === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
