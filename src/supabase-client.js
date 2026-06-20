@@ -40,18 +40,31 @@ function normalizePseudo(pseudoTelegram) {
 
 async function loginByTelegram(pseudoTelegram, password) {
   const pseudo = normalizePseudo(pseudoTelegram);
+  if (!pseudo) throw new Error('Pseudo Telegram requis');
 
-  const { data: membre, error: membreError } = await sb.from('membres')
-    .select('email, id')
-    .ilike('pseudo_telegram', pseudo) // insensible à la casse (et aux accents selon collation DB)
-    .maybeSingle(); // ← maybeSingle() au lieu de single() — ne throw pas si 0 résultat
-
-  if (membreError) throw new Error('Erreur base de données : ' + membreError.message);
-  if (!membre) throw new Error('Pseudo Telegram introuvable : ' + pseudo);
-  if (!membre.email) throw new Error('Aucun email associé à ce compte');
+  // La table membres est protégée par RLS (lecture réservée à 'authenticated'),
+  // donc impossible de lire l'email directement avant connexion. On passe par
+  // une Edge Function qui fait la résolution pseudo→email côté serveur avec
+  // la Service Role Key, sans jamais exposer cette clé au client.
+  let email;
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/resolve-pseudo`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ pseudo_telegram: pseudo }),
+    });
+    const body = await resp.json();
+    if (!resp.ok) throw new Error(body.error || 'Identifiants incorrects');
+    email = body.email;
+  } catch (e) {
+    throw new Error(e.message || 'Pseudo Telegram introuvable : ' + pseudo);
+  }
 
   const { data, error } = await sb.auth.signInWithPassword({ 
-    email: membre.email, 
+    email, 
     password 
   });
   if (error) throw new Error('Identifiants incorrects : ' + error.message);
