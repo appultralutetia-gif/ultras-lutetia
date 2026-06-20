@@ -2,7 +2,7 @@
 // ULTRAS LUTETIA — Service Worker v2
 // ============================================================
 
-const CACHE_NAME = 'ul-v2';
+const CACHE_NAME = 'ul-v3';
 
 // Fichiers JS/CSS : network-first (toujours la version la plus récente)
 const NETWORK_FIRST = [
