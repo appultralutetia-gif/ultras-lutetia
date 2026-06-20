@@ -276,25 +276,26 @@ function renderSticks(sticks) {
   const m = UL.getCurrentMembre();
   const peutEncaisser = hasCelluleSticks(m);
   if (!sticks.length) { el.innerHTML = '<div class="empty-state"><div>🎟️</div>Aucun stick disponible</div>'; return; }
-  el.innerHTML = sticks.map(s => `
-    <div class="stick-card">
-      <div style="font-size:32px;flex-shrink:0;">${s.visuel_url ? `<img src="${s.visuel_url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;">` : '🎟️'}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(s.nom)}</div>
-        <div style="font-size:12px;color:var(--gris);">
-          ${s.prix ? `${s.prix}€ · ` : 'Gratuit · '}
-          ${s.mode === 'precommande' ? 'Précommande' : 'Stock: ' + s.stock}
-          ${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}
-        </div>
-        ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:4px;">Section ${esc(s.section.nom)}</span>` : ''}
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">` +
+  sticks.map(s => `
+    <div class="card" style="padding:10px;">
+      <div style="width:100%;height:150px;border-radius:8px;overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
+        ${s.visuel_url ? `<img src="${s.visuel_url}" style="width:100%;height:100%;object-fit:cover;">` : `<span style="font-size:48px;">🎟️</span>`}
       </div>
-      <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(s.nom)}</div>
+      <div style="font-size:12px;color:var(--gris);margin-top:2px;">
+        ${s.prix ? `${s.prix}€ · ` : 'Gratuit · '}
+        ${s.mode === 'precommande' ? 'Précommande' : 'Stock: ' + s.stock}
+        ${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}
+      </div>
+      ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
+      <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">
         ${s.stock > 0 || s.mode === 'precommande' ? `
-        ${s.lien_helloasso ? `<a href="${s.lien_helloasso}" target="_blank"><button class="btn btn-sm btn-primary">HelloAsso</button></a>` : ''}
+        ${s.lien_helloasso ? `<a href="${s.lien_helloasso}" target="_blank"><button class="btn btn-sm btn-primary" style="width:100%;">HelloAsso</button></a>` : ''}
         ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirCashStick('${s.id}','${esc(s.nom)}')">Cash</button>` : ''}` : ''}
         ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${s.id}','stick')">🖼️</button>` : ''}
       </div>
-    </div>`).join('');
+    </div>`).join('') + `</div>`;
 }
 
 // ── Valider un cash (Admin/Bureau/Cellule Sticks) ──────────────
@@ -303,6 +304,7 @@ let _allMembresCashStick = [];
 async function ouvrirCashStick(stickId, nom) {
   document.getElementById('cashStickId').value = stickId;
   document.getElementById('cashStickTitre').textContent = `Valider un cash — ${nom}`;
+  document.getElementById('cashStickQte').value = '1';
   document.getElementById('cashStickSearch').value = '';
   document.getElementById('cashStickListeMembres').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   showModal('modalCashStick');
@@ -339,9 +341,10 @@ function renderListeMembresCashStick(membres) {
 
 async function doValiderCashStick(membreId, nomMembre) {
   const stickId = document.getElementById('cashStickId').value;
-  if (!confirm(`Valider le cash reçu de ${nomMembre} ?`)) return;
+  const qte = parseInt(document.getElementById('cashStickQte').value) || 1;
+  if (!confirm(`Valider le cash reçu de ${nomMembre} (x${qte}) ?`)) return;
   try {
-    await UL.distribuerStickAdmin(stickId, membreId, 1, 'cash');
+    await UL.distribuerStickAdmin(stickId, membreId, qte, 'cash');
     toast(`Cash validé pour ${nomMembre} ✅`, 'success');
     closeModal('modalCashStick');
     loadSticks();
@@ -624,9 +627,11 @@ async function doCreerStick() {
   const prix = prixRaw ? parseFloat(prixRaw) : null;
   const niveauAcces = document.getElementById('stCat').value;
   const sectionId = document.getElementById('stSection').value || null;
+  const lienHelloasso = document.getElementById('stHelloasso').value.trim() || null;
 
   if (!nom) return toast('Nom requis', 'error');
   if (niveauAcces !== 'tous' && !sectionId) return toast('Sélectionne une section', 'error');
+  if (prix && !lienHelloasso) return toast('Lien HelloAsso requis pour un stick payant', 'error');
 
   try {
     showLoading();
@@ -646,7 +651,7 @@ async function doCreerStick() {
       lot: parseInt(document.getElementById('stLot').value) || 1,
       stock: parseInt(document.getElementById('stStock').value) || 0,
       mode: document.getElementById('stMode').value,
-      lien_helloasso: document.getElementById('stHelloasso').value.trim() || null,
+      lien_helloasso: lienHelloasso,
       statut: 'disponible',
       visuel_url: visuelUrl,
     });
