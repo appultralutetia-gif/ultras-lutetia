@@ -36,7 +36,7 @@ const REQUIRED_BY_MODULE = {
     'hasCelluleTifo', 'hasCelluleDepl', 'hasCelluleMatos',
     'hasCelluleSticks', 'hasCelluleComite', 'peutValiderInscriptions',
     'toast', 'showModal', 'closeModal',
-    'afficherCharteGate', 'signerCharteGate', 'checkCharteScroll',
+    'afficherCharteGate', 'signerCharteGate', 'checkCharteScroll', 'renderCharteHTML',
   ],
   'src/tifos.js': [
     'loadTifos', 'renderTifoCard', 'loadTifoActions', 'refreshTifosActions',
@@ -65,6 +65,7 @@ const REQUIRED_BY_MODULE = {
     'loadStats',
     'loadDemandesAdmin', 'validerDemandeAdmin',
     'doPublierAnnonce',
+    'loadGererCharte', 'doSauvegarderCharte',
   ],
   'src/profil.js': [
     'loadProfil', 'loadCharte',
