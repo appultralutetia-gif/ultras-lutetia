@@ -213,7 +213,7 @@ async function doInscription() {
 // champ de saisie tronquait silencieusement le code à 6 caractères).
 async function doVerifyOtp() {
   const code = document.getElementById('otpCode').value.trim();
-  if (!code || code.length < 6) return toast('Code requis', 'error');
+  if (!code || code.length < 8) return toast('Code requis', 'error');
   if (!_emailEnAttenteOtp) return toast('Session expirée, recommence l\u2019inscription', 'error');
   try {
     showLoading();
