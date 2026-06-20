@@ -150,7 +150,8 @@ async function inscription(data) {
   return { success: true };
 }
 
-// Vérifie le code à 6 chiffres envoyé par email à l'inscription. Remplace
+// Vérifie le code reçu par email à l'inscription (8 chiffres par défaut
+// côté Supabase). Remplace
 // le lien cliquable historique — voir BUGS.md : les liens de confirmation
 // cliquables étaient parfois consommés automatiquement par des scanners
 // de sécurité côté destinataire avant que le membre ne clique lui-même,
@@ -178,7 +179,7 @@ async function verifierCodeInscription(email, code) {
   return { success: true };
 }
 
-// Renvoie un nouveau code à 6 chiffres (limité par Supabase à une demande
+// Renvoie un nouveau code (limité par Supabase à une demande
 // par 60 secondes par défaut — voir Auth > Providers > Email > rate limits).
 async function renvoyerCodeInscription(email) {
   const { error } = await sb.auth.resend({
