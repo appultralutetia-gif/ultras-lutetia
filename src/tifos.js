@@ -538,8 +538,78 @@ function loadAdminTifos() {
 }
 
 // ── Évaluation membres (Cellule Tifo) ──────────────────────────
-// Placeholder : module complet (liste membres cellule Tifo + notation
-// manuelle 🖌️/🖌️🖌️/🖌️🖌️🖌️) à construire — table evaluations déjà prête.
-function ouvrirEvaluationMembresTifo() {
-  toast('Module Évaluation membres — bientôt disponible 🖌️', 'info');
+// Note manuelle 1-3 (🖌️) attribuée par la cellule Tifo à n'importe quel
+// membre actif, pour refléter son engagement/comportement en tifo —
+// distinct des membres QUI COMPOSENT la cellule (rôle 'cellule_tifo').
+// Affiché ensuite en lecture sur le Profil (profil.js / EVAL_EMOJI.tifo).
+let _evalTifoMembres = [];
+async function ouvrirEvaluationMembresTifo() {
+  document.getElementById('modalAdminSessionContent').innerHTML = `
+    <h3 class="modal-title">🖌️ Évaluation membres — Tifo</h3>
+    <input type="text" id="evalTifoSearch" placeholder="🔎 Rechercher un membre…"
+      style="margin-bottom:12px;" oninput="filtrerEvaluationTifo()">
+    <div id="evalTifoListe"><div class="empty-state"><div>⏳</div>Chargement…</div></div>`;
+  showModal('modalAdminSession');
+  try {
+    const membres = await UL.getAllMembres({ actif: true });
+    const evals = await UL.getEvaluationsCourantesBatch(membres.map(m => m.id));
+    membres.forEach(m => { m._evalCourante = evals[m.id] || {}; });
+    _evalTifoMembres = membres;
+    renderEvaluationTifoListe(membres);
+  } catch(e) {
+    document.getElementById('evalTifoListe').innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>';
+  }
+}
+
+function filtrerEvaluationTifo() {
+  const q = document.getElementById('evalTifoSearch').value.toLowerCase();
+  renderEvaluationTifoListe(_evalTifoMembres.filter(m =>
+    `${m.prenom} ${m.nom} ${m.pseudo_telegram}`.toLowerCase().includes(q)));
+}
+
+function renderEvaluationTifoListe(membres) {
+  const el = document.getElementById('evalTifoListe');
+  if (!membres.length) { el.innerHTML = '<div class="empty-state"><div>👥</div>Aucun membre</div>'; return; }
+  el.innerHTML = membres.map(m => renderCarteEvaluation(m, 'tifo')).join('');
+}
+
+// Carte de notation partagée (utilisée par Tifo ET Comité de passage) :
+// avatar + identité + 3 boutons 🖌️/🖌️🖌️/🖌️🖌️🖌️, le niveau courant en
+// surbrillance. Cliquer une note l'enregistre immédiatement (pas de
+// bouton "valider" séparé — un seul geste, conforme au reste de l'admin
+// qui valide à la volée, ex: toggle rôle / toggle membre).
+function renderCarteEvaluation(m, categorie) {
+  const noteActuelle = m._evalCourante?.[categorie] ?? null;
+  const boutons = [1, 2, 3].map(n => {
+    const actif = noteActuelle === n;
+    return `<button class="btn btn-sm ${actif?'btn-primary':'btn-secondary'}"
+      style="padding:4px 10px;font-size:12px;"
+      onclick="doNoterMembre('${m.id}','${categorie}',${n},this)">${'🖌️'.repeat(n)}</button>`;
+  }).join('');
+  return `<div class="card" id="evalCarte_${categorie}_${m.id}" style="margin-bottom:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;">
+    <div class="avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase()}</div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:13px;font-weight:600;">${esc(m.prenom)} ${esc(m.nom)}</div>
+      <div style="font-size:11px;color:var(--gris);">@${esc(m.pseudo_telegram)} · <span class="statut-${m.statut}">${m.statut}</span></div>
+    </div>
+    <div style="display:flex;gap:4px;flex-shrink:0;" data-eval-boutons="${categorie}_${m.id}">${boutons}</div>
+  </div>`;
+}
+
+// Enregistre la note et met à jour l'affichage du bouton actif sans
+// recharger toute la liste (évite de perdre la position de scroll dans
+// le modal, et reste cohérent avec le pattern "1 geste = 1 effet" déjà
+// utilisé ailleurs dans l'admin).
+async function doNoterMembre(membreId, categorie, note, btnEl) {
+  try {
+    await UL.noterMembre(membreId, categorie, note);
+    const container = btnEl.closest('[data-eval-boutons]');
+    container.querySelectorAll('button').forEach(b => {
+      b.classList.remove('btn-primary');
+      b.classList.add('btn-secondary');
+    });
+    btnEl.classList.remove('btn-secondary');
+    btnEl.classList.add('btn-primary');
+    toast('Note enregistrée ✅', 'success');
+  } catch(e) { toast(e.message || 'Impossible d\u2019enregistrer la note', 'error'); }
 }
