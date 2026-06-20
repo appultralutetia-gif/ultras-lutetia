@@ -228,6 +228,76 @@ async function showApp(membre) {
   await loadAccueil();
 }
 
+// ─── Rendu visuel de la charte (parsing du texte structuré) ────
+// Le texte de la charte suit un format prévisible : des sections qui
+// commencent par "Article N · Titre" (ou "Article N – Titre"), suivies
+// de paragraphes, avec parfois un bloc "Point d'attention : ...".
+// Cette fonction transforme ce texte brut en HTML avec icône par
+// article et encadré dédié pour "Point d'attention" — partagée entre
+// le gate bloquant et la page de consultation (Profil).
+const CHARTE_ICONES = {
+  1: '👑', 2: '🚫', 3: '👔', 4: '🍺', 5: '🏟️',
+  6: '🚌', 7: '🎨', 8: '📈', 9: '🛡️', 10: '🤝', 11: '✍️',
+};
+
+function renderCharteHTML(texteBrut) {
+  if (!texteBrut) return '';
+  // Découpe sur les en-têtes d'article, en gardant le séparateur grâce
+  // à un groupe capturant dans le split.
+  const regexArticle = /(Article\s+(\d+)\s*[·–-]\s*[^\n]+)/g;
+  const morceaux = texteBrut.split(regexArticle).filter(Boolean);
+
+  // Si le texte ne matche pas le format attendu (contenu modifié à la
+  // main sans suivre la convention), on retombe sur un rendu simple en
+  // paragraphes plutôt que de planter ou d'afficher du vide.
+  if (morceaux.length <= 1) {
+    return texteBrut.split(/\n\s*\n/).map(p =>
+      `<p style="margin-bottom:14px;white-space:pre-wrap;">${esc(p.trim())}</p>`
+    ).join('');
+  }
+
+  let html = '';
+  // Tout texte avant le premier "Article" (rare, mais on ne le perd pas).
+  if (morceaux[0] && !/^Article\s+\d+/.test(morceaux[0].trim())) {
+    html += `<p style="margin-bottom:14px;color:var(--gris);">${esc(morceaux.shift().trim())}</p>`;
+  }
+
+  for (let i = 0; i < morceaux.length; i += 3) {
+    const titreComplet = morceaux[i];   // "Article N · Titre"
+    const numero = morceaux[i + 1];
+    const corps = (morceaux[i + 2] || '').trim();
+    const icone = CHARTE_ICONES[numero] || '📄';
+    const titre = titreComplet.replace(/^Article\s+\d+\s*[·–-]\s*/, '');
+
+    // Le bloc "Point d'attention" est mis en évidence à part s'il existe.
+    const pointAttentionMatch = corps.match(/Point d'attention\s*:\s*([\s\S]+?)(?=\n\n|$)/);
+    let corpsSansPoint = corps;
+    let pointAttentionHtml = '';
+    if (pointAttentionMatch) {
+      corpsSansPoint = corps.slice(0, pointAttentionMatch.index).trim();
+      pointAttentionHtml = `
+        <div style="margin-top:10px;padding:10px 12px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;display:flex;gap:8px;align-items:flex-start;">
+          <span style="flex-shrink:0;">⚠️</span>
+          <span style="font-size:12.5px;line-height:1.6;color:#FCD34D;">${esc(pointAttentionMatch[1].trim())}</span>
+        </div>`;
+    }
+
+    const paragraphes = corpsSansPoint.split(/\n\s*\n/).filter(p => p.trim())
+      .map(p => `<p style="margin-bottom:10px;white-space:pre-wrap;">${esc(p.trim())}</p>`).join('');
+
+    html += `
+      <div style="margin-bottom:20px;padding:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <span style="font-size:20px;flex-shrink:0;">${icone}</span>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.04em;">Article ${numero} · ${esc(titre)}</div>
+        </div>
+        <div style="font-size:13px;line-height:1.7;color:var(--blanc-dim);">${paragraphes}</div>
+        ${pointAttentionHtml}
+      </div>`;
+  }
+  return html;
+}
+
 // ─── Charte Gate (blocage plein écran) ─────────────────────────
 async function afficherCharteGate(charteActive) {
   document.getElementById('appContainer').style.display = 'none';
@@ -245,7 +315,7 @@ async function afficherCharteGate(charteActive) {
     return;
   }
   sousTitreEl.textContent = 'Lis attentivement jusqu\'en bas avant de signer.';
-  texteEl.textContent = charteActive.contenu || '';
+  texteEl.innerHTML = renderCharteHTML(charteActive.contenu);
   document.getElementById('pageCharte')._charteIdGate = charteActive.id; // réutilisé par signerCharteGate
 
   // Si le contenu ne déborde pas (écran large, texte court), il n'y aura
@@ -300,6 +370,7 @@ function applyRights(membre) {
   if (isBureau(membre)) {
     el('adminSectionMembres').style.display = 'block';
     el('adminSectionCalendrier').style.display = 'block';
+    el('adminSectionCharte').style.display = 'block';
   }
   if (hasCelluleDepl(membre))   el('adminSectionDepl').style.display = 'block';
   if (hasCelluleTifo(membre))   el('adminSectionTifos').style.display = 'block';
@@ -329,7 +400,7 @@ function showPage(pageId) {
     pageAccueil:0, pageCalendrier:1, pageDeplacements:2,
     pageTifos:3, pageBoutique:4, pageProfil:5, pageAdmin:6,
     // pages secondaires → highlight parent
-    pageMembres:6, pageStats:6, pageCharte:5, pageCartage:6, pageDemandesAdmin:6
+    pageMembres:6, pageStats:6, pageCharte:5, pageCartage:6, pageDemandesAdmin:6, pageGererCharte:6
   };
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const idx = map[pageId];
@@ -346,6 +417,7 @@ function showPage(pageId) {
   if (pageId === 'pageMembres') loadMembres();
   if (pageId === 'pageStats') loadStats();
   if (pageId === 'pageCharte') loadCharte();
+  if (pageId === 'pageGererCharte') loadGererCharte();
   if (pageId === 'pageCartage') loadCartage();
   if (pageId === 'pageDemandesAdmin') loadDemandesAdmin();
   // Scroll top
