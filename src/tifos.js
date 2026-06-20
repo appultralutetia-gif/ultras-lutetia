@@ -287,13 +287,13 @@ async function doFermerSession(id, e) {
   if (e) e.stopPropagation();
   if (!confirm('Fermer ce tifo ?')) return;
   try { await UL.closeSession(id); toast('Tifo fermé', 'success'); loadTifos(); }
-  catch(e) { toast('Impossible d\'ouvrir le tifo', 'error'); }
+  catch(e) { toast('Impossible de fermer le tifo', 'error'); }
 }
 async function doSupprimerSession(id, e) {
   if (e) e.stopPropagation();
   if (!confirm('Supprimer définitivement ?')) return;
   try { await UL.deleteSession(id); toast('Session supprimée', 'success'); loadTifos(); }
-  catch(e) { toast('Impossible de fermer le tifo', 'error'); }
+  catch(e) { toast('Impossible de supprimer le tifo', 'error'); }
 }
 
 // ── Admin : voir inscrits ────────────────────────────────────
@@ -321,7 +321,7 @@ async function voirInscrits(id, nom, e) {
           ${hasCelluleTifo(m)?`<button class="btn btn-sm btn-danger" style="padding:4px 8px;font-size:11px;" onclick="doDesinscrireAdmin('${id}','${i.membre_id}','${esc(nom)}')">✕</button>`:''}
         </div>`).join('')}`;
     showModal('modalAdminSession');
-  } catch(e) { toast('Impossible de supprimer le tifo', 'error'); }
+  } catch(e) { toast('Impossible de charger les inscrits', 'error'); }
 }
 
 async function doDesinscrireAdmin(sessionId, membreId, nom) {
@@ -331,7 +331,7 @@ async function doDesinscrireAdmin(sessionId, membreId, nom) {
     toast('Membre désinscrit ✅', 'success');
     voirInscrits(sessionId, nom, null);
     loadAdminTifos();
-  } catch(e) { toast('Impossible de charger les inscrits', 'error'); }
+  } catch(e) { toast('Impossible de désinscrire le membre', 'error'); }
 }
 
 // ── Admin : commandes pizza ───────────────────────────────────
