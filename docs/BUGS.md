@@ -218,6 +218,25 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 
 ---
 
+## 13. Charte bloquante — boucle infinie de signature (`signed_at` vs `created_at`) + doublons
+
+**Symptôme** : après signature réussie (toast "Charte signée ✅" affiché), le gate bloquant se réaffiche en boucle au rechargement, comme si la signature n'avait jamais été enregistrée — alors qu'elle l'était bien en base.
+
+**Cause** : `checkConformiteCharte()` lisait `signatures_charte` avec `.select('id, created_at')`. La vraie colonne de la table (qui existait déjà en base avant le script de création `sql_charte_validite.sql` — voir effet de bord ci-dessous) est `signed_at`, pas `created_at`. PostgREST renvoyait une erreur de colonne inexistante, mais le code ne déstructurait que `data` (toujours `null` dans ce cas), pas `error` — l'échec passait donc inaperçu et `conforme` restait `false` indéfiniment, peu importe le nombre de signatures réussies.
+
+**Effet de bord découvert en creusant** : `CREATE TABLE IF NOT EXISTS signatures_charte` (dans `sql_charte_validite.sql`) n'a rien fait, car la table existait déjà avec un schéma différent (sans la contrainte `unique(membre_id, charte_id)` prévue). Résultat : chaque tentative de signature après l'échec silencieux ci-dessus a réinséré une nouvelle ligne au lieu d'être bloquée en doublon (4 lignes constatées pour un seul membre/charte).
+
+**Fix** :
+- `checkConformiteCharte()` et l'affichage de la date de signature (`profil.js`) utilisent désormais `signed_at`.
+- `error` est maintenant déstructuré et levé (`throw error`) dans `checkConformiteCharte()` au lieu d'être ignoré.
+- Script `docs/sql_cleanup_doublons_signatures.sql` : supprime les doublons (garde la signature la plus récente par `membre_id, charte_id` via `row_number()`), puis ajoute la contrainte unique manquante dans un bloc `DO` conditionnel (Postgres ne supporte pas `ADD CONSTRAINT IF NOT EXISTS` nativement).
+
+**Point de vigilance pour la suite** : avant tout `CREATE TABLE IF NOT EXISTS` sur ce projet, vérifier dans Table Editor si la table existe déjà avec un schéma différent de celui supposé — `IF NOT EXISTS` rend l'opération silencieusement no-op sur une table existante, masquant tout écart de schéma jusqu'à ce qu'une requête échoue dessus.
+
+**Fichiers concernés** : `src/supabase-client.js`, `src/profil.js`, `docs/sql_cleanup_doublons_signatures.sql`
+
+---
+
 ## Pièges génériques à garder en tête
 
 - **Toujours vérifier le Network tab (status + body de réponse)** avant de supposer la cause d'un échec d'auth — un message client générique ("introuvable", "identifiants incorrects") peut masquer des causes très différentes (normalisation, RLS, format de clé, JWT, lien expiré...).
