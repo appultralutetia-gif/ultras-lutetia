@@ -220,10 +220,13 @@ async function doArchiverProduit(id) {
 }
 
 // ── STICKS ─────────────────────────────────────────────────────
+let currentFiltreSticksStatut = 'tous', currentFiltreSticksSection = '';
+
 async function loadSticks() {
   try {
     allSticks = await UL.getSticks();
-    renderSticks(allSticks);
+    await remplirFiltreSticksSection();
+    appliquerFiltresSticks();
     const mesSticks = await UL.getMesSticks();
     renderMesSticks(mesSticks);
     if (hasCelluleSticks(UL.getCurrentMembre())) {
@@ -234,33 +237,59 @@ async function loadSticks() {
   } catch(e) { toast('Erreur chargement sticks', 'error'); }
 }
 
-function filtrerSticks(cat) {
+async function remplirFiltreSticksSection() {
+  try {
+    const sections = await UL.getSections();
+    const sel = document.getElementById('filtreSticksSection');
+    const valeurActuelle = sel.value;
+    sel.innerHTML = '<option value="">Toutes sections</option>' +
+      sections.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
+    sel.value = valeurActuelle;
+  } catch(e) {}
+}
+
+function filtrerSticksStatut(statut) {
   document.querySelectorAll('#sectionSticks .filter-btn').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
-  const filtered = cat === 'tous' ? allSticks : allSticks.filter(s => s.categorie === cat);
+  currentFiltreSticksStatut = statut;
+  appliquerFiltresSticks();
+}
+
+function filtrerSticksSection(sectionId) {
+  currentFiltreSticksSection = sectionId;
+  appliquerFiltresSticks();
+}
+
+function appliquerFiltresSticks() {
+  let filtered = allSticks;
+  if (currentFiltreSticksStatut !== 'tous') {
+    filtered = filtered.filter(s => s.niveau_acces === currentFiltreSticksStatut);
+  }
+  if (currentFiltreSticksSection) {
+    filtered = filtered.filter(s => s.section_id === currentFiltreSticksSection);
+  }
   renderSticks(filtered);
 }
 
 function renderSticks(sticks) {
   const el = document.getElementById('sticksCatalogue');
-  const icones = { sticker:'🎟️', fumigene:'💨', drapeau:'🚩', echarpe:'🧣', autre:'📦' };
   if (!sticks.length) { el.innerHTML = '<div class="empty-state"><div>🎟️</div>Aucun stick disponible</div>'; return; }
   el.innerHTML = sticks.map(s => `
     <div class="stick-card">
-      <div style="font-size:32px;flex-shrink:0;">${s.visuel_url ? `<img src="${s.visuel_url}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;">` : icones[s.categorie]||'🎟️'}</div>
+      <div style="font-size:32px;flex-shrink:0;">${s.visuel_url ? `<img src="${s.visuel_url}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;">` : '🎟️'}</div>
       <div style="flex:1;min-width:0;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(s.nom)}</div>
         <div style="font-size:12px;color:var(--gris);">
-          ${s.serie ? `Série: ${esc(s.serie)} · ` : ''}
           ${s.prix ? `${s.prix}€ · ` : 'Gratuit · '}
-          Stock: ${s.stock}
-          ${s.quota_par_membre ? ` · Quota: ${s.quota_par_membre}` : ''}
+          ${s.mode === 'precommande' ? 'Précommande' : 'Stock: ' + s.stock}
+          ${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}
         </div>
         ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:4px;">Section ${esc(s.section.nom)}</span>` : ''}
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
+        ${s.stock > 0 || s.mode === 'precommande' ? `
         ${s.lien_helloasso ? `<a href="${s.lien_helloasso}" target="_blank"><button class="btn btn-sm btn-primary">HelloAsso</button></a>` : ''}
-        <button class="btn btn-sm btn-secondary" onclick="demanderStickCash('${s.id}','${esc(s.nom)}')">Cash</button>
+        <button class="btn btn-sm btn-secondary" onclick="demanderStickCash('${s.id}','${esc(s.nom)}')">${s.mode === 'precommande' ? '📋 Précommander' : 'Cash'}</button>` : ''}
         ${hasCelluleSticks(UL.getCurrentMembre()) ? `<button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${s.id}','stick')">🖼️</button>` : ''}
       </div>
     </div>`).join('');
@@ -533,11 +562,6 @@ async function doCreerProduit() {
 }
 
 // ── STICKS — création (Admin/Cellule Sticks) ───────────────────
-function toggleSectionSelectStick() {
-  const val = document.getElementById('stAcces').value;
-  document.getElementById('sectionSelectGroupStick').style.display = val === 'section' ? 'block' : 'none';
-}
-
 async function loadSectionsForModalStick() {
   try {
     const sections = await UL.getSections();
@@ -545,6 +569,9 @@ async function loadSectionsForModalStick() {
     sel.innerHTML = sections.map(s =>
       `<option value="${s.id}">${s.nom}</option>`
     ).join('');
+    // Pré-sélection par défaut sur Ultra Lutetia
+    const ulOption = sections.find(s => s.nom?.toLowerCase().includes('ultra lutetia'));
+    if (ulOption) sel.value = ulOption.id;
   } catch(e) {}
 }
 
@@ -552,11 +579,11 @@ async function doCreerStick() {
   const nom = document.getElementById('stNom').value.trim();
   const prixRaw = document.getElementById('stPrix').value;
   const prix = prixRaw ? parseFloat(prixRaw) : null;
-  const acces = document.getElementById('stAcces').value;
-  const sectionId = acces === 'section' ? document.getElementById('stSection').value : null;
+  const niveauAcces = document.getElementById('stCat').value;
+  const sectionId = document.getElementById('stSection').value || null;
 
   if (!nom) return toast('Nom requis', 'error');
-  if (acces === 'section' && !sectionId) return toast('Sélectionne une section', 'error');
+  if (niveauAcces !== 'tous' && !sectionId) return toast('Sélectionne une section', 'error');
 
   try {
     showLoading();
@@ -570,30 +597,30 @@ async function doCreerStick() {
 
     await UL.createStick({
       nom,
-      categorie: document.getElementById('stCat').value,
-      serie: document.getElementById('stSerie').value.trim() || null,
-      prix,
-      stock: parseInt(document.getElementById('stStock').value) || 0,
-      quota_par_membre: parseInt(document.getElementById('stQuota').value) || null,
-      niveau_acces: acces,
+      niveau_acces: niveauAcces,
       section_id: sectionId,
+      prix,
+      lot: parseInt(document.getElementById('stLot').value) || 1,
+      stock: parseInt(document.getElementById('stStock').value) || 0,
+      mode: document.getElementById('stMode').value,
       lien_helloasso: document.getElementById('stHelloasso').value.trim() || null,
       statut: 'disponible',
       visuel_url: visuelUrl,
     });
 
     hideLoading();
-    const sectionNom = acces === 'section'
+    const sectionNom = niveauAcces !== 'tous'
       ? document.getElementById('stSection').options[document.getElementById('stSection').selectedIndex].text
       : null;
 
-    toast(`Stick créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Généraliste'}`, 'success');
+    toast(`Stick créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Tous les membres'}`, 'success');
     closeModal('modalCreerStick');
-    ['stNom','stSerie','stPrix','stStock','stQuota','stHelloasso'].forEach(id => document.getElementById(id).value = '');
+    ['stNom','stPrix','stLot','stStock','stHelloasso'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('stLot').value = '1';
+    document.getElementById('stMode').value = 'stock';
     document.getElementById('stPhoto').value = '';
     document.getElementById('photoPreviewStick').style.display = 'none';
-    document.getElementById('stAcces').value = 'tous';
-    document.getElementById('sectionSelectGroupStick').style.display = 'none';
+    document.getElementById('stCat').value = 'tous';
     loadSticks();
   } catch(e) {
     hideLoading();
