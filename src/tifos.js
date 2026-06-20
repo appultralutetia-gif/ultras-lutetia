@@ -11,7 +11,6 @@ const PIZZAS = [
 ];
 const PINTES = [
   { id: 'blonde',   label: 'Blonde',  emoji: '🍺' },
-  { id: 'brune',    label: 'Brune',   emoji: '🍺' },
   { id: 'sans',     label: 'Sans pinte', emoji: '❌' },
 ];
 
@@ -238,9 +237,8 @@ async function doValiderPresence(avecPizza = false) {
     const pizzaEl = document.querySelector('#pizzaChoixContainer [data-pizza][data-selected]');
     const pinteEl = document.querySelector('#pinteChoixContainer [data-pinte][data-selected]');
     if (!pizzaEl) return toast('Choisis une pizza (ou "Je ne mange pas")', 'error');
-    if (!pinteEl) return toast('Choisis une option pinte', 'error');
     pizza = pizzaEl.dataset.pizza;
-    pinte = pinteEl.dataset.pinte;
+    pinte = pinteEl ? pinteEl.dataset.pinte : null; // facultatif
   }
 
   try {
@@ -357,7 +355,7 @@ async function voirCommandesPizza(sessionId, nom, e) {
     });
 
     const pizzaLabel = { margherita:'Margherita', regina:'Regina', '4fromages':'4 Fromages', bellissima:'Bellissima', aucune:'Je ne mange pas' };
-    const pinteLabel = { blonde:'Blonde', brune:'Brune', sans:'Sans pinte' };
+    const pinteLabel = { blonde:'Blonde', sans:'Sans pinte' };
 
     const pizzaHtml = Object.entries(pizzaMap)
       .filter(([k]) => k !== 'aucune' || pizzaMap[k].length)
@@ -528,4 +526,11 @@ async function doModifierSession() {
 
 function loadAdminTifos() {
   if (document.getElementById('pageTifos')?.classList.contains('active')) loadTifos();
+}
+
+// ── Évaluation membres (Cellule Tifo) ──────────────────────────
+// Placeholder : module complet (liste membres cellule Tifo + notation
+// manuelle 🖌️/🖌️🖌️/🖌️🖌️🖌️) à construire — table evaluations déjà prête.
+function ouvrirEvaluationMembresTifo() {
+  toast('Module Évaluation membres — bientôt disponible 🖌️', 'info');
 }
