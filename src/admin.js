@@ -413,3 +413,38 @@ async function doSauvegarderCharte() {
     showPage('pageAdmin');
   } catch(e) { toast(e.message || 'Impossible de publier la charte', 'error'); }
 }
+
+// ─── COMITÉ DE PASSAGE — Évaluation membres ────────────────────
+// Note manuelle 1-3 attribuée aux membres en cours d'évaluation pour
+// un passage de statut : 'sympathisant' → catégorie comite_sympa,
+// 'draft' → catégorie comite_draft. renderCarteEvaluation et
+// doNoterMembre sont définis dans tifos.js (modules en globals
+// window-exposed, pas d'ES6 modules sur ce projet — partage normal).
+async function ouvrirEvaluationMembresComite() {
+  document.getElementById('modalAdminSessionContent').innerHTML = `
+    <h3 class="modal-title">🔔 Évaluation membres — Comité de passage</h3>
+    <div class="card-label" style="margin-top:4px;">💙 Sympathisants</div>
+    <div id="evalComiteSympaListe" style="margin-bottom:16px;"><div class="empty-state"><div>⏳</div>Chargement…</div></div>
+    <div class="card-label">🚀 Drafts</div>
+    <div id="evalComiteDraftListe"><div class="empty-state"><div>⏳</div>Chargement…</div></div>`;
+  showModal('modalAdminSession');
+  try {
+    const [sympas, drafts] = await Promise.all([
+      UL.getAllMembres({ statut: 'sympathisant', actif: true }),
+      UL.getAllMembres({ statut: 'draft', actif: true }),
+    ]);
+    const evals = await UL.getEvaluationsCourantesBatch([...sympas, ...drafts].map(m => m.id));
+    sympas.forEach(m => { m._evalCourante = evals[m.id] || {}; });
+    drafts.forEach(m => { m._evalCourante = evals[m.id] || {}; });
+
+    document.getElementById('evalComiteSympaListe').innerHTML = sympas.length
+      ? sympas.map(m => renderCarteEvaluation(m, 'comite_sympa')).join('')
+      : '<div class="empty-state"><div>💙</div>Aucun sympathisant</div>';
+    document.getElementById('evalComiteDraftListe').innerHTML = drafts.length
+      ? drafts.map(m => renderCarteEvaluation(m, 'comite_draft')).join('')
+      : '<div class="empty-state"><div>🚀</div>Aucun draft</div>';
+  } catch(e) {
+    document.getElementById('evalComiteSympaListe').innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>';
+    document.getElementById('evalComiteDraftListe').innerHTML = '';
+  }
+}
