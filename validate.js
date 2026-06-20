@@ -43,6 +43,7 @@ const REQUIRED_BY_MODULE = {
     'doInscrire',
     'ouvrirModalPresence', 'doValiderPresence',
     'doCreerSession', 'doModifierSession', 'loadAdminTifos',
+    'ouvrirEvaluationMembresTifo', 'renderCarteEvaluation', 'doNoterMembre',
   ],
   'src/deplacements.js': [
     'loadDeplacements', 'renderDeplCard',
@@ -66,6 +67,7 @@ const REQUIRED_BY_MODULE = {
     'loadDemandesAdmin', 'validerDemandeAdmin',
     'doPublierAnnonce',
     'loadGererCharte', 'doSauvegarderCharte',
+    'ouvrirEvaluationMembresComite',
   ],
   'src/profil.js': [
     'loadProfil', 'loadCharte',
@@ -78,6 +80,8 @@ const KNOWN_DYNAMIC = new Set([
   'photoPreviewImgStick', 'photoPreviewStick',
   'codePresence', 'cmdMode', 'cmdTaille',
   'pizzaChoixContainer', 'pinteChoixContainer',
+  'evalTifoListe', 'evalTifoSearch',
+  'evalComiteSympaListe', 'evalComiteDraftListe',
 ]);
 
 // ── Validation d'un fichier ─────────────────────────────────────
