@@ -92,8 +92,7 @@ async function loadTifoActions(sessionId, btn, prefix='') {
   const originalText = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    const { session: s, monInscrit, inscrits } = await UL.getSessionDetails(sessionId);
-    console.log('[UL DEBUG] loadTifoActions', { sessionId, prefix, monInscrit, currentUser: UL.getCurrentUser ? UL.getCurrentUser() : null, inscrits });
+    const { session: s, monInscrit } = await UL.getSessionDetails(sessionId);
     const estInscrit  = !!monInscrit;
     const estPresent  = monInscrit?.statut === 'present';
     const isOpen      = s.statut === 'en_cours';
@@ -258,7 +257,6 @@ async function doInscrire(id, btn) {
   if (!id && btn) id = btn.getAttribute('data-session-id');
   if (!id) id = currentSessionId;
   if (!id) return toast('Erreur : tifo introuvable', 'error');
-  console.log('[UL DEBUG] doInscrire start', { id, currentUser: UL.getCurrentUser(), currentMembre: UL.getCurrentMembre() });
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.inscrire(id);
