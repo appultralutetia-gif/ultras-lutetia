@@ -24,7 +24,7 @@ function renderDeplCard(d) {
   return `<div class="depl-card" onclick="openDepl('${d.id}')">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
       <div style="flex:1;min-width:0;">
-        <div class="depl-match">Paris FC — ${esc(d.adversaire || d.match?.equipe_exterieur || '?')}</div>
+        <div class="depl-match">${esc(d.adversaire || d.match?.equipe_domicile || '?')} — Paris FC</div>
         <div class="depl-infos">
           ${date ? `<span>📅 ${date}</span>` : ''}
           ${d.stade||d.match?.stade ? `<span>📍 ${d.stade||d.match?.stade}</span>` : ''}
@@ -54,7 +54,7 @@ async function openDepl(deplId) {
     const estPaye = monInscrit && monInscrit.statut_paiement !== 'en_attente';
     const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}) : '';
     let html = `
-      <h3 class="modal-title">Paris FC — ${esc(d.adversaire||d.match?.equipe_exterieur||'?')}</h3>
+      <h3 class="modal-title">${esc(d.adversaire||d.match?.equipe_domicile||'?')} — Paris FC</h3>
       <div style="color:var(--gris);font-size:14px;margin-bottom:16px;line-height:2.2;">
         ${date ? `📅 ${date}<br>` : ''}
         ${d.stade||d.match?.stade ? `🏟️ ${d.stade||d.match?.stade}<br>` : ''}
@@ -159,4 +159,3 @@ async function doCreerDepl() {
     loadDeplacements();
   } catch(e) { toast(e.message, 'error'); }
 }
-
