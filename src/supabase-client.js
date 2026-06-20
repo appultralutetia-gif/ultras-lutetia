@@ -381,11 +381,12 @@ async function checkConformiteCharte() {
     // de config qui rendrait l'app inutilisable pour tout le monde).
     return { conforme: true, charteActive: null };
   }
-  const { data: signature } = await sb.from('signatures_charte')
-    .select('id, created_at')
+  const { data: signature, error } = await sb.from('signatures_charte')
+    .select('id, signed_at')
     .eq('membre_id', currentUser.id)
     .eq('charte_id', charteActive.id)
     .maybeSingle();
+  if (error) throw error;
   return { conforme: !!signature, charteActive, signature: signature || null };
 }
 
@@ -400,7 +401,7 @@ async function signerCharte(charteId) {
   // voir checkConformiteCharte()). Uniquement `charte_signee` : c'est la
   // seule colonne confirmée exister dans `membres` (cf. bug du même type
   // que `cree_par`/`updated_at`/`etoiles` — voir BUGS.md). La date exacte
-  // de signature est disponible via signatures_charte.created_at, pas
+  // de signature est disponible via signatures_charte.signed_at, pas
   // besoin de la dénormaliser en plus sur membres.
   await updateMembre(currentUser.id, {
     charte_signee: true,
