@@ -579,6 +579,7 @@ async function doCreerProduit() {
       categorie: document.getElementById('pCat').value,
       prix,
       stock: parseInt(document.getElementById('pStock').value) || 0,
+      quota_par_membre: parseInt(document.getElementById('pQuota').value) || null,
       avec_tailles: document.getElementById('pTailles').checked,
       niveau_acces: acces,
       section_id: sectionId,
@@ -594,7 +595,7 @@ async function doCreerProduit() {
 
     toast(`Article créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Généraliste'}`, 'success');
     closeModal('modalCreerProduit');
-    ['pNom','pDesc','pPrix','pStock'].forEach(id => document.getElementById(id).value = '');
+    ['pNom','pDesc','pPrix','pStock','pQuota'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('pPhoto').value = '';
     document.getElementById('photoPreviewMatos').style.display = 'none';
     document.getElementById('pAcces').value = 'tous';
@@ -649,6 +650,7 @@ async function doCreerStick() {
       section_id: sectionId,
       prix,
       lot: parseInt(document.getElementById('stLot').value) || 1,
+      quota_par_membre: parseInt(document.getElementById('stQuota').value) || null,
       stock: parseInt(document.getElementById('stStock').value) || 0,
       mode: document.getElementById('stMode').value,
       lien_helloasso: lienHelloasso,
@@ -663,7 +665,7 @@ async function doCreerStick() {
 
     toast(`Stick créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Tous les membres'}`, 'success');
     closeModal('modalCreerStick');
-    ['stNom','stPrix','stLot','stStock','stHelloasso'].forEach(id => document.getElementById(id).value = '');
+    ['stNom','stPrix','stLot','stQuota','stStock','stHelloasso'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('stLot').value = '1';
     document.getElementById('stMode').value = 'stock';
     document.getElementById('stPhoto').value = '';
