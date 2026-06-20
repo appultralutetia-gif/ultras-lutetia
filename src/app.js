@@ -21,6 +21,18 @@ function hasCelluleComite(membre) { return isAdmin(membre) || isBureau(membre) |
 function peutValiderInscriptions(membre) {
   return isAdmin(membre) || isBureau(membre) || hasCelluleComite(membre);
 }
+// Accès à la page Tifos : Confirmé et au-dessus voient automatiquement,
+// Draft seulement après validation explicite par cellule Tifo/Bureau/Admin
+// (membre.valide_tifo), Sympathisant jamais. La cellule Tifo elle-même
+// (et Bureau/Admin) ont toujours accès, indépendamment du statut, pour
+// pouvoir gérer les sessions.
+function peutVoirTifos(membre) {
+  if (!membre) return false;
+  if (hasCelluleTifo(membre)) return true;
+  if (membre.statut === 'confirme') return true;
+  if (membre.statut === 'draft') return !!membre.valide_tifo;
+  return false;
+}
 
 // ─── Confirmation inscription ─────────────────────────────────
 function showConfirmInscription(sessionId) {
@@ -450,14 +462,21 @@ async function loadAccueil() {
         <span style="font-size:13px;">${a.contenu}</span>
       </div>`).join('');
   } catch(e) {}
-  // Sessions
+  // Sessions (visibles seulement si le membre a le droit de voir les tifos)
   try {
-    const sessions = await UL.getUpcomingSessions();
+    const m = UL.getCurrentMembre();
     const el = document.getElementById('tifosAccueil');
-    el.innerHTML = sessions.length
-      ? sessions.slice(0,2).map(s => renderTifoCard(s, 'acc_')).join('')
-      : '<p style="color:var(--gris);font-size:14px;">Aucun tifo à venir</p>';
-    await refreshTifosActions(sessions.slice(0,2), 'acc_');
+    if (!peutVoirTifos(m)) {
+      el.innerHTML = m?.statut === 'draft'
+        ? '<p style="color:var(--gris);font-size:14px;">🔒 Réservé aux Draft validés — contacte la cellule Tifo.</p>'
+        : '<p style="color:var(--gris);font-size:14px;">🔒 Réservé aux Confirmés et Draft.</p>';
+    } else {
+      const sessions = await UL.getUpcomingSessions();
+      el.innerHTML = sessions.length
+        ? sessions.slice(0,2).map(s => renderTifoCard(s, 'acc_')).join('')
+        : '<p style="color:var(--gris);font-size:14px;">Aucun tifo à venir</p>';
+      await refreshTifosActions(sessions.slice(0,2), 'acc_');
+    }
   } catch(e) {}
   // Déplacement
   try {
