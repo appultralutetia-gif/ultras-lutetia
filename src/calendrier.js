@@ -59,7 +59,7 @@ function renderMatchCard(match, membre) {
     ? '<span class="badge badge-vert">🏠 Domicile</span>'
     : '<span class="badge badge-rouge">✈️ Extérieur</span>';
   const score = (match.score_domicile !== null && match.score_exterieur !== null)
-    ? `<div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.05em;margin:4px 0;">${match.score_domicile} — ${match.score_exterieur}</div>` : '';
+    ? `<div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.05em;text-align:center;margin:6px 0;">${match.score_domicile} — ${match.score_exterieur}</div>` : '';
   const saisieScore = isPasse && isBureau(membre) && !score
     ? `<button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="saisirScore('${match.id}')">⚽ Saisir le score</button>` : '';
   const statutDateBadge = match.statut_date === 'a_confirmer'
@@ -67,31 +67,31 @@ function renderMatchCard(match, membre) {
   const confirmerBtn = isBureau(membre) && match.statut_date === 'a_confirmer'
     ? `<button class="btn btn-sm btn-success" style="margin-top:8px;" onclick="ouvrirConfirmerDate('${match.id}')">✅ Confirmer la date</button>` : '';
 
-  // Respecte le sens réel du calendrier (équipe domicile à droite, équipe
-  // extérieur à gauche) — Paris FC n'est pas toujours nommé en premier,
-  // ça dépend de qui reçoit (ex: J1 "ESTAC Troyes — Paris FC", J2 "Paris FC — OGC Nice").
-  const logoGauche = match.logo_exterieur; // équipe qui se déplace, à gauche
-  const logoDroite = match.logo_domicile;  // équipe qui reçoit, à droite
+  // Mise en page façon calendrier officiel LFP : logo domicile à gauche,
+  // "VS" au centre, logo extérieur à droite, nom de l'équipe sous chaque logo.
   const logoImg = (url) => url
-    ? `<img src="${esc(url)}" style="width:38px;height:38px;object-fit:contain;flex-shrink:0;">`
-    : '<div style="width:38px;height:38px;background:var(--surface);border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;">⚽</div>';
+    ? `<img src="${esc(url)}" style="width:44px;height:44px;object-fit:contain;">`
+    : '<div style="width:44px;height:44px;background:var(--surface);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">⚽</div>';
 
   return `<div class="card" style="margin-bottom:10px;${match.statut_date==='a_confirmer'?'border-left:3px solid #F59E0B;':''}">
-    <div style="display:flex;align-items:center;gap:10px;">
-      ${logoImg(logoGauche)}
-      <div style="flex:1;min-width:0;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(match.equipe_exterieur||'?')} — ${esc(match.equipe_domicile||'?')}</div>
-        <div style="font-size:12px;color:var(--gris);">${date}${match.horaire?' · '+match.horaire.slice(0,5):''}</div>
-        ${match.stade ? `<div style="font-size:11px;color:var(--gris);">📍 ${esc(match.stade)}</div>` : ''}
-      </div>
-      ${logoImg(logoDroite)}
-    </div>
-    <div style="margin-top:8px;display:flex;align-items:center;justify-content:flex-end;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
+      <span style="font-size:11px;color:var(--gris);">${match.journee ? 'J'+match.journee+' · ' : ''}${date}${match.horaire?' · '+match.horaire.slice(0,5):''}</span>
       ${typeLabel}
     </div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:18px;padding:10px 0;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:90px;">
+        ${logoImg(match.logo_domicile)}
+        <div style="font-size:12px;font-weight:600;text-align:center;line-height:1.2;">${esc(match.equipe_domicile||'?')}</div>
+      </div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--gris);flex-shrink:0;">VS</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:90px;">
+        ${logoImg(match.logo_exterieur)}
+        <div style="font-size:12px;font-weight:600;text-align:center;line-height:1.2;">${esc(match.equipe_exterieur||'?')}</div>
+      </div>
+    </div>
     ${score}
-    <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-      ${match.journee ? `<span style="font-size:11px;color:var(--gris);">J${match.journee}</span>` : ''}
+    ${match.stade ? `<div style="font-size:11px;color:var(--gris);text-align:center;margin-top:2px;">📍 ${esc(match.stade)}</div>` : ''}
+    <div style="margin-top:8px;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;">
       ${match.competition ? `<span class="badge badge-bleu" style="font-size:10px;">${esc(match.competition)}</span>` : ''}
       ${statutDateBadge}
     </div>
