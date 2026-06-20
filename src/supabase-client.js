@@ -27,12 +27,23 @@ async function initSession() {
 // AUTH
 // ============================================================
 
+// Normalise un pseudo Telegram pour comparaison/stockage :
+// retire @, espaces insécables/multiples, trim. La casse est gérée
+// séparément via .ilike() au login pour rester insensible à la casse
+// sans perdre la casse d'origine stockée en base (affichage inchangé).
+function normalizePseudo(pseudoTelegram) {
+  return (pseudoTelegram || '')
+    .replace(/@/g, '')
+    .replace(/[\u00A0\u202F\s]+/g, ' ') // espaces insécables/multiples → un seul espace normal
+    .trim();
+}
+
 async function loginByTelegram(pseudoTelegram, password) {
-  const pseudo = pseudoTelegram.replace('@', '').trim();
-  
+  const pseudo = normalizePseudo(pseudoTelegram);
+
   const { data: membre, error: membreError } = await sb.from('membres')
     .select('email, id')
-    .eq('pseudo_telegram', pseudo)
+    .ilike('pseudo_telegram', pseudo) // insensible à la casse (et aux accents selon collation DB)
     .maybeSingle(); // ← maybeSingle() au lieu de single() — ne throw pas si 0 résultat
 
   if (membreError) throw new Error('Erreur base de données : ' + membreError.message);
@@ -62,7 +73,7 @@ async function inscription(data) {
 
   const { error: membreError } = await sb.from('membres').insert({
     id: authData.user.id,
-    pseudo_telegram: data.pseudoTelegram.replace('@', ''),
+    pseudo_telegram: normalizePseudo(data.pseudoTelegram),
     nom: data.nom,
     prenom: data.prenom,
     email: data.email,
@@ -105,8 +116,8 @@ async function getMembre(id) {
 async function getMembreByTelegram(pseudo) {
   const { data } = await sb.from('membres')
     .select('*')
-    .eq('pseudo_telegram', pseudo.replace('@',''))
-    .single();
+    .ilike('pseudo_telegram', normalizePseudo(pseudo))
+    .maybeSingle();
   return data;
 }
 
