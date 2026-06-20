@@ -445,6 +445,7 @@ function applyRights(membre) {
   if (hasCelluleTifo(membre))   el('adminSectionTifos').style.display = 'block';
   if (hasCelluleMatos(membre))  el('adminSectionMatos').style.display = 'block';
   if (hasCelluleSticks(membre)) el('adminSectionSticks').style.display = 'block';
+  if (hasCelluleComite(membre)) el('adminSectionComite').style.display = 'block';
   if (isCellule(membre))        el('adminSectionStats').style.display = 'block';
 
   // Sections legacy Profil (rétrocompat)
