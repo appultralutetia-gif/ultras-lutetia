@@ -214,13 +214,74 @@ async function showApp(membre) {
   // Appliquer droits selon statut
   applyRights(membre);
 
-  // Charte
-  if (!membre.charte_signee) {
-    document.getElementById('charteAlert').style.display = 'block';
-    await loadCharte();
+  // Charte : blocage total tant que la charte ACTIVE en cours de validité
+  // n'a pas été signée par ce membre. Ne se fie jamais au seul flag
+  // dénormalisé membre.charte_signee (qui ne distingue pas une charte
+  // expirée d'une charte toujours valide) — voir checkConformiteCharte().
+  const { conforme, charteActive } = await UL.checkConformiteCharte();
+  if (!conforme) {
+    await afficherCharteGate(charteActive);
+    return;
   }
+  document.getElementById('charteGate').style.display = 'none';
 
   await loadAccueil();
+}
+
+// ─── Charte Gate (blocage plein écran) ─────────────────────────
+async function afficherCharteGate(charteActive) {
+  document.getElementById('appContainer').style.display = 'none';
+  document.getElementById('charteGate').style.display = 'flex';
+  const texteEl = document.getElementById('charteGateTexte');
+  const sousTitreEl = document.getElementById('charteGateSousTitre');
+  const checkbox = document.getElementById('charteGateAccept');
+  const btn = document.getElementById('btnSignerCharteGate');
+  checkbox.checked = false;
+  checkbox.disabled = true;
+  btn.disabled = true;
+  if (!charteActive) {
+    texteEl.textContent = 'Aucune charte active n\'est configurée pour le moment. Contacte le bureau.';
+    sousTitreEl.textContent = '';
+    return;
+  }
+  sousTitreEl.textContent = 'Lis attentivement jusqu\'en bas avant de signer.';
+  texteEl.textContent = charteActive.contenu || '';
+  document.getElementById('pageCharte')._charteIdGate = charteActive.id; // réutilisé par signerCharteGate
+
+  // Si le contenu ne déborde pas (écran large, texte court), il n'y aura
+  // jamais d'événement de scroll pour débloquer la checkbox — on vérifie
+  // donc aussi une fois le texte injecté, après layout.
+  requestAnimationFrame(() => checkCharteScroll(texteEl));
+}
+
+function checkCharteScroll(el) {
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 20) {
+    // Le scroll peut venir soit du gate, soit de l'ancienne page (les deux
+    // partagent ce handler par cohérence, mais seul le gate a une checkbox
+    // à débloquer aujourd'hui).
+    const cbGate = document.getElementById('charteGateAccept');
+    if (cbGate && el.id === 'charteGateTexte') {
+      cbGate.disabled = false;
+      const wrap = document.getElementById('charteGateCheckWrap');
+      if (wrap) {
+        wrap.style.cursor = 'pointer';
+        wrap.onclick = () => { cbGate.checked = !cbGate.checked; document.getElementById('btnSignerCharteGate').disabled = !cbGate.checked; };
+      }
+      cbGate.onchange = () => { document.getElementById('btnSignerCharteGate').disabled = !cbGate.checked; };
+    }
+  }
+}
+
+async function signerCharteGate() {
+  const charteId = document.getElementById('pageCharte')._charteIdGate;
+  if (!charteId) return;
+  try {
+    await UL.signerCharte(charteId);
+    toast('Charte signée ✅', 'success');
+    document.getElementById('charteGate').style.display = 'none';
+    document.getElementById('appContainer').style.display = 'block';
+    await loadAccueil();
+  } catch(e) { toast(e.message || 'Impossible de signer la charte', 'error'); }
 }
 
 function applyRights(membre) {
