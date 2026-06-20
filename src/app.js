@@ -320,8 +320,18 @@ async function afficherCharteGate(charteActive) {
 
   // Si le contenu ne déborde pas (écran large, texte court), il n'y aura
   // jamais d'événement de scroll pour débloquer la checkbox — on vérifie
-  // donc aussi une fois le texte injecté, après layout.
-  requestAnimationFrame(() => checkCharteScroll(texteEl));
+  // donc aussi une fois le texte injecté, après layout. Un seul
+  // requestAnimationFrame n'est pas toujours suffisant (police web pas
+  // encore appliquée, logo pas encore chargé → scrollHeight sous-évalué
+  // au moment du calcul) : on revérifie après un court délai, et on
+  // re-vérifie aussi au redimensionnement (rotation mobile, etc.), tant
+  // que la checkbox n'est pas débloquée.
+  if (window._charteResizeHandler) window.removeEventListener('resize', window._charteResizeHandler);
+  const recheck = () => checkCharteScroll(texteEl);
+  window._charteResizeHandler = recheck;
+  requestAnimationFrame(recheck);
+  setTimeout(recheck, 300);
+  window.addEventListener('resize', recheck);
 }
 
 function checkCharteScroll(el) {
@@ -338,6 +348,11 @@ function checkCharteScroll(el) {
         wrap.onclick = () => { cbGate.checked = !cbGate.checked; document.getElementById('btnSignerCharteGate').disabled = !cbGate.checked; };
       }
       cbGate.onchange = () => { document.getElementById('btnSignerCharteGate').disabled = !cbGate.checked; };
+      // Plus besoin de réécouter le resize une fois débloqué.
+      if (window._charteResizeHandler) {
+        window.removeEventListener('resize', window._charteResizeHandler);
+        window._charteResizeHandler = null;
+      }
     }
   }
 }
