@@ -203,13 +203,17 @@ async function doInscription() {
     toast('Compte créé ✅ — entre le code reçu par email ci-dessous.', 'success', 5000);
   } catch(e) { hideLoading(); toast(e.message || 'Erreur inscription', 'error'); }
 }
-// Vérifie le code à 6 chiffres reçu par email (remplace l'ancien lien
+// Vérifie le code à 8 chiffres reçu par email (remplace l'ancien lien
 // cliquable, qui pouvait être consommé automatiquement par certains
 // scanners de sécurité avant que le membre ne clique lui-même — voir
-// BUGS.md section confirmation email / Brevo).
+// BUGS.md section confirmation email / Brevo). Supabase génère par
+// défaut un code de 8 chiffres pour l'email OTP de signup (pas 6 comme
+// on pourrait le supposer par analogie avec SMS OTP/Google Auth —
+// vérifié directement dans l'email reçu après un premier bug où le
+// champ de saisie tronquait silencieusement le code à 6 caractères).
 async function doVerifyOtp() {
   const code = document.getElementById('otpCode').value.trim();
-  if (!code || code.length < 6) return toast('Code à 6 chiffres requis', 'error');
+  if (!code || code.length < 6) return toast('Code requis', 'error');
   if (!_emailEnAttenteOtp) return toast('Session expirée, recommence l\u2019inscription', 'error');
   try {
     showLoading();
