@@ -314,18 +314,35 @@ async function voirInscrits(id, nom, e) {
     const { inscrits } = await UL.getSessionDetails(id);
     const presents = inscrits.filter(i => i.statut === 'present');
     const statutLabel = { inscrit:'📋 Inscrit', present:'✅ Présent', absent:'❌ Absent' };
+
+    // Note tifo courante de chaque inscrit (batch, une seule requête) —
+    // utilisée à la fois pour l'affichage et pour le tri.
+    const evals = await UL.getEvaluationsCourantesBatch(inscrits.map(i => i.membre_id));
+    inscrits.forEach(i => { i._noteTifo = evals[i.membre_id]?.tifo ?? null; });
+
+    // Tri : niveau pinceaux décroissant (3 → 2 → 1 → non noté), puis
+    // alphabétique (prénom nom) au sein d'un même niveau.
+    const inscritsTries = [...inscrits].sort((a, b) => {
+      const na = a._noteTifo ?? 0, nb = b._noteTifo ?? 0;
+      if (na !== nb) return nb - na;
+      const nomA = `${a.membre?.prenom||''} ${a.membre?.nom||''}`.trim().toLowerCase();
+      const nomB = `${b.membre?.prenom||''} ${b.membre?.nom||''}`.trim().toLowerCase();
+      return nomA.localeCompare(nomB);
+    });
+
     document.getElementById('modalAdminSessionContent').innerHTML = `
       <h3 class="modal-title">👥 ${esc(nom)}</h3>
       <div style="font-size:13px;color:var(--gris);margin-bottom:12px;">✅ ${presents.length} présents · Total: ${inscrits.length}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
-        <button class="btn btn-sm btn-secondary" onclick="copierListeComplete(${esc(JSON.stringify(inscrits.map(i=>({pseudo:i.membre?.pseudo_telegram||'?',prenom:i.membre?.prenom||'',nom:i.membre?.nom||'',statut:i.membre?.statut||'',section:i.membre?.section?.nom||'',presence:i.statut}))))})">📋 Liste complète</button>
+        <button class="btn btn-sm btn-secondary" onclick="copierListeComplete(${esc(JSON.stringify(inscritsTries.map(i=>({pseudo:i.membre?.pseudo_telegram||'?',prenom:i.membre?.prenom||'',nom:i.membre?.nom||'',statut:i.membre?.statut||'',section:i.membre?.section?.nom||'',noteTifo:i._noteTifo}))))})">📋 Liste complète</button>
       </div>
-      ${inscrits.map(i => `
+      ${inscritsTries.map(i => `
         <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);">
           <div class="avatar" style="width:30px;height:30px;font-size:11px;flex-shrink:0;">${(i.membre?.prenom||'?')[0]}</div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:600;">@${esc(i.membre?.pseudo_telegram||'?')}</div>
             <div style="font-size:11px;color:var(--gris);">${esc(i.membre?.prenom||'')} ${esc(i.membre?.nom||'')}${i.membre?.section?.nom?' · '+esc(i.membre.section.nom):''}</div>
+            <div style="font-size:11px;margin-top:2px;">${i._noteTifo ? renderEtoiles(EVAL_EMOJI.tifo, i._noteTifo) : '<span style="color:var(--gris);opacity:.6;">Non noté</span>'}</div>
           </div>
           <span class="badge ${i.statut==='present'?'badge-vert':i.statut==='absent'?'badge-rouge':'badge-bleu'}" style="font-size:10px;flex-shrink:0;">${statutLabel[i.statut]||i.statut}</span>
           ${hasCelluleTifo(m)?`<button class="btn btn-sm btn-danger" style="padding:4px 8px;font-size:11px;" onclick="doDesinscrireAdmin('${id}','${i.membre_id}','${esc(nom)}')">✕</button>`:''}
@@ -451,8 +468,9 @@ function copierInscrits(pseudos) {
   navigator.clipboard.writeText(texte).then(() => toast('Liste Telegram copiée !', 'success'));
 }
 function copierListeComplete(membres) {
-  const entete = 'Pseudo | Prénom Nom | Statut | Section | Présence';
-  const lignes = membres.map(m => `@${m.pseudo} | ${m.prenom} ${m.nom} | ${m.statut} | ${m.section||'—'} | ${m.presence}`);
+  const entete = 'Pseudo | Prénom Nom | Statut | Section | Niveau';
+  const lignes = membres.map(m =>
+    `@${m.pseudo} | ${m.prenom} ${m.nom} | ${m.statut} | ${m.section||'—'} | ${m.noteTifo ? EVAL_EMOJI.tifo.repeat(m.noteTifo) : '—'}`);
   navigator.clipboard.writeText([entete,...lignes].join('\n')).then(() => toast(`Liste copiée (${membres.length}) !`, 'success'));
 }
 
