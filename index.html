@@ -131,6 +131,25 @@
       <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="showLogin()">Déjà membre ? Se connecter</span>
     </div>
   </div>
+
+  <div class="login-form" id="otpForm" style="display:none;">
+    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.05em;margin-bottom:10px;text-align:center;">Confirme ton email</h2>
+    <p style="font-size:13px;color:var(--gris);text-align:center;margin-bottom:20px;">
+      Un code à 6 chiffres a été envoyé à <strong id="otpEmailAffiche"></strong>.<br>
+      Vérifie aussi tes spams.
+    </p>
+    <div class="form-group">
+      <label>Code reçu par email</label>
+      <input type="text" id="otpCode" placeholder="••••••" maxlength="6" inputmode="numeric" autocomplete="one-time-code" style="text-align:center;font-size:22px;letter-spacing:.3em;">
+    </div>
+    <button class="btn btn-primary" onclick="doVerifyOtp()">Confirmer</button>
+    <div style="text-align:center;margin-top:12px;">
+      <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="doRenvoyerOtp()">Je n'ai pas reçu le code, renvoyer</span>
+    </div>
+    <div style="text-align:center;margin-top:8px;">
+      <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="showLogin()">Retour à la connexion</span>
+    </div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
