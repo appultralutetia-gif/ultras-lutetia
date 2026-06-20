@@ -315,12 +315,37 @@
   <!-- Vue allégée par rapport à pageMembres (Bureau+) : recherche sur
        tous les champs identité (nom/prénom/pseudo/email/ville/section),
        et seule action disponible = bloquer/débloquer, jamais sur un
-       Bureau/Admin (cf. renderMembreComiteCard dans admin.js). -->
+       Bureau/Admin (cf. renderMembreComiteCard dans admin.js).
+       Filtres statut/section/niveau + exports (Telegram, CSV) partagent
+       le même état filtré — voir filtrerMembresComite() dans admin.js. -->
   <div id="pageMembresComite" class="page">
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
       <button class="btn btn-sm btn-secondary" onclick="showPage('pageProfil')">← Retour</button>
       <input type="text" id="searchMembreComite" placeholder="🔎 Nom, prénom, pseudo, email…" style="flex:1;min-width:160px;" oninput="filtrerMembresComite()">
     </div>
+
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;" id="filtresStatutComite">
+      <button class="filter-btn active" data-statut="" onclick="filtrerStatutComite('')">Tous statuts</button>
+      <button class="filter-btn" data-statut="sympathisant" onclick="filtrerStatutComite('sympathisant')">💙 Sympathisant</button>
+      <button class="filter-btn" data-statut="draft" onclick="filtrerStatutComite('draft')">🚀 Draft</button>
+      <button class="filter-btn" data-statut="confirme" onclick="filtrerStatutComite('confirme')">🏅 Confirmé</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;" id="filtresNiveauComite">
+      <button class="filter-btn active" data-niveau="" onclick="filtrerNiveauComite('')">Tous niveaux</button>
+      <button class="filter-btn" data-niveau="1" onclick="filtrerNiveauComite('1')">1</button>
+      <button class="filter-btn" data-niveau="2" onclick="filtrerNiveauComite('2')">2</button>
+      <button class="filter-btn" data-niveau="3" onclick="filtrerNiveauComite('3')">3</button>
+      <button class="filter-btn" data-niveau="non_note" onclick="filtrerNiveauComite('non_note')">Non noté</button>
+    </div>
+    <select id="filterSectionComite" onchange="filtrerSectionComite()" style="width:100%;margin-bottom:12px;">
+      <option value="">Toutes sections</option>
+    </select>
+
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+      <button class="btn btn-sm btn-secondary" onclick="copierListeMembresComite()">📋 Liste Telegram</button>
+      <button class="btn btn-sm btn-secondary" onclick="exporterCsvMembresComite()">📄 Export CSV</button>
+    </div>
+
     <div id="membresComiteList"><div class="empty-state"><div>⏳</div>Chargement…</div></div>
   </div>
 
