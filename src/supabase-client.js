@@ -46,10 +46,14 @@ function normalizePseudo(pseudoTelegram) {
 // Résout un pseudo Telegram en email via l'Edge Function resolve-pseudo
 // (la table membres est protégée par RLS, lecture réservée à 'authenticated' —
 // impossible de lire l'email directement avant connexion avec le client anon).
-// Utilisée par loginByTelegram() et demanderResetMdp().
-async function resolvePseudoToEmail(pseudoTelegram) {
+// Utilisée par loginByTelegram() (sans emailADoubleVerifier) et
+// demanderResetMdp() (avec, pour exiger pseudo + email cohérents).
+async function resolvePseudoToEmail(pseudoTelegram, emailADoubleVerifier) {
   const pseudo = normalizePseudo(pseudoTelegram);
   if (!pseudo) throw new Error('Pseudo Telegram requis');
+
+  const payload = { pseudo_telegram: pseudo };
+  if (emailADoubleVerifier) payload.email = emailADoubleVerifier.trim();
 
   const resp = await fetch(`${SUPABASE_URL}/functions/v1/resolve-pseudo`, {
     method: 'POST',
@@ -57,7 +61,7 @@ async function resolvePseudoToEmail(pseudoTelegram) {
       'Content-Type': 'application/json',
       'apikey': SUPABASE_PUBLISHABLE_KEY, // format sb_publishable_... requis par withSupabase
     },
-    body: JSON.stringify({ pseudo_telegram: pseudo }),
+    body: JSON.stringify(payload),
   });
   const body = await resp.json();
   if (!resp.ok) throw new Error(body.error || 'Identifiants incorrects');
@@ -84,11 +88,15 @@ async function loginByTelegram(pseudoTelegram, password) {
 }
 
 // Envoie l'email de réinitialisation de mot de passe via Supabase Auth.
+// Double vérification : pseudo ET email doivent correspondre au même membre,
+// pour empêcher qu'un tiers connaissant seulement le pseudo (visible dans
+// l'app) déclenche un reset sur le compte d'un autre membre.
 // redirectTo passe par le même mécanisme de callback que la confirmation
 // d'inscription (404.html → ultras-lutetia/?...#access_token&type=recovery),
 // que app.js détecte au démarrage pour afficher le modal de reset.
-async function demanderResetMdp(pseudoTelegram) {
-  const email = await resolvePseudoToEmail(pseudoTelegram); // laisse throw si pseudo introuvable
+async function demanderResetMdp(pseudoTelegram, emailSaisi) {
+  if (!emailSaisi || !emailSaisi.trim()) throw new Error('Email requis');
+  const email = await resolvePseudoToEmail(pseudoTelegram, emailSaisi); // laisse throw si pseudo/email ne correspondent pas
 
   const { error } = await sb.auth.resetPasswordForEmail(email, {
     redirectTo: 'https://appultralutetia-gif.github.io/ultras-lutetia/',
