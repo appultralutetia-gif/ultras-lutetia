@@ -51,7 +51,12 @@ async function openDepl(deplId) {
   try {
     const { deplacement: d, inscrits, monInscrit, nbInscrits } = await UL.getDeplacement(deplId);
     const estInscrit = !!monInscrit;
-    const estPaye = monInscrit && monInscrit.statut_paiement !== 'en_attente';
+    // ⚠️ Avec l'ajout du statut 'refuse' (paiement HelloAsso refusé), on ne
+    // peut plus se contenter de "!== 'en_attente'" pour détecter un paiement
+    // confirmé — un paiement refusé n'est pas 'en_attente' mais n'est pas
+    // payé non plus. On distingue explicitement les 3 cas.
+    const estPaye = monInscrit && (monInscrit.statut_paiement === 'paye_cash' || monInscrit.statut_paiement === 'paye_helloasso');
+    const estRefuse = monInscrit && monInscrit.statut_paiement === 'refuse';
     const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}) : '';
     let html = `
       <h3 class="modal-title">${esc(d.adversaire||d.match?.equipe_domicile||'?')} — Paris FC</h3>
@@ -68,10 +73,16 @@ async function openDepl(deplId) {
 
     if (!estInscrit) {
       html += `<button class="btn btn-primary" onclick="doInscritDepl('${d.id}')">M'inscrire</button>`;
+    } else if (estRefuse) {
+      // Paiement refusé par la banque (ou autre raison HelloAsso) : on
+      // permet explicitement de retenter, plutôt que de laisser le membre
+      // coincé sans action possible (cf. plan_helloasso.md §4).
+      html += `<div class="info-box error">❌ Paiement refusé</div>
+        <button class="btn btn-primary" onclick="doInscritDepl('${d.id}')">Réessayer le paiement</button>`;
     } else if (!estPaye) {
-      html += `<div class="info-box">⏳ Inscrit — en attente de paiement</div>
-        ${d.lien_helloasso ? `<a href="${d.lien_helloasso}" target="_blank"><button class="btn btn-primary">💳 Payer via HelloAsso</button></a>` : ''}
-        <p style="text-align:center;font-size:12px;color:var(--gris);margin-top:8px;">Paiement cash → contacter l'admin</p>`;
+      html += `<div class="info-box">⏳ Inscrit — paiement en cours</div>
+        <p style="text-align:center;font-size:12px;color:var(--gris);margin-top:8px;">Si le paiement n'a pas démarré ou a été abandonné, tu peux réessayer.</p>
+        <button class="btn btn-secondary" onclick="doInscritDepl('${d.id}')">Relancer le paiement</button>`;
     } else {
       html += `<div class="info-box success">✅ Paiement confirmé — ton billet est prêt</div>
         <div class="qr-container" id="qrDepl"></div>
@@ -80,11 +91,12 @@ async function openDepl(deplId) {
 
     // Boutons admin déplacement
     if (hasCelluleDepl(m)) {
-      const payes = inscrits.filter(i => i.statut_paiement !== 'en_attente');
+      const payes = inscrits.filter(i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_helloasso');
+      const refuses = inscrits.filter(i => i.statut_paiement === 'refuse');
       html += `
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
           <div class="card-label">Gestion déplacement</div>
-          <div style="font-size:13px;color:var(--gris);margin-bottom:10px;">✅ ${payes.length} payés · ⏳ ${inscrits.length-payes.length} en attente</div>
+          <div style="font-size:13px;color:var(--gris);margin-bottom:10px;">✅ ${payes.length} payés · ⏳ ${inscrits.length-payes.length-refuses.length} en attente${refuses.length ? ' · ❌ '+refuses.length+' refusés' : ''}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-sm btn-secondary" onclick="voirInscritsDepl('${d.id}')">👥 Voir inscrits</button>
             <button class="btn btn-sm btn-secondary" onclick="copierListeBus('${d.id}')">📋 Liste bus</button>
@@ -101,9 +113,33 @@ async function openDepl(deplId) {
   } catch(e) { toast('Erreur chargement déplacement', 'error'); }
 }
 
+// Fusionne "s'inscrire" et "déclencher le paiement HelloAsso" en une seule
+// action (cf. plan_helloasso.md §4) : Déplacements n'a aujourd'hui aucun
+// mode cash actif, HelloAsso est donc le seul chemin — pas besoin de
+// proposer un choix de mode de paiement à l'utilisateur ici.
+//
+// Remplace l'ancien comportement de UL.sInscrireDeplacements() qui créait
+// juste la ligne 'en_attente' sans déclencher de paiement : désormais
+// l'Edge Function helloasso-create-checkout fait les deux (création de la
+// ligne si besoin + initialisation du checkout) en un seul appel.
 async function doInscritDepl(id) {
-  try { await UL.sInscrireDeplacements(id); toast('Inscription confirmée !', 'success'); closeModal('modalDepl'); loadDeplacements(); }
-  catch(e) { toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error'); }
+  try {
+    toast('Redirection vers le paiement…', 'success');
+    const { data, error } = await UL.sb.functions.invoke('helloasso-create-checkout', {
+      body: { deplacementId: id },
+    });
+    if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
+    if (data?.error) throw new Error(data.error);
+    if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
+    closeModal('modalDepl');
+    // Redirection vers la page de paiement hébergée par HelloAsso. Le
+    // membre revient ensuite sur returnUrl/backUrl/errorUrl (configurées
+    // côté Edge Function) — ces pages-là affichent juste un message
+    // d'attente, la confirmation réelle vient du webhook (cf. plan §2.4).
+    window.location.href = data.redirectUrl;
+  } catch(e) {
+    toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error');
+  }
 }
 async function voirInscritsDepl(deplId) {
   try {
