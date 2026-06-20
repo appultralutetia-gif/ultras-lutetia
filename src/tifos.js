@@ -592,17 +592,21 @@ function renderEvaluationTifoListe(membres) {
 }
 
 // Carte de notation partagée (utilisée par Tifo ET Comité de passage) :
-// avatar + identité + 3 boutons 🖌️/🖌️🖌️/🖌️🖌️🖌️, le niveau courant en
-// surbrillance. Cliquer une note l'enregistre immédiatement (pas de
-// bouton "valider" séparé — un seul geste, conforme au reste de l'admin
-// qui valide à la volée, ex: toggle rôle / toggle membre).
+// avatar + identité + 3 boutons d'emoji répété, le niveau courant en
+// surbrillance. Le symbole varie selon la catégorie (EVAL_EMOJI, défini
+// dans profil.js — 🖌️ tifo / 💙 comite_sympa / 🚀 comite_draft / 🚌
+// deplacement, ce dernier non utilisé ici car noté automatiquement).
+// Cliquer une note l'enregistre immédiatement (pas de bouton "valider"
+// séparé — un seul geste, conforme au reste de l'admin qui valide à la
+// volée, ex: toggle rôle / toggle membre).
 function renderCarteEvaluation(m, categorie) {
+  const emoji = EVAL_EMOJI[categorie] || '🖌️';
   const noteActuelle = m._evalCourante?.[categorie] ?? null;
   const boutons = [1, 2, 3].map(n => {
     const actif = noteActuelle === n;
     return `<button class="btn btn-sm ${actif?'btn-primary':'btn-secondary'}"
       style="padding:4px 10px;font-size:12px;"
-      onclick="doNoterMembre('${m.id}','${categorie}',${n},this)">${'🖌️'.repeat(n)}</button>`;
+      onclick="doNoterMembre('${m.id}','${categorie}',${n},this)">${emoji.repeat(n)}</button>`;
   }).join('');
   return `<div class="card" id="evalCarte_${categorie}_${m.id}" style="margin-bottom:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;">
     <div class="avatar" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase()}</div>
