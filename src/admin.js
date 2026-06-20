@@ -305,3 +305,34 @@ async function refuserDemandeAdmin(membreId) {
   } catch(e) { toast('Impossible de refuser la demande', 'error'); }
 }
 
+// ─── CHARTE (Bureau+) ───────────────────────────────────────────
+async function loadGererCharte() {
+  try {
+    const charte = await UL.getCharteActive();
+    const infoEl = document.getElementById('gererCharteInfo');
+    if (!charte) {
+      document.getElementById('gcNom').value = '';
+      document.getElementById('gcDateFin').value = '';
+      document.getElementById('gcContenu').value = '';
+      if (infoEl) infoEl.textContent = 'Aucune charte active — la sauvegarde en créera une.';
+      return;
+    }
+    document.getElementById('gcNom').value = charte.nom || '';
+    document.getElementById('gcDateFin').value = charte.date_fin_validite || '';
+    document.getElementById('gcContenu').value = charte.contenu || '';
+    if (infoEl) infoEl.textContent = `Version active actuelle créée le ${new Date(charte.created_at).toLocaleDateString('fr-FR')}.`;
+  } catch(e) { toast('Erreur chargement de la charte', 'error'); }
+}
+
+async function doSauvegarderCharte() {
+  const nom = document.getElementById('gcNom').value.trim();
+  const contenu = document.getElementById('gcContenu').value.trim();
+  const dateFin = document.getElementById('gcDateFin').value || null;
+  if (!nom || !contenu) return toast('Nom et contenu requis', 'error');
+  if (!confirm('Publier cette nouvelle version ? Tous les membres devront resigner la charte avant de pouvoir continuer à utiliser l\'app.')) return;
+  try {
+    await UL.publierNouvelleCharte({ nom, contenu, dateFin });
+    toast('Nouvelle version de la charte publiée ✅', 'success');
+    showPage('pageAdmin');
+  } catch(e) { toast(e.message || 'Impossible de publier la charte', 'error'); }
+}
