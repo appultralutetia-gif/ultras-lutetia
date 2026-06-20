@@ -1,6 +1,31 @@
 // ─── CALENDRIER ──────────────────────────────────────────────
 let allMatchs = [], allEvenements = [], currentFiltreCalendrier = 'tous';
 
+// Formatage de date "Jour court + jour/mois" indépendant du moteur JS du
+// navigateur (toLocaleDateString peut donner des abréviations différentes
+// selon l'OS/navigateur). Table fixe demandée : Lun, Mar, Mer, Jeu, Vend,
+// Sam, Dim. Date.getDay()/getDate()/getMonth() sont exacts sur tout le
+// calendrier grégorien (donc valable nativement sur des décennies, pas
+// besoin de précharger une table d'années — seul le nom du jour est
+// fixé en dur ici pour ne plus dépendre du fr-FR du navigateur).
+const JOURS_COURTS_FR = ['Dim','Lun','Mar','Mer','Jeu','Vend','Sam']; // getDay(): 0=dimanche
+const MOIS_COURTS_FR = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+
+function formatDateCourte(dateStr) {
+  if (!dateStr) return null;
+  // Parsing manuel "YYYY-MM-DD" pour éviter tout décalage de fuseau horaire
+  // lié à new Date('YYYY-MM-DD') (interprétée en UTC par certains moteurs).
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const date = new Date(y, m - 1, d);
+  return `${JOURS_COURTS_FR[date.getDay()]} ${d} ${MOIS_COURTS_FR[m - 1]}`;
+}
+
+function formatHeureCourte(horaireStr) {
+  if (!horaireStr) return null;
+  return horaireStr.slice(0, 5); // "20:45:00" -> "20:45"
+}
+
 async function loadCalendrier() {
   document.getElementById('calendrierListe').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
@@ -53,7 +78,8 @@ function filtrerCalendrier(filtre) {
 }
 
 function renderMatchCard(match, membre) {
-  const date = match.date ? new Date(match.date).toLocaleDateString('fr-FR', {weekday:'short',day:'numeric',month:'short'}) : '—';
+  const date = formatDateCourte(match.date) || '—';
+  const heure = formatHeureCourte(match.horaire);
   const isPasse = match.date && new Date(match.date) < new Date();
   const typeLabel = match.type === 'domicile'
     ? '<span class="badge badge-vert">🏠 Domicile</span>'
@@ -70,12 +96,12 @@ function renderMatchCard(match, membre) {
   // Mise en page façon calendrier officiel LFP : logo domicile à gauche,
   // "VS" au centre, logo extérieur à droite, nom de l'équipe sous chaque logo.
   const logoImg = (url) => url
-    ? `<img src="${esc(url)}" style="width:44px;height:44px;object-fit:contain;">`
+    ? `<img src="${esc(url)}" style="width:44px;height:44px;object-fit:contain;" onerror="this.outerHTML='<div style=&quot;width:44px;height:44px;background:var(--surface);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;&quot;>⚽</div>'">`
     : '<div style="width:44px;height:44px;background:var(--surface);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">⚽</div>';
 
   return `<div class="card" style="margin-bottom:10px;${match.statut_date==='a_confirmer'?'border-left:3px solid #F59E0B;':''}">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
-      <span style="font-size:11px;color:var(--gris);">${match.journee ? 'J'+match.journee+' · ' : ''}${date}${match.horaire?' · '+match.horaire.slice(0,5):''}</span>
+      <span style="font-size:11px;color:var(--gris);">${match.journee ? 'J'+match.journee+' · ' : ''}${date}${heure ? ' · '+heure : ''}</span>
       ${typeLabel}
     </div>
     <div style="display:flex;align-items:center;justify-content:center;gap:18px;padding:10px 0;">
@@ -90,6 +116,7 @@ function renderMatchCard(match, membre) {
       </div>
     </div>
     ${score}
+    ${heure ? `<div style="font-size:12px;color:var(--bleu-clair);text-align:center;font-weight:600;">🕐 Coup d'envoi ${heure}</div>` : ''}
     ${match.stade ? `<div style="font-size:11px;color:var(--gris);text-align:center;margin-top:2px;">📍 ${esc(match.stade)}</div>` : ''}
     <div style="margin-top:8px;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;">
       ${match.competition ? `<span class="badge badge-bleu" style="font-size:10px;">${esc(match.competition)}</span>` : ''}
@@ -103,7 +130,7 @@ function renderMatchCard(match, membre) {
 function renderEvenementCard(ev) {
   const types = { reunion:'🤝', bbq:'🍖', fete:'🎊', autre:'🎉' };
   const couleurs = { reunion:'badge-bleu', bbq:'badge-orange', fete:'badge-orange', autre:'badge-vert' };
-  const date = ev.date ? new Date(ev.date).toLocaleDateString('fr-FR', {weekday:'short',day:'numeric',month:'short'}) : '—';
+  const date = formatDateCourte(ev.date) || '—';
   const m = UL.getCurrentMembre();
   const canEdit = isBureau(m);
   return `<div class="card" style="margin-bottom:10px;border-left:3px solid #1A56DB;">
