@@ -70,35 +70,34 @@ async function doChangeMdp() {
   catch(e) { toast(e.message || 'Impossible de changer le mot de passe', 'error'); }
 }
 
-// ─── CHARTE ───────────────────────────────────────────────────
+// ─── CHARTE (consultation, depuis Profil) ──────────────────────
+// La signature elle-même se fait exclusivement via le gate bloquant
+// (afficherCharteGate / signerCharteGate dans app.js) — cette page est
+// accessible une fois la charte déjà signée, en lecture seule, pour
+// permettre à un membre de relire le texte ou vérifier sa date de
+// signature / validité.
 async function loadCharte() {
   try {
     const charte = await UL.getCharteActive();
-    if (!charte) return;
-    document.getElementById('charteTexte').textContent = charte.contenu;
-    document.getElementById('pageCharte')._charteId = charte.id;
-  } catch(e) {}
-}
-function checkCharteScroll(el) {
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 20) {
-    const cb = document.getElementById('charteAccept');
-    cb.disabled = false;
-    // Rendre le wrapper cliquable aussi
-    const wrap = document.getElementById('charteCheckWrap');
-    if (wrap) {
-      wrap.style.cursor = 'pointer';
-      wrap.onclick = () => { cb.checked = !cb.checked; document.getElementById('btnSignerCharte').disabled = !cb.checked; };
+    const infoEl = document.getElementById('charteStatutInfo');
+    if (!charte) {
+      document.getElementById('charteTexte').textContent = 'Aucune charte active pour le moment.';
+      if (infoEl) infoEl.textContent = '';
+      return;
     }
-    cb.onchange = () => { document.getElementById('btnSignerCharte').disabled = !cb.checked; };
-  }
-}
-async function signerCharte() {
-  const charteId = document.getElementById('pageCharte')._charteId;
-  if (!charteId) return;
-  try {
-    await UL.signerCharte(charteId);
-    toast('Charte signée ✅', 'success');
-    document.getElementById('charteAlert').style.display = 'none';
-    showPage('pageAccueil');
-  } catch(e) { toast('Impossible de signer la charte', 'error'); }
+    document.getElementById('charteTexte').textContent = charte.contenu || '';
+    if (infoEl) {
+      const m = UL.getCurrentMembre();
+      const dateSignature = m?.charte_signee_at
+        ? new Date(m.charte_signee_at).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
+        : null;
+      const dateValidite = charte.date_fin_validite
+        ? new Date(charte.date_fin_validite).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
+        : null;
+      infoEl.innerHTML = [
+        dateSignature ? `✅ Signée le ${dateSignature}` : '',
+        dateValidite ? `Valable jusqu'au ${dateValidite}` : '',
+      ].filter(Boolean).join(' · ');
+    }
+  } catch(e) {}
 }
