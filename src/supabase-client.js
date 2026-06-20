@@ -25,7 +25,6 @@ let currentMembre = null;
 // notre code DOMContentLoaded ne s'exécute. L'événement 'PASSWORD_RECOVERY' du
 // SDK est la seule source fiable pour détecter un clic sur le lien de reset.
 sb.auth.onAuthStateChange((event, session) => {
-  console.log('[UL DEBUG] onAuthStateChange:', event);
   if (event === 'PASSWORD_RECOVERY') {
     if (typeof window.UL_ON_PASSWORD_RECOVERY === 'function') {
       window.UL_ON_PASSWORD_RECOVERY(session);
@@ -152,10 +151,7 @@ async function logout() {
 
 async function changePassword(newPassword) {
   const { error } = await sb.auth.updateUser({ password: newPassword });
-  if (error) {
-    console.error('[UL DEBUG] changePassword error:', error);
-    throw new Error('Erreur changement mot de passe : ' + error.message);
-  }
+  if (error) throw new Error('Erreur changement mot de passe : ' + error.message);
   return { success: true };
 }
 
