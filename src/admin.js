@@ -449,8 +449,15 @@ async function loadMembresComite() {
       UL.getAllMembres(),
       UL.getSections(),
     ]);
-    const evals = await UL.getEvaluationsCourantesBatch(membres.map(m => m.id));
-    membres.forEach(m => { m._evalCourante = evals[m.id] || {}; });
+    const membreIds = membres.map(m => m.id);
+    const [evals, participations] = await Promise.all([
+      UL.getEvaluationsCourantesBatch(membreIds),
+      UL.getParticipationBatch(membreIds),
+    ]);
+    membres.forEach(m => {
+      m._evalCourante = evals[m.id] || {};
+      m._participation = participations[m.id] || { tifoPresent: 0, tifoAbsent: 0, deplPaye: 0, deplNonPaye: 0 };
+    });
     _allMembresComite = membres;
 
     const selSection = document.getElementById('filterSectionComite');
@@ -570,6 +577,10 @@ function renderMembreComiteCard(m) {
         ${m.section ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:1px;">🛡️ ${esc(m.section.nom)}</div>` : ''}
       </div>
       <span class="badge ${m.actif?'badge-vert':'badge-rouge'}" style="flex-shrink:0;font-size:10px;">${m.actif?'✅ Actif':'⛔ Bloqué'}</span>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--gris);">
+      <span>🖌️ ${m._participation?.tifoPresent ?? 0} présent${(m._participation?.tifoPresent ?? 0) === 1 ? '' : 's'} · ${m._participation?.tifoAbsent ?? 0} absent${(m._participation?.tifoAbsent ?? 0) === 1 ? '' : 's'}</span>
+      <span>🚌 ${m._participation?.deplPaye ?? 0} payé${(m._participation?.deplPaye ?? 0) === 1 ? '' : 's'} · ${m._participation?.deplNonPaye ?? 0} non payé${(m._participation?.deplNonPaye ?? 0) === 1 ? '' : 's'}</span>
     </div>
     ${categorie ? `
     <div style="display:flex;gap:4px;margin-top:10px;" data-eval-boutons="${categorie}_${m.id}">
