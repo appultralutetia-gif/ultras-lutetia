@@ -99,18 +99,20 @@ function ouvrirModalMdpOublie() {
 }
 async function doDemandeResetMdp() {
   const pseudo = document.getElementById('mdpOublieTelegram').value.trim();
+  const email = document.getElementById('mdpOublieEmail').value.trim();
   if (!pseudo) return toast('Indique ton pseudo Telegram', 'error');
+  if (!email || !email.includes('@')) return toast('Indique l\u2019email de ton compte', 'error');
   try {
     showLoading();
-    await UL.demanderResetMdp(pseudo);
+    await UL.demanderResetMdp(pseudo, email);
     hideLoading();
     closeModal('modalMdpOublie');
-    toast('Si ce pseudo existe, un email vient d\u2019être envoyé \u2705', 'success', 5000);
+    toast('Si ces informations correspondent à un compte, un email vient d\u2019être envoyé \u2705', 'success', 5000);
   } catch(e) {
     hideLoading();
-    // Message volontairement générique — ne pas confirmer/infirmer l'existence du pseudo
+    // Message volontairement générique — ne pas confirmer/infirmer si pseudo/email correspondent
     closeModal('modalMdpOublie');
-    toast('Si ce pseudo existe, un email vient d\u2019être envoyé \u2705', 'success', 5000);
+    toast('Si ces informations correspondent à un compte, un email vient d\u2019être envoyé \u2705', 'success', 5000);
   }
 }
 async function doResetMdp() {
