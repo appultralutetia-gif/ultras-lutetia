@@ -555,17 +555,21 @@
   </div>
 </div>
 
-<!-- Modal Mot de passe oublié — demande de pseudo -->
+<!-- Modal Mot de passe oublié — demande de pseudo + email -->
 <div class="modal-overlay" id="modalMdpOublie" style="display:none;" onclick="closeModalOutside(event,'modalMdpOublie')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
     <h3 class="modal-title">Mot de passe oublié</h3>
     <p style="font-size:13px;color:var(--gris);margin-bottom:14px;">
-      Indique ton pseudo Telegram, on t'envoie un lien par email pour choisir un nouveau mot de passe.
+      Indique ton pseudo Telegram et l'email de ton compte, on t'envoie un lien pour choisir un nouveau mot de passe.
     </p>
     <div class="form-group">
       <label>Pseudo Telegram</label>
       <input type="text" id="mdpOublieTelegram" placeholder="@pseudo" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label>Email du compte</label>
+      <input type="email" id="mdpOublieEmail" placeholder="email@exemple.fr" autocomplete="email">
     </div>
     <button class="btn btn-primary" onclick="doDemandeResetMdp()">Envoyer le lien</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalMdpOublie')">Annuler</button>
