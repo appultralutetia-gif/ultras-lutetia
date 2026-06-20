@@ -643,10 +643,12 @@ function csvEscape(val) {
 function exporterCsvMembresComite() {
   const membres = _membresComiteTriesAffiches;
   if (!membres.length) return toast('Aucun membre à exporter avec ces filtres', 'error');
-  const entete = ['Pseudo', 'Prénom', 'Nom', 'Email', 'Statut', 'Section', 'Niveau'];
+  const entete = ['Pseudo', 'Prénom', 'Nom', 'Email', 'Statut', 'Section', 'Niveau', 'Tifo présents', 'Tifo absents', 'Dépl. payés', 'Dépl. non payés'];
   const lignes = membres.map(m => [
     m.pseudo_telegram || '', m.prenom || '', m.nom || '', m.email || '',
     m.statut || '', m.section?.nom || '', niveauLabelComite(m),
+    m._participation?.tifoPresent ?? 0, m._participation?.tifoAbsent ?? 0,
+    m._participation?.deplPaye ?? 0, m._participation?.deplNonPaye ?? 0,
   ]);
   // BOM UTF-8 en tête pour qu'Excel reconnaisse l'encodage et affiche
   // correctement les accents/emoji sans réglage manuel à l'ouverture.
