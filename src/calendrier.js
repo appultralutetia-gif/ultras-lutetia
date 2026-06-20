@@ -65,8 +65,12 @@ function renderMatchCard(match, membre) {
     ? `<div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.05em;margin:4px 0;">${match.score_domicile} — ${match.score_exterieur}</div>` : '';
   const saisieScore = isPasse && isBureau(membre) && !score
     ? `<button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="saisirScore('${match.id}')">⚽ Saisir le score</button>` : '';
+  const statutDateBadge = match.statut_date === 'a_confirmer'
+    ? '<span class="badge badge-orange" style="font-size:10px;">⏳ Date à confirmer</span>' : '';
+  const confirmerBtn = isBureau(membre) && match.statut_date === 'a_confirmer'
+    ? `<button class="btn btn-sm btn-success" style="margin-top:8px;" onclick="ouvrirConfirmerDate('${match.id}')">✅ Confirmer la date</button>` : '';
 
-  return `<div class="card" style="margin-bottom:10px;">
+  return `<div class="card" style="margin-bottom:10px;${match.statut_date==='a_confirmer'?'border-left:3px solid #F59E0B;':''}">
     <div style="display:flex;align-items:center;gap:12px;">
       ${logoAdv ? `<img src="${esc(logoAdv)}" style="width:38px;height:38px;object-fit:contain;flex-shrink:0;">` : '<div style="width:38px;height:38px;background:var(--surface);border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;">⚽</div>'}
       <div style="flex:1;min-width:0;">
@@ -80,8 +84,10 @@ function renderMatchCard(match, membre) {
     <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
       ${match.journee ? `<span style="font-size:11px;color:var(--gris);">J${match.journee}</span>` : ''}
       ${match.competition ? `<span class="badge badge-bleu" style="font-size:10px;">${esc(match.competition)}</span>` : ''}
+      ${statutDateBadge}
     </div>
     ${saisieScore}
+    ${confirmerBtn}
   </div>`;
 }
 
@@ -238,4 +244,3 @@ async function doSupprimerEvenement(id) {
     loadCalendrier();
   } catch(e) { toast('Impossible de supprimer l\'événement', 'error'); }
 }
-
