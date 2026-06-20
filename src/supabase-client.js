@@ -1030,7 +1030,7 @@ async function archiverProduit(id) {
 async function passerCommande(produitId, taille, modePaiement, quantite = 1) {
   const produit = await getProduitById(produitId);
   if (!produit) throw new Error('Article introuvable');
-  // Vérif quota si collector
+  // Vérif quota par membre (ex: articles à tirage limité)
   if (produit.quota_par_membre) {
     const { data: dejaCommande } = await sb.from('commandes')
       .select('commande_items(quantite)')
@@ -1110,6 +1110,13 @@ async function getSticks() {
     }
     return false;
   });
+}
+
+async function createStick(stick) {
+  const { data, error } = await sb.from('sticks_catalogue')
+    .insert(stick).select().single();
+  if (error) throw error;
+  return data;
 }
 
 async function getMonQuotaStick(stickId) {
@@ -1399,7 +1406,7 @@ window.UL = {
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
   passerCommande, getMesCommandes, getAllCommandes, updateCommandeStatut,
   // Sticks
-  getSticks, getMonQuotaStick, demanderStick, getMesSticks,
+  getSticks, createStick, getMonQuotaStick, demanderStick, getMesSticks,
   distribuerStickAdmin, getAllDistributions, validerPaiementStick,
   // Cotisations
   getConfigCotisation, updateConfigCotisation, getMaCotisation,
