@@ -290,6 +290,25 @@ async function getEvaluationsMembre(membreId) {
   return courantes;
 }
 
+// Version batch de getEvaluationsMembre — une seule requête pour N membres
+// (utilisée par les listes d'évaluation Tifo/Comité, pour éviter un N+1
+// si on appelait getEvaluationsMembre membre par membre).
+// Retourne : { [membreId]: { tifo: 2, comite_sympa: null, ... } }
+async function getEvaluationsCourantesBatch(membreIds) {
+  if (!membreIds || !membreIds.length) return {};
+  const { data, error } = await sb.from('evaluations')
+    .select('membre_id, categorie, note, created_at')
+    .in('membre_id', membreIds)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  const parMembre = {};
+  (data || []).forEach(e => {
+    if (!parMembre[e.membre_id]) parMembre[e.membre_id] = {};
+    if (!(e.categorie in parMembre[e.membre_id])) parMembre[e.membre_id][e.categorie] = e.note;
+  });
+  return parMembre;
+}
+
 // Historique complet d'une catégorie pour un membre (qui a noté, quand)
 async function getHistoriqueEvaluation(membreId, categorie) {
   const { data, error } = await sb.from('evaluations')
@@ -1387,7 +1406,7 @@ window.UL = {
   // Membres
   getMembre, getAllMembres, updateMembre, updateStatutMembre,
   updateSectionMembre, toggleBlocageMembre,
-  noterMembre, getEvaluationsMembre, getHistoriqueEvaluation,
+  noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
   adminResetPassword, updateMembreMdp, supprimerMembre,
   // Référentiels
   getSections, getCellules, rattacherCellule,
