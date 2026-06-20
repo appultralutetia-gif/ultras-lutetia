@@ -409,22 +409,28 @@ async function getMembresNonSignataires() {
 async function getUpcomingSessions() {
   const today = new Date().toISOString().split('T')[0];
   const { data, error } = await sb.from('sessions_tifo')
-    .select('*')
+    .select('*, inscriptions_session(statut)')
     .gte('date', today)
     .in('statut', ['a_venir', 'en_cours'])
     .order('date');
   if (error) throw error;
-  return data || [];
+  return (data || []).map(s => ({
+    ...s,
+    _nb_inscrits: s.inscriptions_session?.length || 0,
+  }));
 }
 
 async function getPastSessions() {
   const today = new Date().toISOString().split('T')[0];
   const { data } = await sb.from('sessions_tifo')
-    .select('*')
+    .select('*, inscriptions_session(statut)')
     .lt('date', today)
     .order('date', { ascending: false })
     .limit(20);
-  return data || [];
+  return (data || []).map(s => ({
+    ...s,
+    _nb_inscrits: s.inscriptions_session?.length || 0,
+  }));
 }
 
 async function getSessionDetails(sessionId) {
