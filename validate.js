@@ -67,7 +67,6 @@ const REQUIRED_BY_MODULE = {
     'loadDemandesAdmin', 'validerDemandeAdmin',
     'doPublierAnnonce',
     'loadGererCharte', 'doSauvegarderCharte',
-    'ouvrirEvaluationMembresComite',
     'loadMembresComite', 'filtrerMembresComite', 'renderMembresComiteListe', 'toggleMembreComite',
   ],
   'src/profil.js': [
