@@ -11,7 +11,6 @@ async function loadBoutique() {
     document.getElementById('toutesCommandesSection').style.display = 'block';
   }
   if (hasCelluleSticks(m)) {
-    document.getElementById('btnDistribuerStick').style.display = 'block';
     document.getElementById('toutesDistribsSection').style.display = 'block';
   }
   if (isBureau(m)) {
@@ -61,7 +60,7 @@ function renderMatos(produits) {
     return;
   }
   el.innerHTML = produits.map(p => {
-    const icones = { textile:'👕', accessoire:'🎒', collector:'⭐' };
+    const icones = { textile:'👕', accessoire:'🎒' };
     const stockBadge = p.stock <= 3 && p.stock > 0
       ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
       : p.stock === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
@@ -95,7 +94,7 @@ function renderMatos(produits) {
 async function openCommander(produitId) {
   try {
     const p = await UL.getProduitById(produitId);
-    const icones = { textile:'👕', accessoire:'🎒', collector:'⭐' };
+    const icones = { textile:'👕', accessoire:'🎒' };
 
     // Section tailles — boutons cliquables
     const taillesHtml = p.avec_tailles ? `
@@ -244,7 +243,7 @@ function filtrerSticks(cat) {
 
 function renderSticks(sticks) {
   const el = document.getElementById('sticksCatalogue');
-  const icones = { sticker:'🎟️', fumigene:'💨', drapeau:'🚩', echarpe:'🧣', collector:'⭐', autre:'📦' };
+  const icones = { sticker:'🎟️', fumigene:'💨', drapeau:'🚩', echarpe:'🧣', autre:'📦' };
   if (!sticks.length) { el.innerHTML = '<div class="empty-state"><div>🎟️</div>Aucun stick disponible</div>'; return; }
   el.innerHTML = sticks.map(s => `
     <div class="stick-card">
@@ -533,3 +532,71 @@ async function doCreerProduit() {
   }
 }
 
+// ── STICKS — création (Admin/Cellule Sticks) ───────────────────
+function toggleSectionSelectStick() {
+  const val = document.getElementById('stAcces').value;
+  document.getElementById('sectionSelectGroupStick').style.display = val === 'section' ? 'block' : 'none';
+}
+
+async function loadSectionsForModalStick() {
+  try {
+    const sections = await UL.getSections();
+    const sel = document.getElementById('stSection');
+    sel.innerHTML = sections.map(s =>
+      `<option value="${s.id}">${s.nom}</option>`
+    ).join('');
+  } catch(e) {}
+}
+
+async function doCreerStick() {
+  const nom = document.getElementById('stNom').value.trim();
+  const prixRaw = document.getElementById('stPrix').value;
+  const prix = prixRaw ? parseFloat(prixRaw) : null;
+  const acces = document.getElementById('stAcces').value;
+  const sectionId = acces === 'section' ? document.getElementById('stSection').value : null;
+
+  if (!nom) return toast('Nom requis', 'error');
+  if (acces === 'section' && !sectionId) return toast('Sélectionne une section', 'error');
+
+  try {
+    showLoading();
+
+    // Upload visuel si présent
+    let visuelUrl = null;
+    const photoFile = document.getElementById('stPhoto').files[0];
+    if (photoFile) {
+      visuelUrl = await UL.uploadPhotoStick(photoFile, nom);
+    }
+
+    await UL.createStick({
+      nom,
+      categorie: document.getElementById('stCat').value,
+      serie: document.getElementById('stSerie').value.trim() || null,
+      prix,
+      stock: parseInt(document.getElementById('stStock').value) || 0,
+      quota_par_membre: parseInt(document.getElementById('stQuota').value) || null,
+      niveau_acces: acces,
+      section_id: sectionId,
+      lien_helloasso: document.getElementById('stHelloasso').value.trim() || null,
+      statut: 'disponible',
+      visuel_url: visuelUrl,
+    });
+
+    hideLoading();
+    const sectionNom = acces === 'section'
+      ? document.getElementById('stSection').options[document.getElementById('stSection').selectedIndex].text
+      : null;
+
+    toast(`Stick créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Généraliste'}`, 'success');
+    closeModal('modalCreerStick');
+    ['stNom','stSerie','stPrix','stStock','stQuota','stHelloasso'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('stPhoto').value = '';
+    document.getElementById('photoPreviewStick').style.display = 'none';
+    document.getElementById('stAcces').value = 'tous';
+    document.getElementById('sectionSelectGroupStick').style.display = 'none';
+    loadSticks();
+  } catch(e) {
+    hideLoading();
+    toast(e.message || 'Erreur création stick', 'error');
+  }
+}
