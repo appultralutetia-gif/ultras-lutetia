@@ -45,6 +45,7 @@ let allMembres = [];
 // Peut se déclencher avant que le DOM soit complètement prêt (le listener
 // est attaché dès l'exécution de supabase-client.js) — chaque accès DOM
 // est donc protégé, et on réessaie après DOMContentLoaded si besoin.
+let appDejaInitialisee = false;
 function appliquerAffichageResetMdp() {
   const loginPage = document.getElementById('loginPage');
   const appContainer = document.getElementById('appContainer');
@@ -63,10 +64,11 @@ function appliquerAffichageResetMdp() {
 
 let recoveryEnAttente = false;
 window.UL_ON_PASSWORD_RECOVERY = function() {
-  if (!appliquerAffichageResetMdp()) {
-    // DOM pas encore prêt — on retente une fois DOMContentLoaded déclenché.
-    recoveryEnAttente = true;
-  }
+  recoveryEnAttente = true;
+  // Si l'app a déjà fini son initialisation normale (showApp/showLoginPage
+  // déjà exécuté) au moment où cet événement arrive, on rattrape tout de
+  // suite. Sinon, DOMContentLoaded s'en chargera après UL.initSession().
+  if (appDejaInitialisee) appliquerAffichageResetMdp();
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -74,37 +76,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     navigator.serviceWorker.register('/ultras-lutetia/sw.js').catch(() => {});
   }
 
-  // Si PASSWORD_RECOVERY s'est déclenché avant que le DOM soit prêt
-  // (le listener est attaché dès le chargement de supabase-client.js,
-  // potentiellement avant que le HTML du body soit entièrement parsé).
-  if (recoveryEnAttente) {
-    appliquerAffichageResetMdp();
-    return;
-  }
-
-  // Si un hash d'auth est présent (confirmation email ou lien de reset),
-  // on laisse le SDK le traiter. Pour le cas recovery, c'est l'événement
-  // PASSWORD_RECOVERY (ci-dessus) qui prendra le relais, pas ce timer.
-  const hash = window.location.hash;
-  if (hash && hash.includes('access_token')) {
-    showLoading();
-    await new Promise(r => setTimeout(r, 1500));
-    window.history.replaceState({}, '', window.location.pathname);
-  }
-
-  // Re-vérifier : PASSWORD_RECOVERY peut être arrivé pendant l'attente ci-dessus.
-  if (recoveryEnAttente) {
-    appliquerAffichageResetMdp();
-    return;
-  }
-
+  showLoading();
   const { membre } = await UL.initSession();
   hideLoading();
+  window.history.replaceState({}, '', window.location.pathname);
 
-  // Si le modal de reset est déjà affiché (PASSWORD_RECOVERY déclenché
-  // pendant l'attente ci-dessus), on ne casse pas l'affichage en lançant showApp.
-  if (document.getElementById('modalResetMdp').style.display === 'flex') return;
+  // PASSWORD_RECOVERY a pu arriver pendant ou après UL.initSession() ci-dessus.
+  // Dans tous les cas, le modal de reset prime sur l'affichage normal.
+  if (recoveryEnAttente) {
+    appliquerAffichageResetMdp();
+    appDejaInitialisee = true;
+    return;
+  }
 
+  appDejaInitialisee = true;
   membre ? showApp(membre) : showLoginPage();
 });
 
