@@ -19,6 +19,19 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 let currentMembre = null;
 
+// Callback optionnel assigné par app.js (window.UL_ON_PASSWORD_RECOVERY = fn).
+// On ne peut pas se fier à la lecture manuelle de window.location.hash : le SDK
+// supabase-js parse et nettoie le hash automatiquement, souvent avant même que
+// notre code DOMContentLoaded ne s'exécute. L'événement 'PASSWORD_RECOVERY' du
+// SDK est la seule source fiable pour détecter un clic sur le lien de reset.
+sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    if (typeof window.UL_ON_PASSWORD_RECOVERY === 'function') {
+      window.UL_ON_PASSWORD_RECOVERY(session);
+    }
+  }
+});
+
 async function initSession() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
