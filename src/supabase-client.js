@@ -349,6 +349,40 @@ async function deleteMatch(id) {
   return { success: true };
 }
 
+async function saisirScoreMatch(id, scoreDomicile, scoreExterieur) {
+  const { data, error } = await sb.from('matchs')
+    .update({ score_domicile: scoreDomicile, score_exterieur: scoreExterieur })
+    .eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+// Confirme la date + horaire d'un match (Bureau+). statut_date passe de
+// 'a_confirmer' à 'confirmee'. Permet aussi d'ajuster date/horaire/stade
+// dans la même action si la LFP les a modifiés au moment de la confirmation
+// officielle (TV, sécurité, etc.).
+async function confirmerDateMatch(id, { date, horaire, stade } = {}) {
+  const update = { statut_date: 'confirmee' };
+  if (date) update.date = date;
+  if (horaire !== undefined) update.horaire = horaire || null;
+  if (stade !== undefined) update.stade = stade || null;
+  const { data, error } = await sb.from('matchs')
+    .update(update)
+    .eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+// Repasse un match confirmé en "à confirmer" (erreur de saisie, annonce
+// LFP annulée, etc.) — Bureau+.
+async function rouvrirConfirmationMatch(id) {
+  const { data, error } = await sb.from('matchs')
+    .update({ statut_date: 'a_confirmer' })
+    .eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
 // ============================================================
 // CHARTE
 // ============================================================
@@ -1310,6 +1344,7 @@ window.UL = {
   getSections, getCellules, rattacherCellule,
   // Calendrier
   getCalendar, addMatch, getMatchs, deleteMatch,
+  saisirScoreMatch, confirmerDateMatch, rouvrirConfirmationMatch,
   // Charte
   getCharteActive, signerCharte, getMembresNonSignataires, checkConformiteCharte, publierNouvelleCharte,
   // Sessions Tifo
