@@ -113,10 +113,23 @@ function showLoginPage() {
 function showLogin() {
   document.getElementById('loginForm').style.display = 'block';
   document.getElementById('inscriptionForm').style.display = 'none';
+  document.getElementById('otpForm').style.display = 'none';
 }
 function showInscription() {
   document.getElementById('loginForm').style.display = 'none';
   document.getElementById('inscriptionForm').style.display = 'block';
+  document.getElementById('otpForm').style.display = 'none';
+}
+// Mémorise l'email en cours de vérification (entre inscription et saisie
+// du code OTP, et pour le bouton "renvoyer le code").
+let _emailEnAttenteOtp = null;
+function showOtpForm(email) {
+  _emailEnAttenteOtp = email;
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('inscriptionForm').style.display = 'none';
+  document.getElementById('otpForm').style.display = 'block';
+  document.getElementById('otpEmailAffiche').textContent = email;
+  document.getElementById('otpCode').value = '';
 }
 async function doLogin() {
   const pseudo = document.getElementById('loginTelegram').value.trim();
@@ -186,9 +199,34 @@ async function doInscription() {
     showLoading();
     await UL.inscription({ prenom, nom, pseudoTelegram: pseudo, email, ville, codePostal, password: pwd });
     hideLoading();
-    toast('Compte créé ✅ — Un email de confirmation t\'a été envoyé. Vérifie ta boîte mail (et tes spams) avant de te connecter.', 'success', 8000);
-    showLogin();
+    showOtpForm(email);
+    toast('Compte créé ✅ — entre le code reçu par email ci-dessous.', 'success', 5000);
   } catch(e) { hideLoading(); toast(e.message || 'Erreur inscription', 'error'); }
+}
+// Vérifie le code à 6 chiffres reçu par email (remplace l'ancien lien
+// cliquable, qui pouvait être consommé automatiquement par certains
+// scanners de sécurité avant que le membre ne clique lui-même — voir
+// BUGS.md section confirmation email / Brevo).
+async function doVerifyOtp() {
+  const code = document.getElementById('otpCode').value.trim();
+  if (!code || code.length < 6) return toast('Code à 6 chiffres requis', 'error');
+  if (!_emailEnAttenteOtp) return toast('Session expirée, recommence l\u2019inscription', 'error');
+  try {
+    showLoading();
+    await UL.verifierCodeInscription(_emailEnAttenteOtp, code);
+    hideLoading();
+    toast('Email confirmé ✅ — un membre du bureau doit maintenant valider ton compte.', 'success', 6000);
+    showLogin();
+  } catch(e) { hideLoading(); toast(e.message || 'Code invalide ou expiré', 'error'); }
+}
+async function doRenvoyerOtp() {
+  if (!_emailEnAttenteOtp) return toast('Session expirée, recommence l\u2019inscription', 'error');
+  try {
+    showLoading();
+    await UL.renvoyerCodeInscription(_emailEnAttenteOtp);
+    hideLoading();
+    toast('Nouveau code envoyé ✅', 'success');
+  } catch(e) { hideLoading(); toast(e.message || 'Impossible de renvoyer le code', 'error'); }
 }
 async function doLogout() {
   try {
