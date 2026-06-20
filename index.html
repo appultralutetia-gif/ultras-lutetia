@@ -804,20 +804,21 @@
 <div class="modal-overlay" id="modalMatchs" style="display:none;" onclick="closeModalOutside(event,'modalMatchs')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
-    <h3 class="modal-title">Calendrier matchs</h3>
+    <h3 class="modal-title" id="modalMatchsTitre">Calendrier matchs</h3>
     <div class="card" style="margin-bottom:12px;">
-      <div class="card-label">Ajouter un match</div>
-      <div class="form-group"><input type="text" id="mExt" placeholder="Adversaire (ex: OGC Nice)"></div>
+      <div class="card-label" id="modalMatchsFormLabel">Ajouter un match</div>
+      <div class="form-group" id="mExtGroup"><input type="text" id="mExt" placeholder="Adversaire (ex: OGC Nice)"></div>
       <div class="form-group"><input type="date" id="mDate"></div>
       <div class="form-group"><input type="time" id="mHeure"></div>
-      <div class="form-group">
+      <div class="form-group" id="mTypeGroup">
         <select id="mType"><option value="exterieur">Extérieur</option><option value="domicile">Domicile</option></select>
       </div>
       <div class="form-group"><input type="text" id="mStade" placeholder="Stade"></div>
-      <button class="btn btn-primary btn-sm" style="width:auto;" onclick="doAjouterMatch()">+ Ajouter</button>
+      <button class="btn btn-primary btn-sm" id="modalMatchsSubmitBtn" style="width:auto;" onclick="doAjouterMatch()">+ Ajouter</button>
+      <button class="btn btn-secondary btn-sm" id="modalMatchsCancelBtn" style="width:auto;display:none;" onclick="annulerConfirmerDate()">Annuler</button>
     </div>
     <div id="matchsList"></div>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalMatchs')">Fermer</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="annulerConfirmerDate();closeModal('modalMatchs')">Fermer</button>
   </div>
 </div>
 
