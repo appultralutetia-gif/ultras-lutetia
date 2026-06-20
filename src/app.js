@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Si hash access_token présent, attendre que Supabase JS le traite
   const hash = window.location.hash;
+  const isRecovery = hash && hash.includes('type=recovery');
   if (hash && hash.includes('access_token')) {
     showLoading();
     await new Promise(r => setTimeout(r, 1500));
@@ -52,6 +53,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   const { membre } = await UL.initSession();
+
+  // Lien de récupération mot de passe : on bloque sur le choix du nouveau
+  // mot de passe avant de laisser entrer dans l'app, même si une session
+  // temporaire de recovery est déjà active.
+  if (isRecovery && membre) {
+    document.getElementById('loginPage').style.display = 'flex';
+    document.getElementById('appContainer').style.display = 'none';
+    showModal('modalResetMdp');
+    return;
+  }
+
   membre ? showApp(membre) : showLoginPage();
 });
 
@@ -78,6 +90,44 @@ async function doLogin() {
     hideLoading();
     showApp(membre);
   } catch(e) { hideLoading(); toast(e.message || 'Erreur de connexion', 'error'); }
+}
+
+// ─── Mot de passe oublié ───────────────────────────────────────
+function ouvrirModalMdpOublie() {
+  document.getElementById('mdpOublieTelegram').value = document.getElementById('loginTelegram').value.trim();
+  showModal('modalMdpOublie');
+}
+async function doDemandeResetMdp() {
+  const pseudo = document.getElementById('mdpOublieTelegram').value.trim();
+  if (!pseudo) return toast('Indique ton pseudo Telegram', 'error');
+  try {
+    showLoading();
+    await UL.demanderResetMdp(pseudo);
+    hideLoading();
+    closeModal('modalMdpOublie');
+    toast('Si ce pseudo existe, un email vient d\u2019être envoyé \u2705', 'success', 5000);
+  } catch(e) {
+    hideLoading();
+    // Message volontairement générique — ne pas confirmer/infirmer l'existence du pseudo
+    closeModal('modalMdpOublie');
+    toast('Si ce pseudo existe, un email vient d\u2019être envoyé \u2705', 'success', 5000);
+  }
+}
+async function doResetMdp() {
+  const p1 = document.getElementById('resetMdpNew').value;
+  const p2 = document.getElementById('resetMdpConfirm').value;
+  if (p1.length < 8) return toast('Mot de passe trop court (8 min)', 'error');
+  if (p1 !== p2) return toast('Les mots de passe ne correspondent pas', 'error');
+  try {
+    showLoading();
+    await UL.changePassword(p1);
+    await UL.logout();
+    hideLoading();
+    closeModal('modalResetMdp');
+    toast('Mot de passe modifié \u2705 — reconnecte-toi', 'success', 4000);
+    showLoginPage();
+    showLogin();
+  } catch(e) { hideLoading(); toast(e.message || 'Impossible de modifier le mot de passe', 'error'); }
 }
 async function doInscription() {
   const prenom = document.getElementById('regPrenom').value.trim();
