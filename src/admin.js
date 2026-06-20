@@ -426,24 +426,91 @@ async function doSauvegarderCharte() {
 // renderCarteEvaluation/doNoterMembre sont définis dans tifos.js
 // (modules en globals window-exposed, partage normal sur ce projet).
 let _allMembresComite = [];
+// État combiné des filtres — partagé par les deux boutons d'export, qui
+// exportent toujours exactement ce qui est affiché à l'écran.
+let _filtresComite = { recherche: '', statut: '', sectionId: '', niveau: '' };
 
 async function loadMembresComite() {
   document.getElementById('membresComiteList').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  // Réinitialisation à chaque entrée sur la page : le HTML des boutons de
+  // filtre et le <select> sections sont régénérés ci-dessous, donc l'état
+  // JS doit repartir à zéro avec eux pour rester synchronisé (sinon un
+  // filtre resté actif en mémoire d'une visite précédente ne serait plus
+  // reflété visuellement, mais s'appliquerait quand même).
+  _filtresComite = { recherche: '', statut: '', sectionId: '', niveau: '' };
+  const searchInput = document.getElementById('searchMembreComite');
+  if (searchInput) searchInput.value = '';
+  document.querySelectorAll('#filtresStatutComite .filter-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.statut === ''));
+  document.querySelectorAll('#filtresNiveauComite .filter-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.niveau === ''));
   try {
-    const membres = await UL.getAllMembres();
+    const [membres, sections] = await Promise.all([
+      UL.getAllMembres(),
+      UL.getSections(),
+    ]);
     const evals = await UL.getEvaluationsCourantesBatch(membres.map(m => m.id));
     membres.forEach(m => { m._evalCourante = evals[m.id] || {}; });
     _allMembresComite = membres;
-    renderMembresComiteListe(_allMembresComite);
+
+    const selSection = document.getElementById('filterSectionComite');
+    selSection.innerHTML = '<option value="">Toutes sections</option>' +
+      sections.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
+
+    appliquerFiltresComite();
   } catch(e) { toast('Erreur chargement membres', 'error'); }
 }
 
 function filtrerMembresComite() {
-  const q = document.getElementById('searchMembreComite').value.trim().toLowerCase();
-  if (!q) return renderMembresComiteListe(_allMembresComite);
-  renderMembresComiteListe(_allMembresComite.filter(m => [
-    m.nom, m.prenom, m.pseudo_telegram, m.email, m.ville, m.code_postal, m.section?.nom,
-  ].filter(Boolean).join(' ').toLowerCase().includes(q)));
+  _filtresComite.recherche = document.getElementById('searchMembreComite').value.trim().toLowerCase();
+  appliquerFiltresComite();
+}
+function filtrerStatutComite(statut) {
+  _filtresComite.statut = statut;
+  document.querySelectorAll('#filtresStatutComite .filter-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.statut === statut));
+  appliquerFiltresComite();
+}
+function filtrerNiveauComite(niveau) {
+  _filtresComite.niveau = niveau;
+  document.querySelectorAll('#filtresNiveauComite .filter-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.niveau === niveau));
+  appliquerFiltresComite();
+}
+function filtrerSectionComite() {
+  _filtresComite.sectionId = document.getElementById('filterSectionComite').value;
+  appliquerFiltresComite();
+}
+
+// Le niveau d'un membre = sa note dans SA catégorie de notation
+// (comite_sympa pour un Sympathisant, comite_draft pour un Draft).
+// Un membre sans catégorie applicable (Confirmé+) est toujours "non noté".
+function niveauNoteComite(m) {
+  const categorie = categorieNotationComite(m);
+  return categorie ? (m._evalCourante?.[categorie] ?? null) : null;
+}
+
+// Applique recherche + statut + section + niveau ensemble (ET logique),
+// puis affiche le résultat. C'est cette liste filtrée, et uniquement
+// elle, qui sera utilisée par les deux boutons d'export.
+function appliquerFiltresComite() {
+  const { recherche, statut, sectionId, niveau } = _filtresComite;
+  const filtres = _allMembresComite.filter(m => {
+    if (recherche) {
+      const champs = [m.nom, m.prenom, m.pseudo_telegram, m.email, m.ville, m.code_postal, m.section?.nom]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!champs.includes(recherche)) return false;
+    }
+    if (statut && m.statut !== statut) return false;
+    if (sectionId && m.section_id !== sectionId) return false;
+    if (niveau) {
+      const n = niveauNoteComite(m);
+      if (niveau === 'non_note') { if (n !== null) return false; }
+      else if (n !== Number(niveau)) return false;
+    }
+    return true;
+  });
+  renderMembresComiteListe(filtres);
 }
 
 // Tri : niveau hiérarchique d'abord (Admin en tête, Sympathisant en
@@ -456,15 +523,21 @@ function niveauMembreComite(m) {
   return ORDRE_STATUT_COMITE[m.statut] ?? 3;
 }
 
+// Liste actuellement filtrée/triée, mémorisée pour que les exports
+// portent exactement sur ce qui est affiché (évite de retrier deux fois
+// avec un risque de léger écart d'ordre entre affichage et export).
+let _membresComiteTriesAffiches = [];
+
 function renderMembresComiteListe(membres) {
   const el = document.getElementById('membresComiteList');
-  if (!membres.length) { el.innerHTML = '<div class="empty-state"><div>👥</div>Aucun membre</div>'; return; }
   const tries = [...membres].sort((a, b) => {
     const na = niveauMembreComite(a), nb = niveauMembreComite(b);
     if (na !== nb) return na - nb;
     return `${a.prenom||''} ${a.nom||''}`.trim().toLowerCase()
       .localeCompare(`${b.prenom||''} ${b.nom||''}`.trim().toLowerCase());
   });
+  _membresComiteTriesAffiches = tries;
+  if (!tries.length) { el.innerHTML = '<div class="empty-state"><div>👥</div>Aucun membre</div>'; return; }
   el.innerHTML = tries.map(m => renderMembreComiteCard(m)).join('');
 }
 
@@ -523,4 +596,58 @@ async function toggleMembreComite(id, actif) {
     toast(actif ? 'Compte réactivé' : 'Compte bloqué', 'success');
     loadMembresComite();
   } catch(e) { toast('Impossible de modifier le statut du membre', 'error'); }
+}
+
+// ─── Exports (Telegram + CSV) ───────────────────────────────────
+// Les deux portent toujours sur _membresComiteTriesAffiches, c'est-à-
+//-dire exactement la liste actuellement filtrée et triée à l'écran —
+// jamais sur la liste complète : changer un filtre change ce qui sera
+// exporté, sans bouton de validation séparé.
+function niveauLabelComite(m) {
+  const n = niveauNoteComite(m);
+  if (n === null) return '—';
+  const categorie = categorieNotationComite(m);
+  return EVAL_EMOJI[categorie].repeat(n);
+}
+
+function copierListeMembresComite() {
+  const membres = _membresComiteTriesAffiches;
+  if (!membres.length) return toast('Aucun membre à exporter avec ces filtres', 'error');
+  const entete = 'Pseudo | Prénom Nom | Statut | Section | Niveau';
+  const lignes = membres.map(m =>
+    `@${m.pseudo_telegram||'?'} | ${m.prenom||''} ${m.nom||''} | ${m.statut||''} | ${m.section?.nom||'—'} | ${niveauLabelComite(m)}`);
+  navigator.clipboard.writeText([entete, ...lignes].join('\n'))
+    .then(() => toast(`Liste copiée (${membres.length}) !`, 'success'));
+}
+
+// Échappe une valeur pour un champ CSV (RFC 4180) : entoure de guillemets
+// si la valeur contient une virgule, un guillemet ou un retour à la
+// ligne, et double les guillemets internes.
+function csvEscape(val) {
+  const s = String(val ?? '');
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function exporterCsvMembresComite() {
+  const membres = _membresComiteTriesAffiches;
+  if (!membres.length) return toast('Aucun membre à exporter avec ces filtres', 'error');
+  const entete = ['Pseudo', 'Prénom', 'Nom', 'Email', 'Statut', 'Section', 'Niveau'];
+  const lignes = membres.map(m => [
+    m.pseudo_telegram || '', m.prenom || '', m.nom || '', m.email || '',
+    m.statut || '', m.section?.nom || '', niveauLabelComite(m),
+  ]);
+  // BOM UTF-8 en tête pour qu'Excel reconnaisse l'encodage et affiche
+  // correctement les accents/emoji sans réglage manuel à l'ouverture.
+  const csv = '\uFEFF' + [entete, ...lignes].map(l => l.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `membres_comite_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Export CSV généré (${membres.length}) !`, 'success');
 }
