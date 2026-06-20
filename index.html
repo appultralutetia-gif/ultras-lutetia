@@ -311,6 +311,19 @@
     <div id="membresList"></div>
   </div>
 
+  <!-- ── PAGE MEMBRES — COMITÉ DE PASSAGE ──────────────────────── -->
+  <!-- Vue allégée par rapport à pageMembres (Bureau+) : recherche sur
+       tous les champs identité (nom/prénom/pseudo/email/ville/section),
+       et seule action disponible = bloquer/débloquer, jamais sur un
+       Bureau/Admin (cf. renderMembreComiteCard dans admin.js). -->
+  <div id="pageMembresComite" class="page">
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <button class="btn btn-sm btn-secondary" onclick="showPage('pageProfil')">← Retour</button>
+      <input type="text" id="searchMembreComite" placeholder="🔎 Nom, prénom, pseudo, email…" style="flex:1;min-width:160px;" oninput="filtrerMembresComite()">
+    </div>
+    <div id="membresComiteList"><div class="empty-state"><div>⏳</div>Chargement…</div></div>
+  </div>
+
   <!-- ── PAGE STATS ─────────────────────────────────────────── -->
   <div id="pageStats" class="page">
     <button class="btn btn-sm btn-secondary" style="margin-bottom:16px;" onclick="showPage('pageProfil')">← Retour</button>
@@ -495,6 +508,7 @@
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button class="btn btn-secondary" onclick="ouvrirEvaluationMembresComite()">⭐ Évaluation membres</button>
+          <button class="btn btn-secondary" onclick="showPage('pageMembresComite')">👤 Gérer les membres</button>
         </div>
       </div>
     </div>
