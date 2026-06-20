@@ -229,16 +229,91 @@ async function doAjouterMatch() {
 async function loadMatchsList() {
   try {
     const matchs = await UL.getMatchs();
-    document.getElementById('matchsList').innerHTML = matchs.slice(0,8).map(m => `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
-        <div>
-          <div style="font-weight:600;">${m.equipe_domicile} — ${m.equipe_exterieur}</div>
-          <div style="color:var(--gris);">${m.date} · <span class="badge ${m.type==='exterieur'?'badge-rouge':'badge-vert'}">${m.type}</span></div>
+    document.getElementById('matchsList').innerHTML = matchs.slice(0,40).map(m => {
+      const statutBadge = m.statut_date === 'a_confirmer'
+        ? '<span class="badge badge-orange" style="font-size:10px;">⏳ À confirmer</span>'
+        : '<span class="badge badge-vert" style="font-size:10px;">✅ Confirmée</span>';
+      const actionBtn = m.statut_date === 'a_confirmer'
+        ? `<button class="btn btn-sm btn-success" onclick="ouvrirConfirmerDate('${m.id}')">✅ Confirmer</button>`
+        : `<button class="btn btn-sm btn-secondary" onclick="doRouvrirConfirmation('${m.id}')">↺ Rouvrir</button>`;
+      return `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;">${m.journee?'J'+m.journee+' · ':''}${esc(m.equipe_domicile)} — ${esc(m.equipe_exterieur)}</div>
+          <div style="color:var(--gris);">${m.date}${m.horaire?' · '+m.horaire.slice(0,5):''} · <span class="badge ${m.type==='exterieur'?'badge-rouge':'badge-vert'}">${m.type}</span> ${statutBadge}</div>
         </div>
-        <button class="btn btn-sm btn-danger" onclick="doSupprimerMatch('${m.id}')">🗑</button>
-      </div>`).join('');
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          ${actionBtn}
+          <button class="btn btn-sm btn-danger" onclick="doSupprimerMatch('${m.id}')">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
   } catch(e) {}
 }
+
+// ─── Confirmation de date (Bureau+) ────────────────────────────
+// Réutilise le modal "Calendrier matchs" : bascule temporairement son
+// formulaire d'ajout en mode "confirmer la date de tel match" plutôt
+// que de créer un modal HTML dédié.
+let _matchEnConfirmation = null;
+
+function ouvrirConfirmerDate(matchId) {
+  _matchEnConfirmation = matchId;
+  document.getElementById('modalMatchsTitre').textContent = 'Confirmer la date du match';
+  document.getElementById('modalMatchsFormLabel').textContent = 'Date / horaire / stade définitifs';
+  document.getElementById('mExtGroup').style.display = 'none';
+  document.getElementById('mTypeGroup').style.display = 'none';
+  document.getElementById('mDate').value = '';
+  document.getElementById('mHeure').value = '';
+  document.getElementById('mStade').value = '';
+  const btn = document.getElementById('modalMatchsSubmitBtn');
+  btn.textContent = '✅ Confirmer';
+  btn.setAttribute('onclick', 'doConfirmerDateMatch()');
+  document.getElementById('modalMatchsCancelBtn').style.display = '';
+  showModal('modalMatchs');
+  setTimeout(() => document.getElementById('mDate').focus(), 150);
+}
+
+function annulerConfirmerDate() {
+  _matchEnConfirmation = null;
+  document.getElementById('modalMatchsTitre').textContent = 'Calendrier matchs';
+  document.getElementById('modalMatchsFormLabel').textContent = 'Ajouter un match';
+  document.getElementById('mExtGroup').style.display = '';
+  document.getElementById('mTypeGroup').style.display = '';
+  document.getElementById('mDate').value = '';
+  document.getElementById('mHeure').value = '';
+  document.getElementById('mStade').value = '';
+  const btn = document.getElementById('modalMatchsSubmitBtn');
+  btn.textContent = '+ Ajouter';
+  btn.setAttribute('onclick', 'doAjouterMatch()');
+  document.getElementById('modalMatchsCancelBtn').style.display = 'none';
+}
+
+async function doConfirmerDateMatch() {
+  if (!_matchEnConfirmation) return;
+  const date = document.getElementById('mDate').value;
+  const horaire = document.getElementById('mHeure').value || null;
+  const stade = document.getElementById('mStade').value || null;
+  if (!date) return toast('Date requise', 'error');
+  try {
+    await UL.confirmerDateMatch(_matchEnConfirmation, { date, horaire, stade });
+    toast('Date confirmée ✅', 'success');
+    annulerConfirmerDate();
+    loadMatchsList();
+    if (document.getElementById('pageCalendrier')?.classList.contains('active')) loadCalendrier();
+  } catch(e) { toast(e.message || 'Impossible de confirmer la date', 'error'); }
+}
+
+async function doRouvrirConfirmation(id) {
+  if (!confirm('Repasser ce match en "date à confirmer" ?')) return;
+  try {
+    await UL.rouvrirConfirmationMatch(id);
+    toast('Match repassé en attente de confirmation', 'success');
+    loadMatchsList();
+    if (document.getElementById('pageCalendrier')?.classList.contains('active')) loadCalendrier();
+  } catch(e) { toast(e.message || 'Impossible de rouvrir la confirmation', 'error'); }
+}
+
 async function doSupprimerMatch(id) {
   if (!confirm('Supprimer ce match ?')) return;
   try { await UL.deleteMatch(id); toast('Match supprimé', 'success'); loadMatchsList(); }
