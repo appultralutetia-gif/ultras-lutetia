@@ -499,6 +499,14 @@ async function closeSession(sessionId) {
 }
 
 async function deleteSession(sessionId) {
+  // Supprime d'abord les inscriptions liées (indépendant d'une éventuelle
+  // cascade FK non configurée côté base — évite une erreur de contrainte
+  // 23503 si des membres sont/étaient inscrits).
+  const { error: errInscriptions } = await sb.from('inscriptions_session')
+    .delete()
+    .eq('session_id', sessionId);
+  if (errInscriptions) throw errInscriptions;
+
   const { error } = await sb.from('sessions_tifo').delete().eq('id', sessionId);
   if (error) throw error;
   return { success: true };
