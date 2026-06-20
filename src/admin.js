@@ -448,3 +448,89 @@ async function ouvrirEvaluationMembresComite() {
     document.getElementById('evalComiteDraftListe').innerHTML = '';
   }
 }
+
+// ─── COMITÉ DE PASSAGE — Page Membres (vue allégée) ────────────
+// Contrairement à pageMembres (Bureau+, gestion complète : modifier
+// fiche, reset mdp, supprimer compte), cette page n'expose que la
+// consultation + le blocage/déblocage, et JAMAIS sur un membre
+// Bureau/Admin — ces niveaux restent hors de portée du Comité de
+// passage, qui ne gère que sympathisant/draft/confirme/membre_cellule.
+let _allMembresComite = [];
+
+async function loadMembresComite() {
+  document.getElementById('membresComiteList').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  try {
+    _allMembresComite = await UL.getAllMembres();
+    renderMembresComiteListe(_allMembresComite);
+  } catch(e) { toast('Erreur chargement membres', 'error'); }
+}
+
+function filtrerMembresComite() {
+  const q = document.getElementById('searchMembreComite').value.trim().toLowerCase();
+  if (!q) return renderMembresComiteListe(_allMembresComite);
+  renderMembresComiteListe(_allMembresComite.filter(m => [
+    m.nom, m.prenom, m.pseudo_telegram, m.email, m.ville, m.code_postal, m.section?.nom,
+  ].filter(Boolean).join(' ').toLowerCase().includes(q)));
+}
+
+// Tri identique à l'évaluation : niveau hiérarchique d'abord (Admin en
+// tête, Sympathisant en dernier), alphabétique au sein d'un même niveau.
+const ORDRE_STATUT_COMITE = { admin: 0, bureau: 1, membre_cellule: 2, confirme: 3, draft: 4, sympathisant: 5 };
+function niveauMembreComite(m) {
+  if (isAdmin(m)) return 0;
+  if (isBureau(m)) return 1;
+  if (isCellule(m)) return 2;
+  return ORDRE_STATUT_COMITE[m.statut] ?? 3;
+}
+
+function renderMembresComiteListe(membres) {
+  const el = document.getElementById('membresComiteList');
+  if (!membres.length) { el.innerHTML = '<div class="empty-state"><div>👥</div>Aucun membre</div>'; return; }
+  const tries = [...membres].sort((a, b) => {
+    const na = niveauMembreComite(a), nb = niveauMembreComite(b);
+    if (na !== nb) return na - nb;
+    return `${a.prenom||''} ${a.nom||''}`.trim().toLowerCase()
+      .localeCompare(`${b.prenom||''} ${b.nom||''}`.trim().toLowerCase());
+  });
+  el.innerHTML = tries.map(m => renderMembreComiteCard(m)).join('');
+}
+
+const STATUT_LABEL_COMITE = {
+  sympathisant: '💙 Sympathisant', draft: '🚀 Draft', confirme: '🏅 Confirmé',
+};
+function renderMembreComiteCard(m) {
+  // Niveau protégé = Bureau ou Admin (via roles_app[]) — jamais bloqué
+  // par le Comité de passage, quel que soit le statut affiché.
+  const protege = isAdmin(m) || isBureau(m);
+  const labelStatut = isAdmin(m) ? '⚙️ Admin'
+    : isBureau(m) ? '🏆 Bureau'
+    : isCellule(m) ? '🛡️ Membre Cellule'
+    : STATUT_LABEL_COMITE[m.statut] || m.statut;
+  return `<div class="card" style="margin-bottom:8px;padding:12px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="avatar" style="width:36px;height:36px;font-size:13px;flex-shrink:0;">${((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase()}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(m.prenom)} ${esc(m.nom)}</div>
+        <div style="font-size:11px;color:var(--gris);">@${esc(m.pseudo_telegram)} · ${labelStatut}</div>
+        ${m.email ? `<div style="font-size:11px;color:var(--gris);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✉️ ${esc(m.email)}</div>` : ''}
+        ${m.section ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:1px;">🛡️ ${esc(m.section.nom)}</div>` : ''}
+      </div>
+      <span class="badge ${m.actif?'badge-vert':'badge-rouge'}" style="flex-shrink:0;font-size:10px;">${m.actif?'✅ Actif':'⛔ Bloqué'}</span>
+    </div>
+    ${!protege ? `
+    <div style="margin-top:10px;">
+      <button class="btn btn-sm ${m.actif?'btn-danger':'btn-success'}" onclick="toggleMembreComite('${m.id}',${!m.actif})">
+        ${m.actif?'⛔ Bloquer':'✅ Débloquer'}
+      </button>
+    </div>` : `
+    <div style="margin-top:8px;font-size:11px;color:var(--gris);opacity:.7;">🔒 Hors de portée du Comité de passage</div>`}
+  </div>`;
+}
+
+async function toggleMembreComite(id, actif) {
+  try {
+    await UL.toggleBlocageMembre(id, actif);
+    toast(actif ? 'Compte réactivé' : 'Compte bloqué', 'success');
+    loadMembresComite();
+  } catch(e) { toast('Impossible de modifier le statut du membre', 'error'); }
+}
