@@ -109,9 +109,123 @@ Une fois la logique JS corrigée, le modal ne s'affichait toujours pas car `inde
 
 ---
 
+## 7. Colonnes inexistantes envoyées à Supabase (`cree_par`, `updated_at`, `etoiles`)
+
+**Symptôme récurrent** : `Could not find the 'X' column of 'Y' in the schema cache` (PostgREST), ou côté Network un code Postgres `42703 — undefined_column`.
+
+**Cause** : plusieurs fonctions de `src/supabase-client.js` envoyaient ou sélectionnaient des colonnes qui n'existent pas (ou plus) dans le schéma réel de la table, sans jamais avoir été vérifiées contre Supabase → Table Editor :
+- `createSession` envoyait `cree_par` → absent de `sessions_tifo` (13 colonnes réelles : `id, nom, date, heure, lieu, type_session, statut, avec_pizza, capacite_max, lien_telegram, code_validation, description, created_at`).
+- `validerPresence` et `savePizzaChoice` envoyaient `updated_at` → absent de `inscriptions_session` (colonnes réelles : `id, session_id, membre_id, statut, pizza, pinte, created_at`).
+- `getSessionDetails` et `getDeplacement` sélectionnaient `etoiles` dans la jointure `membre:membres(...)` → colonne jamais créée en base (vestige d'un système de notation jamais finalisé, cf. bug #9).
+
+**Fix** : retrait des champs fautifs des `.insert()`/`.update()`/`.select()` concernés. Pour `cree_par` sur `createDeplacement` (table `deplacements`), le même risque existe mais n'a pas été vérifié — **point de vigilance non résolu**, à tester avant mise en prod du module Déplacements.
+
+**Méthode qui a permis de trouver le vrai message d'erreur** : DevTools → Network → cliquer la requête en échec → onglet **Response** (pas Headers) → le corps JSON contient le code Postgres exact (`42703`) et le nom de colonne fautif en clair. Le header `Proxy-Status: PostgREST; error=XXXXX` donne le code sans devoir ouvrir Response, utile pour un premier tri rapide.
+
+**Fichiers concernés** : `src/supabase-client.js`
+
+---
+
+## 8. Bug de préfixe DOM entre Accueil et page Tifos (affichage "S'inscrire" figé après inscription réussie)
+
+**Symptôme** : après inscription réussie (confirmée en base, visible dans Supabase), le bouton reste affiché "S'inscrire" au lieu de passer à "✅ Tu es inscrit(e)" — sur la page Accueil notamment.
+
+**Cause réelle (différente de l'hypothèse initiale)** : `loadAccueil()` rend les cards tifos avec un préfixe d'id `'acc_'` (`renderTifoCard(s, 'acc_')` → id DOM `tifoActions_acc_<sessionId>`), pour permettre l'affichage simultané du même tifo sur Accueil et sur la page Tifos sans collision d'id. `doInscrire()` appelait `loadTifoActions(id, null)` **sans propager ce préfixe**, qui cherchait alors `tifoActions_<id>` (sans `acc_`) → élément introuvable → mise à jour silencieusement perdue, fallback `setTimeout` qui retente avec le même id erroné.
+
+**Diagnostic** : le vrai blocage observé pendant le test (toast "Déjà Inscrit" au lieu du bug de préfixe) était en fait une tentative de ré-inscription sur un tifo déjà inscrit (409/23505) — il a fallu tester sur un tifo **non encore inscrit** pour révéler le vrai bug de préfixe via les logs `[UL DEBUG]` temporaires.
+
+**Fix** : `await loadAccueil()` (régénère tout le HTML avec le bon préfixe à chaque fois, donc résout l'affichage même si `loadTifoActions(id, null)` échoue silencieusement sur la page Accueil) — et passage en `await` (était fire-and-forget avant, source potentielle de race condition).
+
+**Fichiers concernés** : `src/tifos.js`
+
+---
+
+## 9. Refonte du système d'évaluation par cellule (`etoiles` → table `evaluations`)
+
+**Contexte** (pas un bug isolé, une dette de conception découverte en creusant le bug #7) : le code legacy avait DEUX implémentations incompatibles et non-finalisées d'un système d'évaluation des membres :
+- Un champ unique `membres.etoiles` (jamais créé en base), utilisé par `profil.js` et `setEtoilesMembre()`.
+- Une paire `setEvaluation(membreId, celluleId, note, commentaire)` / `getEvaluations(membreId)` ciblant une table `evaluations` avec un schéma différent (`cellule_id`, `note_par`, `commentaire`, `updated_at`, upsert sur `membre_id,cellule_id`) — **jamais appelée nulle part dans le front**, donc invisible jusqu'à l'audit.
+
+Aucune des deux ne correspondait à la vraie logique métier : 4 catégories d'évaluation indépendantes et co-existantes (Tifo manuel, Déplacement automatique, Comité Sympathisant, Comité Draft), chacune avec **historique complet** (qui a noté, quand).
+
+**Fix** : nouvelle table `evaluations` (`membre_id, categorie, note, notee_par, created_at` — append-only, pas d'upsert), RLS alignées sur `roles_app[]` existant. Ancien code legacy (`setEvaluation`/`getEvaluations`, jamais utilisé) supprimé pour éviter toute confusion future. Nouvelles fonctions : `noterMembre`, `getEvaluationsMembre`, `getHistoriqueEvaluation`.
+
+**Point de vigilance** : `getHistoriqueEvaluation` référence la contrainte `evaluations_notee_par_fkey` (nom par défaut Postgres pour une FK sur `notee_par`). Si Supabase génère un nom différent, cette fonction précise échouera — non bloquant tant qu'aucune UI d'historique n'existe encore.
+
+**Reste à construire** (chantier volontairement reporté) : module "Comité de passage" (inexistant), onglets "Évaluation membres" dans Tifo et Déplacement (UI de saisie/consultation). Le bouton "⭐ Évaluation membres" existe déjà dans le menu admin Tifo mais pointe vers un placeholder (`ouvrirEvaluationMembresTifo()` → toast "bientôt disponible").
+
+**Fichiers concernés** : nouveau SQL (table + RLS), nouvelle Edge Function `update-evaluation-deplacement`, `src/supabase-client.js`, `src/profil.js`, `index.html` (bouton placeholder)
+
+---
+
+## 10. Edge Function : import npm sans préfixe → échec de bundling
+
+**Symptôme** : `Failed to deploy edge function: ... Relative import path "@supabase/server" not prefixed with / or ./ or ../`.
+
+**Cause** : Deno (runtime des Edge Functions Supabase) refuse un spécificateur de module npm "nu" (`@supabase/server`). Il faut un préfixe explicite de registre : `jsr:@supabase/server@^1` (c'est le registre JSR, pas npm, qui héberge ce package côté Supabase).
+
+**Fix** : alignement strict sur le pattern de `resolve-pseudo` (qui fonctionnait déjà en prod) :
+```ts
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { withSupabase } from "jsr:@supabase/server@^1";
+// ...
+export default {
+  fetch: withSupabase({ auth: 'publishable' }, async (req, ctx) => { ... }),
+};
+```
+À noter : export `default { fetch: ... }`, pas `Deno.serve(...)` — les deux patterns existent dans l'écosystème Deno mais celui-ci est celui qui fonctionne avec la config Supabase actuelle. Utiliser `Response.json({...})` plutôt que `new Response(JSON.stringify({...}))` pour la cohérence avec le style existant.
+
+**Fichiers concernés** : `supabase/functions/update-evaluation-deplacement/index.ts`
+
+---
+
+## 11. `JSON.stringify()` injecté brut dans un attribut `onclick` casse le HTML
+
+**Symptôme** : un bouton censé déclencher une action JS s'affiche comme du texte brut illisible dans la page (ex: `TOAST('COPIÉ !','SUCCESS'))">` visible à l'écran), au lieu de fonctionner comme un bouton normal.
+
+**Cause** : pattern `onclick="maFonction(${JSON.stringify(donnees)})"` — `JSON.stringify` produit systématiquement des guillemets doubles `"` autour de chaque string. Le tout est injecté dans un attribut HTML lui-même délimité par des guillemets doubles (`onclick="..."`). Le navigateur referme l'attribut au premier `"` rencontré dans les données, et traite tout le reste de la chaîne comme du HTML/texte brut affiché à l'écran plutôt que comme du JS exécutable. Bug latent dès qu'au moins une string est présente dans l'objet sérialisé — donc quasi systématique, pas un cas limite.
+
+**Fix** : envelopper `JSON.stringify(...)` avec `esc(...)` (helper déjà existant dans `app.js`, qui convertit `"` → `&quot;`) avant injection dans l'attribut : `onclick="fn(${esc(JSON.stringify(donnees))})"`. Le navigateur décode l'entité HTML avant de passer la valeur au parseur JS, donc le JSON reste valide à l'exécution.
+
+**Trois occurrences corrigées** dans `src/tifos.js` : bouton "Copier la liste" (commandes pizza), et deux boutons dans la vue admin "Inscrits" (liste Telegram, liste complète — ce dernier était probablement cassé depuis sa création, jamais testé jusqu'ici).
+
+**Point de vigilance pour du nouveau code** : tout `onclick="...${JSON.stringify(x)}..."` doit systématiquement passer par `esc()`. Vérifié qu'aucun autre fichier (`admin.js`, `deplacements.js`, `boutique.js`, `calendrier.js`) ne reproduit ce pattern à ce jour.
+
+**Fichiers concernés** : `src/tifos.js`
+
+---
+
+## 12. Champ "places" toujours affiché à 0 (compteur d'inscrits jamais calculé)
+
+**Symptôme** : `renderTifoCard` affiche `0 / 10 places` même quand des membres sont inscrits — aucune erreur JS, juste un chiffre faux.
+
+**Cause** : `getUpcomingSessions()` et `getPastSessions()` faisaient un simple `select('*')` sur `sessions_tifo`, sans jointure ni comptage. Le champ `s._nb_inscrits` lu par `renderTifoCard` n'était donc jamais présent dans l'objet retourné → `undefined || 0` → toujours `0`. (`getSessionsWithStats`, utilisée ailleurs pour le modal "Modifier une session", calculait déjà correctement un équivalent `nb_inscrits` via la même technique — la même logique n'avait simplement pas été reportée sur les deux fonctions de liste.)
+
+**Fix** : ajout de `, inscriptions_session(statut)` au `.select()` des deux fonctions, puis `.map()` pour dériver `_nb_inscrits: s.inscriptions_session?.length || 0` — même pattern que `getSessionsWithStats`, déjà validé en prod.
+
+**Fichiers concernés** : `src/supabase-client.js`
+
+---
+
+## Nettoyage de base de données avant lancement officiel
+
+Phase Key Users en cours sur la base de prod actuelle. Avant le lancement officiel, script de nettoyage prêt (`docs/sql_nettoyage_avant_lancement.sql`) :
+- **Conservé** : `membres` (comptes key users → comptes définitifs), `sections`, `cellules`, `membres_cellules`, `chartes`, `config_asso`, `matchs` (calendrier de saison réel, pas du test).
+- **Vidé** : tifos + inscriptions, évaluations, déplacements + inscriptions, boutique (produits + commandes), sticks (catalogue + distributions), cotisations, signatures de charte, annonces, événements.
+- **Flags dénormalisés à remettre à `false`** après vidage des tables liées : `membres.charte_signee` (+ `charte_signee_at`), `membres.cotisation_a_jour` — sinon incohérence entre le flag sur `membres` et l'absence de ligne dans `signatures_charte`/`cotisations`.
+
+**Point de vigilance** : script `DELETE` ciblé (pas de `TRUNCATE` global), ordre respectant les FK (tables enfants avant tables parentes) pour éviter une erreur de contrainte. Prendre un backup avant exécution (Supabase → Database → Backups). Irréversible.
+
+---
+
 ## Pièges génériques à garder en tête
 
 - **Toujours vérifier le Network tab (status + body de réponse)** avant de supposer la cause d'un échec d'auth — un message client générique ("introuvable", "identifiants incorrects") peut masquer des causes très différentes (normalisation, RLS, format de clé, JWT, lien expiré...).
 - **Le cache du Service Worker est un suspect quasi systématique** quand un déploiement semble "ne rien changer" — vérifier via `document.getElementById(...)` en console avant de chercher un bug de logique JS.
 - **Les logs `console.log` de debug temporaires sont efficaces** pour tracer un ordre d'exécution incertain (ex: race conditions entre événements SDK et DOM) — à retirer systématiquement une fois le bug confirmé corrigé.
 - **Tester avec des liens/tokens fraîchement générés** quand le débogage implique plusieurs allers-retours — les tokens à courte durée de vie (reset password, confirmation email) expirent vite en situation de test prolongé.
+- **Ne jamais ignorer `error` sur un `await sb.from(...)`** — `const { data } = await ...` sans déstructurer `error` masque un échec serveur derrière un simple résultat vide (`null || []`), ce qui ressemble à "pas de données" plutôt qu'à "la requête a échoué".
+- **Vérifier le schéma réel de la table (Supabase → Table Editor) avant d'écrire un `.insert()`/`.update()`/`.select()`** plutôt que de supposer une colonne par analogie avec une autre table ou un nom "logique" (`cree_par`, `updated_at`) — la cause la plus fréquente des erreurs `42703`/`PGRST204` cette session.
+- **Du code exporté dans `window.UL` mais jamais appelé côté front est invisible jusqu'à l'audit** — chercher systématiquement les usages réels (`grep` sur le nom de fonction dans tous les fichiers `src/*.js` + `index.html`) avant de faire confiance à la seule présence d'une fonction dans le fichier.
+- **`JSON.stringify()` ne doit jamais être injecté brut dans un attribut HTML** (`onclick="...${JSON.stringify(x)}..."`) — toujours passer par `esc()` pour échapper les guillemets doubles produits par le JSON.
+- **Reproduire un bug exige parfois un état précis** (ex: un tifo où l'on n'est *pas encore* inscrit) — un test sur le mauvais état peut masquer le vrai bug derrière un comportement différent mais correct (ex: doublon d'inscription qui ressemble au bug recherché mais n'en est pas la cause).
