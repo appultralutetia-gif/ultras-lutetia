@@ -25,6 +25,7 @@ let currentMembre = null;
 // notre code DOMContentLoaded ne s'exécute. L'événement 'PASSWORD_RECOVERY' du
 // SDK est la seule source fiable pour détecter un clic sur le lien de reset.
 sb.auth.onAuthStateChange((event, session) => {
+  console.log('[UL DEBUG] onAuthStateChange:', event);
   if (event === 'PASSWORD_RECOVERY') {
     if (typeof window.UL_ON_PASSWORD_RECOVERY === 'function') {
       window.UL_ON_PASSWORD_RECOVERY(session);
