@@ -354,9 +354,39 @@ async function deleteMatch(id) {
 // ============================================================
 
 async function getCharteActive() {
+  // La validité est vérifiée côté requête (pas seulement côté client) :
+  // une charte "active" mais dont la date_fin_validite est dépassée n'est
+  // jamais retournée. Robuste même si le flag `active` n'a pas encore été
+  // basculé manuellement par un admin au changement de saison.
+  const today = new Date().toISOString().split('T')[0];
   const { data } = await sb.from('chartes')
-    .select('*').eq('active', true).single();
+    .select('*')
+    .eq('active', true)
+    .or(`date_fin_validite.is.null,date_fin_validite.gte.${today}`)
+    .order('date_fin_validite', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
   return data;
+}
+
+// Vérifie si le membre courant a signé LA charte active en cours (pas une
+// charte antérieure expirée). C'est la seule source de vérité utilisée pour
+// bloquer/débloquer l'accès à l'app — ne jamais se fier uniquement au flag
+// dénormalisé `membres.charte_signee`, qui ne distingue pas "a signé une
+// charte" de "a signé LA charte en cours de validité".
+async function checkConformiteCharte() {
+  const charteActive = await getCharteActive();
+  if (!charteActive) {
+    // Pas de charte active configurée → on ne bloque pas (évite un bug
+    // de config qui rendrait l'app inutilisable pour tout le monde).
+    return { conforme: true, charteActive: null };
+  }
+  const { data: signature } = await sb.from('signatures_charte')
+    .select('id, created_at')
+    .eq('membre_id', currentUser.id)
+    .eq('charte_id', charteActive.id)
+    .maybeSingle();
+  return { conforme: !!signature, charteActive, signature: signature || null };
 }
 
 async function signerCharte(charteId) {
@@ -365,7 +395,9 @@ async function signerCharte(charteId) {
     charte_id: charteId,
   });
   if (error && error.code !== '23505') throw error; // 23505 = duplicate, already signed
-  // Mettre à jour le membre
+  // Mettre à jour le membre (flag dénormalisé, pratique pour l'affichage
+  // rapide côté admin/liste, mais jamais utilisé seul pour le blocage —
+  // voir checkConformiteCharte()).
   await updateMembre(currentUser.id, {
     charte_signee: true,
     charte_signee_at: new Date().toISOString()
@@ -1235,7 +1267,7 @@ window.UL = {
   // Calendrier
   getCalendar, addMatch, getMatchs, deleteMatch,
   // Charte
-  getCharteActive, signerCharte, getMembresNonSignataires,
+  getCharteActive, signerCharte, getMembresNonSignataires, checkConformiteCharte,
   // Sessions Tifo
   getUpcomingSessions, getPastSessions, getSessionDetails,
   inscrire, desinscrire, validerPresence, savePizzaChoice,
