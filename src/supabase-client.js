@@ -419,6 +419,38 @@ async function getCalendar() {
   return { matchs: matchsData || [], evenements: evtsData || [] };
 }
 
+async function getEvenements() {
+  const { data } = await sb.from('evenements').select('*').order('date');
+  return data || [];
+}
+
+async function getEvenement(id) {
+  const { data } = await sb.from('evenements').select('*').eq('id', id).single();
+  return data;
+}
+
+// data attendu (cf. doSauvegarderEvenement dans calendrier.js) :
+// { nom, type, date, heure, lieu, description, lien_helloasso }
+// id fourni → update, id absent → création.
+async function saveEvenement(data, id = null) {
+  if (id) {
+    const { data: updated, error } = await sb.from('evenements')
+      .update(data).eq('id', id).select().single();
+    if (error) throw error;
+    return updated;
+  }
+  const { data: created, error } = await sb.from('evenements')
+    .insert({ ...data, publie_par: currentUser.id }).select().single();
+  if (error) throw error;
+  return created;
+}
+
+async function deleteEvenement(id) {
+  const { error } = await sb.from('evenements').delete().eq('id', id);
+  if (error) throw error;
+  return { success: true };
+}
+
 async function addMatch(matchData) {
   const { data, error } = await sb.from('matchs').insert(matchData).select().single();
   if (error) throw error;
@@ -644,6 +676,19 @@ async function desinscrire(sessionId) {
   return { success: true };
 }
 
+// Action admin (Cellule Tifo+) : désinscrit un autre membre que soi-même
+// — cf. doDesinscrireAdmin dans tifos.js, bouton "✕" sur la liste des
+// inscrits. Même requête que desinscrire(), avec membreId explicite au
+// lieu de currentUser.id.
+async function desinscrireMembreSession(sessionId, membreId) {
+  const { error } = await sb.from('inscriptions_session')
+    .delete()
+    .eq('session_id', sessionId)
+    .eq('membre_id', membreId);
+  if (error) throw error;
+  return { success: true };
+}
+
 async function validerPresence(sessionId, code, pizza = null, pinte = null) {
   const { data: session } = await sb.from('sessions_tifo')
     .select('code_validation').eq('id', sessionId).single();
@@ -852,98 +897,17 @@ async function getListeBusTelegram(deplacementId) {
 }
 
 // ============================================================
-// MATOS
+// MATOS / STICKS / COTISATIONS
 // ============================================================
-// getProduits() — voir la section "BOUTIQUE — MATOS" plus bas dans ce
-// fichier. (Une première version, dupliquée et avec un bug de détection
-// Admin/Bureau, vivait ici — supprimée pour ne garder qu'une seule
-// implémentation, la version corrigée ci-dessous.)
-
-async function passerCommande(items) {
-  // items = [{produit_id, quantite, taille}]
-  const total = items.reduce((sum, item) => sum + (item.prix * item.quantite), 0);
-  const { data: commande, error } = await sb.from('commandes').insert({
-    membre_id: currentUser.id,
-    total,
-    statut: 'en_attente',
-  }).select().single();
-  if (error) throw error;
-  await sb.from('commande_items').insert(
-    items.map(item => ({
-      commande_id: commande.id,
-      produit_id: item.produit_id,
-      quantite: item.quantite,
-      taille: item.taille || null,
-      prix_unitaire: item.prix,
-    }))
-  );
-  return commande;
-}
-
-async function getMesCommandes() {
-  const { data } = await sb.from('commandes')
-    .select('*, commande_items(*, produit:produits(nom, photo_url))')
-    .eq('membre_id', currentUser.id)
-    .order('created_at', { ascending: false });
-  return data || [];
-}
-
-// ============================================================
-// STICKS
-// ============================================================
-
-async function getSticksCatalogue() {
-  const { data } = await sb.from('sticks_catalogue')
-    .select('*').eq('statut', 'disponible').order('nom');
-  return data || [];
-}
-
-async function distribuerStick(stickId, membreId, quantite = 1, sessionId = null) {
-  // Vérifier quota
-  const { data: deja } = await sb.from('sticks_distribution')
-    .select('quantite').eq('stick_id', stickId).eq('membre_id', membreId);
-  const totalDeja = (deja || []).reduce((s, d) => s + d.quantite, 0);
-  const { data: stick } = await sb.from('sticks_catalogue').select('quota_par_membre').eq('id', stickId).single();
-  if (totalDeja + quantite > stick.quota_par_membre) throw new Error('Quota dépassé');
-
-  const { error } = await sb.from('sticks_distribution').insert({
-    stick_id: stickId,
-    membre_id: membreId,
-    quantite,
-    distribue_par: currentUser.id,
-    session_id: sessionId,
-  });
-  if (error) throw error;
-  return { success: true };
-}
-
-// ============================================================
-// COTISATIONS
-// ============================================================
-
-async function getMaCotisation(saison) {
-  const { data } = await sb.from('cotisations')
-    .select('*')
-    .eq('membre_id', currentUser.id)
-    .eq('saison', saison)
-    .single();
-  return data;
-}
-
-async function validerCotisation(membreId, montant, saison, modePaiement = 'cash') {
-  const { error } = await sb.from('cotisations').upsert({
-    membre_id: membreId,
-    saison,
-    montant,
-    mode_paiement: modePaiement,
-    statut: 'paye',
-    valide_par: currentUser.id,
-    paye_at: new Date().toISOString(),
-  }, { onConflict: 'membre_id,saison' });
-  if (error) throw error;
-  await updateMembre(membreId, { cotisation_a_jour: true });
-  return { success: true };
-}
+// Les implémentations vivent dans les sections "BOUTIQUE — MATOS",
+// "BOUTIQUE — STICKS" et "BOUTIQUE — COTISATIONS" plus bas dans ce
+// fichier. Une première génération de fonctions (passerCommande(items),
+// getMesCommandes, getSticksCatalogue, distribuerStick, getMaCotisation,
+// validerCotisation) vivait ici : dupliquée, avec un bug de détection
+// Admin/Bureau, et jamais appelée par aucun module depuis le split en
+// app.js/tifos.js/deplacements.js/boutique.js/calendrier.js/admin.js/
+// profil.js. Supprimée pour ne garder qu'une seule implémentation par
+// fonction — les versions corrigées ci-dessous.
 
 // ============================================================
 // ANNONCES
@@ -1042,6 +1006,13 @@ async function getProduitById(id) {
   const { data } = await sb.from('produits')
     .select('*, section:sections(id, nom)')
     .eq('id', id).single();
+  return data;
+}
+
+async function createProduit(produit) {
+  const { data, error } = await sb.from('produits')
+    .insert(produit).select().single();
+  if (error) throw error;
   return data;
 }
 
@@ -1409,28 +1380,23 @@ window.UL = {
   // Calendrier
   getCalendar, addMatch, getMatchs, deleteMatch,
   saisirScoreMatch, confirmerDateMatch, rouvrirConfirmationMatch,
+  getEvenements, getEvenement, saveEvenement, deleteEvenement,
   // Charte
   getCharteActive, signerCharte, getMembresNonSignataires, checkConformiteCharte, publierNouvelleCharte,
   // Sessions Tifo
   getUpcomingSessions, getPastSessions, getSessionDetails,
-  inscrire, desinscrire, validerPresence, savePizzaChoice,
+  inscrire, desinscrire, desinscrireMembreSession, validerPresence, savePizzaChoice,
   createSession, openSession, closeSession, deleteSession,
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   // Déplacements
   getDeplacements, getDeplacement, sInscrireDeplacements,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, getListeBusTelegram,
-  // Matos
-  getProduits, passerCommande, getMesCommandes,
-  // Sticks
-  getSticksCatalogue, distribuerStick,
-  // Cotisations
-  getMaCotisation, validerCotisation,
   // Annonces
   getAnnonces, publierAnnonce,
   // Stats
   getStats, getMesStats,
   // Matos
-  getProduits, getProduitById, updateProduit, archiverProduit,
+  getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
   passerCommande, getMesCommandes, getAllCommandes, updateCommandeStatut,
   // Sticks
   getSticks, getMonQuotaStick, demanderStick, getMesSticks,
