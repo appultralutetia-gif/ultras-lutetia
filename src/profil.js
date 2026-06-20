@@ -87,8 +87,8 @@ async function loadCharte() {
     }
     document.getElementById('charteTexte').innerHTML = renderCharteHTML(charteActive.contenu);
     if (infoEl) {
-      const dateSignature = signature?.created_at
-        ? new Date(signature.created_at).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
+      const dateSignature = signature?.signed_at
+        ? new Date(signature.signed_at).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
         : null;
       const dateValidite = charteActive.date_fin_validite
         ? new Date(charteActive.date_fin_validite).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
