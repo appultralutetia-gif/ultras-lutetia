@@ -208,8 +208,49 @@ async function updateSectionMembre(membreId, sectionId) {
   return updateMembre(membreId, { section_id: sectionId });
 }
 
-async function setEtoilesMembre(membreId, etoiles) {
-  return updateMembre(membreId, { etoiles });
+// ─── Évaluations par cellule (Tifo, Déplacement, Comité) ──────
+// Catégories : 'tifo' | 'deplacement' | 'comite_sympa' | 'comite_draft'
+// Une ligne = une notation horodatée. La note "courante" d'une
+// catégorie pour un membre = la ligne la plus récente.
+async function noterMembre(membreId, categorie, note) {
+  if (!['tifo', 'comite_sympa', 'comite_draft'].includes(categorie)) {
+    throw new Error('Catégorie de notation invalide');
+  }
+  if (note < 1 || note > 3) throw new Error('Note invalide (1 à 3)');
+  const { error } = await sb.from('evaluations').insert({
+    membre_id: membreId,
+    categorie,
+    note,
+    notee_par: currentUser.id,
+  });
+  if (error) throw error;
+  return { success: true };
+}
+
+// Retourne la note courante par catégorie pour un membre, ex :
+// { tifo: 2, deplacement: 1, comite_sympa: null, comite_draft: null }
+async function getEvaluationsMembre(membreId) {
+  const { data, error } = await sb.from('evaluations')
+    .select('categorie, note, created_at')
+    .eq('membre_id', membreId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  const courantes = {};
+  (data || []).forEach(e => {
+    if (!(e.categorie in courantes)) courantes[e.categorie] = e.note;
+  });
+  return courantes;
+}
+
+// Historique complet d'une catégorie pour un membre (qui a noté, quand)
+async function getHistoriqueEvaluation(membreId, categorie) {
+  const { data, error } = await sb.from('evaluations')
+    .select('*, notateur:membres!evaluations_notee_par_fkey(prenom, nom, pseudo_telegram)')
+    .eq('membre_id', membreId)
+    .eq('categorie', categorie)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
 }
 
 async function toggleBlocageMembre(membreId, actif) {
@@ -392,7 +433,7 @@ async function getSessionDetails(sessionId) {
     .eq('id', sessionId)
     .single();
   const { data: inscrits } = await sb.from('inscriptions_session')
-    .select('*, membre:membres(nom, prenom, pseudo_telegram, statut, etoiles, section:sections(nom))')
+    .select('*, membre:membres(nom, prenom, pseudo_telegram, statut, section:sections(nom))')
     .eq('session_id', sessionId);
   const monInscrit = (inscrits || []).find(i => i.membre_id === currentUser?.id);
   return { session: data, inscrits: inscrits || [], monInscrit };
@@ -530,7 +571,7 @@ async function getDeplacement(id) {
     .select('*, match:matchs(*)')
     .eq('id', id).single();
   const { data: inscrits } = await sb.from('inscriptions_deplacement')
-    .select('*, membre:membres(nom, prenom, pseudo_telegram, etoiles)')
+    .select('*, membre:membres(nom, prenom, pseudo_telegram)')
     .eq('deplacement_id', id);
   const monInscrit = (inscrits || []).find(i => i.membre_id === currentUser?.id);
   const nbInscrits = (inscrits || []).length;
@@ -559,6 +600,7 @@ async function validerPaiementCash(deplacementId, membreId) {
     .eq('deplacement_id', deplacementId)
     .eq('membre_id', membreId);
   if (error) throw error;
+  recalculerEvaluationDeplacement(membreId); // best-effort, ne bloque pas la validation
   return { success: true, qrCode };
 }
 
@@ -574,7 +616,21 @@ async function validerPaiementHelloAsso(deplacementId, membreId) {
     .eq('deplacement_id', deplacementId)
     .eq('membre_id', membreId);
   if (error) throw error;
+  recalculerEvaluationDeplacement(membreId); // best-effort, ne bloque pas la validation
   return { success: true, qrCode };
+}
+
+// Appelle l'Edge Function qui recalcule la note "déplacement" (service_role, bypass RLS).
+// Volontairement non bloquant : un échec ici ne doit jamais empêcher la validation du paiement.
+async function recalculerEvaluationDeplacement(membreId) {
+  try {
+    const resp = await sb.functions.invoke('update-evaluation-deplacement', {
+      body: { membreId },
+    });
+    if (resp.error) console.error('[UL] recalcul évaluation déplacement échoué:', resp.error.message);
+  } catch (e) {
+    console.error('[UL] recalcul évaluation déplacement échoué:', e.message);
+  }
 }
 
 async function createDeplacement(data) {
@@ -1175,7 +1231,8 @@ window.UL = {
   loginByTelegram, logout, changePassword, inscription, demanderResetMdp,
   // Membres
   getMembre, getAllMembres, updateMembre, updateStatutMembre,
-  updateSectionMembre, setEtoilesMembre, toggleBlocageMembre,
+  updateSectionMembre, toggleBlocageMembre,
+  noterMembre, getEvaluationsMembre, getHistoriqueEvaluation,
   adminResetPassword, updateMembreMdp, supprimerMembre, setEvaluation, getEvaluations,
   // Référentiels
   getSections, getCellules, rattacherCellule,
