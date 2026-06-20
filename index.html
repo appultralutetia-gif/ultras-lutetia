@@ -1037,6 +1037,21 @@
   </div>
 </div>
 
+<!-- Modal Valider Cash Stick (Admin/Bureau/Cellule Sticks) -->
+<div class="modal-overlay" id="modalCashStick" style="display:none;" onclick="closeModalOutside(event,'modalCashStick')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title" id="cashStickTitre">Valider un cash</h3>
+    <input type="hidden" id="cashStickId">
+    <div class="form-group">
+      <label>Rechercher un membre</label>
+      <input type="text" id="cashStickSearch" placeholder="🔎 Nom, prénom, pseudo…" oninput="filtrerMembresCashStick()">
+    </div>
+    <div id="cashStickListeMembres" style="max-height:280px;overflow-y:auto;margin-bottom:10px;"></div>
+    <button class="btn btn-secondary" onclick="closeModal('modalCashStick')">Annuler</button>
+  </div>
+</div>
+
 <!-- Modal Créer/Modifier Événement (Bureau+) -->
 <div class="modal-overlay" id="modalEvenement" style="display:none;" onclick="closeModalOutside(event,'modalEvenement')">
   <div class="modal" onclick="event.stopPropagation()">
