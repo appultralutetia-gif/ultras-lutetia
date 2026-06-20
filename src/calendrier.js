@@ -53,11 +53,8 @@ function filtrerCalendrier(filtre) {
 }
 
 function renderMatchCard(match, membre) {
-  const isPFC = match.equipe_domicile?.includes('Paris FC') || match.type === 'domicile';
-  const adversaire = isPFC ? match.equipe_exterieur : match.equipe_domicile;
   const date = match.date ? new Date(match.date).toLocaleDateString('fr-FR', {weekday:'short',day:'numeric',month:'short'}) : '—';
   const isPasse = match.date && new Date(match.date) < new Date();
-  const logoAdv = match.logo_exterieur || match.logo_domicile || null;
   const typeLabel = match.type === 'domicile'
     ? '<span class="badge badge-vert">🏠 Domicile</span>'
     : '<span class="badge badge-rouge">✈️ Extérieur</span>';
@@ -70,14 +67,26 @@ function renderMatchCard(match, membre) {
   const confirmerBtn = isBureau(membre) && match.statut_date === 'a_confirmer'
     ? `<button class="btn btn-sm btn-success" style="margin-top:8px;" onclick="ouvrirConfirmerDate('${match.id}')">✅ Confirmer la date</button>` : '';
 
+  // Respecte le sens réel du calendrier (équipe domicile à droite, équipe
+  // extérieur à gauche) — Paris FC n'est pas toujours nommé en premier,
+  // ça dépend de qui reçoit (ex: J1 "ESTAC Troyes — Paris FC", J2 "Paris FC — OGC Nice").
+  const logoGauche = match.logo_exterieur; // équipe qui se déplace, à gauche
+  const logoDroite = match.logo_domicile;  // équipe qui reçoit, à droite
+  const logoImg = (url) => url
+    ? `<img src="${esc(url)}" style="width:38px;height:38px;object-fit:contain;flex-shrink:0;">`
+    : '<div style="width:38px;height:38px;background:var(--surface);border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;">⚽</div>';
+
   return `<div class="card" style="margin-bottom:10px;${match.statut_date==='a_confirmer'?'border-left:3px solid #F59E0B;':''}">
-    <div style="display:flex;align-items:center;gap:12px;">
-      ${logoAdv ? `<img src="${esc(logoAdv)}" style="width:38px;height:38px;object-fit:contain;flex-shrink:0;">` : '<div style="width:38px;height:38px;background:var(--surface);border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;">⚽</div>'}
+    <div style="display:flex;align-items:center;gap:10px;">
+      ${logoImg(logoGauche)}
       <div style="flex:1;min-width:0;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">Paris FC — ${esc(adversaire||'?')}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(match.equipe_exterieur||'?')} — ${esc(match.equipe_domicile||'?')}</div>
         <div style="font-size:12px;color:var(--gris);">${date}${match.horaire?' · '+match.horaire.slice(0,5):''}</div>
         ${match.stade ? `<div style="font-size:11px;color:var(--gris);">📍 ${esc(match.stade)}</div>` : ''}
       </div>
+      ${logoImg(logoDroite)}
+    </div>
+    <div style="margin-top:8px;display:flex;align-items:center;justify-content:flex-end;">
       ${typeLabel}
     </div>
     ${score}
