@@ -1076,6 +1076,25 @@ async function getAllCommandes() {
 }
 
 async function updateCommandeStatut(commandeId, statut) {
+  // Décrémentation du stock uniquement lors de la transition VERS 'validee'
+  // (paiement confirmé) — jamais à la simple création en 'en_attente', et
+  // jamais répété si déjà 'validee' ou au-delà (prete/recuperee/annulee).
+  if (statut === 'validee') {
+    const { data: commandeActuelle } = await sb.from('commandes')
+      .select('statut, commande_items(produit_id, quantite)')
+      .eq('id', commandeId).single();
+    if (commandeActuelle && commandeActuelle.statut !== 'validee') {
+      for (const item of commandeActuelle.commande_items || []) {
+        const { data: produit } = await sb.from('produits')
+          .select('stock').eq('id', item.produit_id).single();
+        if (produit) {
+          await sb.from('produits')
+            .update({ stock: Math.max(0, produit.stock - item.quantite) })
+            .eq('id', item.produit_id);
+        }
+      }
+    }
+  }
   const { error } = await sb.from('commandes')
     .update({ statut, updated_at: new Date().toISOString() })
     .eq('id', commandeId);
@@ -1162,7 +1181,7 @@ async function getMesSticks() {
 
 async function distribuerStickAdmin(stickId, membreId, quantite, modePaiement = 'cash') {
   const { data: stick } = await sb.from('sticks_catalogue')
-    .select('quota_par_membre').eq('id', stickId).single();
+    .select('quota_par_membre, stock').eq('id', stickId).single();
   if (stick?.quota_par_membre) {
     const { data: deja } = await sb.from('sticks_distribution')
       .select('quantite').eq('stick_id', stickId).eq('membre_id', membreId);
@@ -1180,6 +1199,14 @@ async function distribuerStickAdmin(stickId, membreId, quantite, modePaiement = 
     statut: modePaiement === 'helloasso' ? 'en_attente' : 'distribue',
   });
   if (error) throw error;
+  // Paiement déjà confirmé (cash/gratuit encaissés en présentiel) →
+  // le stock baisse immédiatement. Le cas HelloAsso reste en attente et
+  // ne décrémente le stock qu'à la confirmation (validerPaiementStick).
+  if (modePaiement !== 'helloasso' && stick) {
+    await sb.from('sticks_catalogue')
+      .update({ stock: Math.max(0, stick.stock - quantite) })
+      .eq('id', stickId);
+  }
   return { success: true };
 }
 
@@ -1192,10 +1219,23 @@ async function getAllDistributions() {
 }
 
 async function validerPaiementStick(distribId) {
+  const { data: distrib } = await sb.from('sticks_distribution')
+    .select('stick_id, quantite, statut').eq('id', distribId).single();
   const { error } = await sb.from('sticks_distribution')
     .update({ statut: 'paye_helloasso' })
     .eq('id', distribId);
   if (error) throw error;
+  // Décrémentation au moment de la confirmation — jamais si déjà confirmée
+  // avant (évite une double décrémentation en cas de double-clic/rappel).
+  if (distrib && distrib.statut !== 'paye_helloasso') {
+    const { data: stick } = await sb.from('sticks_catalogue')
+      .select('stock').eq('id', distrib.stick_id).single();
+    if (stick) {
+      await sb.from('sticks_catalogue')
+        .update({ stock: Math.max(0, stick.stock - distrib.quantite) })
+        .eq('id', distrib.stick_id);
+    }
+  }
   return { success: true };
 }
 
