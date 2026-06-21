@@ -207,15 +207,33 @@ async function afficherActionsMatos(membre) {
 
   try {
     const toutes = await UL.getAllCommandes();
-    const pretes = (toutes || []).filter(c => c.membre_id === membre.id && c.statut === 'prete');
+    const commandesMembre = (toutes || []).filter(c => c.membre_id === membre.id);
+    const pretes = commandesMembre.filter(c => c.statut === 'prete');
+    // Payées mais pas encore physiquement préparées par l'équipe — le scan
+    // doit bloquer explicitement plutôt que de les ignorer silencieusement
+    // (cf. demande explicite : "bloque — affiche pas encore prêt").
+    const pasEncorePretes = commandesMembre.filter(c => c.statut === 'validee');
+
+    if (!pretes.length && !pasEncorePretes.length) {
+      resultatEl.innerHTML = `<div class="info-box">Aucune commande à récupérer pour ${esc(nomComplet)}</div>`;
+      relancerCameraSiPossible();
+      return;
+    }
+
+    const blocHtml = pasEncorePretes.length ? `
+      <div class="info-box error" style="margin-bottom:10px;">
+        ⏳ ${pasEncorePretes.length} commande${pasEncorePretes.length > 1 ? 's' : ''} payée${pasEncorePretes.length > 1 ? 's' : ''} mais pas encore prête${pasEncorePretes.length > 1 ? 's' : ''} — retrait impossible pour l'instant
+        ${pasEncorePretes.map(c => `<div style="font-size:12px;margin-top:4px;">${(c.commande_items || []).map(i => esc(i.produit?.nom || '?')).join(', ')}</div>`).join('')}
+      </div>` : '';
 
     if (!pretes.length) {
-      resultatEl.innerHTML = `<div class="info-box">Aucune commande prête à récupérer pour ${esc(nomComplet)}</div>`;
+      resultatEl.innerHTML = blocHtml;
       relancerCameraSiPossible();
       return;
     }
 
     resultatEl.innerHTML = `
+      ${blocHtml}
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${esc(nomComplet)} — ${pretes.length} commande${pretes.length > 1 ? 's' : ''} prête${pretes.length > 1 ? 's' : ''}</div>
       ${pretes.map(c => `
         <div class="card" style="margin-bottom:8px;padding:10px;">
@@ -262,7 +280,8 @@ async function afficherActionsStick(membre) {
       ${enAttente.map(d => `
         <div class="card" style="margin-bottom:8px;padding:10px;">
           <div style="font-size:13px;">${esc(d.stick?.nom || '?')} × ${d.quantite}</div>
-          <button class="btn btn-sm btn-success" style="width:100%;margin-top:6px;" onclick="doConfirmerRemiseStick('${d.id}')">✔️ Confirmer remise</button>
+          <div style="font-size:12px;color:var(--gris);margin-bottom:6px;">${d.mode_paiement === 'cash' ? '💵 Cash' : d.mode_paiement === 'helloasso' ? '💳 HelloAsso' : esc(d.mode_paiement || '')}</div>
+          <button class="btn btn-sm btn-success" style="width:100%;" onclick="doConfirmerRemiseStick('${d.id}')">✔️ Confirmer remise</button>
         </div>`).join('')}
     `;
   } catch (e) {
@@ -273,7 +292,7 @@ async function afficherActionsStick(membre) {
 
 async function doConfirmerRemiseStick(distribId) {
   try {
-    await UL.validerPaiementStick(distribId);
+    await UL.confirmerDistributionStick(distribId);
     toast('Remise confirmée ✅', 'success');
     document.getElementById('scanResultat').innerHTML = '<div class="info-box success">✅ Remise confirmée</div>';
     relancerCameraSiPossible();
