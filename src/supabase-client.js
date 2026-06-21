@@ -389,6 +389,104 @@ async function supprimerMembre(membreId) {
 // (système par catégorie + historique, cf. table evaluations)
 
 // ============================================================
+// QR CODE MEMBRE — présence Déplacement / retrait Matos / retrait Stick
+// ============================================================
+// Un QR fixe par membre (Profil), distinct du qr_code par-inscription
+// Déplacement existant (généré à la confirmation de paiement HelloAsso/
+// Cash, cf. validerPaiementCash/validerPaiementHelloAsso plus haut) — les
+// deux coexistent, aucune modification de la chaîne HelloAsso ici.
+
+// Génère un token aléatoire au format UL-MBR-{16 car.} — préfixe distinct
+// de UL-{...} (Cash) et UL-HA-{...} (HelloAsso) pour qu'un scan puisse
+// immédiatement reconnaître un QR membre d'un QR d'inscription si les
+// deux types sont un jour scannés dans le même flux par erreur.
+function genererTokenQrMembre() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let suffixe = '';
+  for (let i = 0; i < 16; i++) {
+    suffixe += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return `UL-MBR-${suffixe}`;
+}
+
+// Retourne le QR code du membre courant, en le générant à la demande
+// (lazy) s'il n'existe pas encore — pas de backfill en masse à la
+// migration, chaque membre obtient son token au premier chargement de
+// son Profil après déploiement.
+async function getOrCreateQrCodeMembre() {
+  if (currentMembre?.qr_code_membre) return currentMembre.qr_code_membre;
+
+  const token = genererTokenQrMembre();
+  const { data, error } = await sb.from('membres')
+    .update({ qr_code_membre: token })
+    .eq('id', currentUser.id)
+    .select('qr_code_membre')
+    .single();
+  if (error) throw error;
+  currentMembre = await getMembre(currentUser.id); // resynchronise le cache local
+  return data.qr_code_membre;
+}
+
+// Résout un code scanné (ou saisi manuellement) vers la fiche membre
+// correspondante. Retourne null si le code ne correspond à aucun membre
+// (code invalide, mal recopié, ou QR d'un autre type scanné par erreur).
+async function getMembreParQrCode(code) {
+  const trimmed = (code || '').trim();
+  if (!trimmed) return null;
+  const { data } = await sb.from('membres')
+    .select('*, section:sections(nom)')
+    .eq('qr_code_membre', trimmed)
+    .maybeSingle();
+  return data || null;
+}
+
+// Confirme la présence physique d'un membre à un déplacement (scan le
+// jour J), distincte du statut de paiement. Par défaut, bloque si le
+// paiement n'est pas confirmé (statut 'en_attente' ou 'refuse') — passer
+// force=true pour le cas réel "paiement cash collecté sur le quai au
+// dernier moment", décision laissée à la personne qui scanne plutôt
+// qu'un blocage strict sans recours.
+async function confirmerPresenceDeplacement(deplacementId, membreId, force = false) {
+  const { data: inscription, error: fetchError } = await sb.from('inscriptions_deplacement')
+    .select('id, statut_paiement, present_at')
+    .eq('deplacement_id', deplacementId)
+    .eq('membre_id', membreId)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!inscription) {
+    throw new Error("Ce membre n'est pas inscrit à ce déplacement");
+  }
+  const estPaye = inscription.statut_paiement === 'paye_cash' || inscription.statut_paiement === 'paye_ha';
+  if (!estPaye && !force) {
+    const err = new Error(`Paiement non confirmé (${inscription.statut_paiement})`);
+    err.code = 'PAIEMENT_NON_CONFIRME';
+    throw err;
+  }
+  const { error: updateError } = await sb.from('inscriptions_deplacement')
+    .update({ present_at: new Date().toISOString() })
+    .eq('id', inscription.id);
+  if (updateError) throw updateError;
+  return { success: true };
+}
+
+// Régénère le QR d'un membre (perte/partage accidentel) — invalide
+// l'ancien token puisqu'il est remplacé, pas de table d'historique des
+// tokens révoqués pour cette première version. Réservée Admin/Bureau,
+// le contrôle de droit se fait côté UI (cf. admin.js) — cette fonction
+// ne revérifie pas elle-même le rôle de l'appelant, comme le reste de
+// ce fichier (le RLS Supabase est la vraie barrière de sécurité).
+async function regenererQrCodeMembre(membreId) {
+  const token = genererTokenQrMembre();
+  const { data, error } = await sb.from('membres')
+    .update({ qr_code_membre: token })
+    .eq('id', membreId)
+    .select('qr_code_membre')
+    .single();
+  if (error) throw error;
+  return data.qr_code_membre;
+}
+
+// ============================================================
 // SECTIONS & CELLULES
 // ============================================================
 
@@ -1431,6 +1529,8 @@ window.UL = {
   noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
   getParticipationBatch,
   adminResetPassword, updateMembreMdp, supprimerMembre,
+  // QR Code Membre
+  getOrCreateQrCodeMembre, getMembreParQrCode, confirmerPresenceDeplacement, regenererQrCodeMembre,
   // Référentiels
   getSections,
   // Calendrier
