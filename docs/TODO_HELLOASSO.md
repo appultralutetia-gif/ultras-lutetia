@@ -6,6 +6,14 @@
 
 ---
 
+## 📍 État au 21/06/2026, fin de session
+
+**Aucun progrès sur l'obtention des accès HelloAsso cette session** — le chantier HelloAsso est resté en pause (point 1 ci-dessous toujours "à faire", rien commencé). La session a été consacrée à un chantier différent (QR code membre pour la présence/le retrait, sans rapport direct avec HelloAsso) — voir `docs/BUGS.md` #27-30 pour le détail de ce qui a été fait à la place. Tout ce qui suit dans ce fichier reste donc valable et inchangé depuis la dernière mise à jour.
+
+**Aucune régression à craindre** : le code HelloAsso déployé (Edge Functions, migration, `deplacements.js`) n'a pas été retouché par le chantier QR code membre — les deux périmètres sont restés indépendants tout du long.
+
+---
+
 ## 1. Informations à obtenir côté HelloAsso (bloquant)
 
 | # | Info à récupérer | Où | Utilisée dans |
