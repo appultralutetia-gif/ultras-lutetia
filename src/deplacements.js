@@ -74,9 +74,6 @@ async function openDepl(deplId) {
     if (!estInscrit) {
       html += `<button class="btn btn-primary" onclick="doInscritDepl('${d.id}')">M'inscrire</button>`;
     } else if (estRefuse) {
-      // Paiement refusé par la banque (ou autre raison HelloAsso) : on
-      // permet explicitement de retenter, plutôt que de laisser le membre
-      // coincé sans action possible (cf. plan_helloasso.md §4).
       html += `<div class="info-box error">❌ Paiement refusé</div>
         <button class="btn btn-primary" onclick="doInscritDepl('${d.id}')">Réessayer le paiement</button>`;
     } else if (!estPaye) {
@@ -114,14 +111,9 @@ async function openDepl(deplId) {
 }
 
 // Fusionne "s'inscrire" et "déclencher le paiement HelloAsso" en une seule
-// action (cf. plan_helloasso.md §4) : Déplacements n'a aujourd'hui aucun
-// mode cash actif, HelloAsso est donc le seul chemin — pas besoin de
-// proposer un choix de mode de paiement à l'utilisateur ici.
-//
-// Remplace l'ancien comportement de UL.sInscrireDeplacements() qui créait
-// juste la ligne 'en_attente' sans déclencher de paiement : désormais
-// l'Edge Function helloasso-create-checkout fait les deux (création de la
-// ligne si besoin + initialisation du checkout) en un seul appel.
+// action : Déplacements n'a aujourd'hui aucun mode cash actif, HelloAsso
+// est donc le seul chemin — pas besoin de proposer un choix de mode de
+// paiement à l'utilisateur ici.
 async function doInscritDepl(id) {
   try {
     toast('Redirection vers le paiement…', 'success');
@@ -132,15 +124,12 @@ async function doInscritDepl(id) {
     if (data?.error) throw new Error(data.error);
     if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
     closeModal('modalDepl');
-    // Redirection vers la page de paiement hébergée par HelloAsso. Le
-    // membre revient ensuite sur returnUrl/backUrl/errorUrl (configurées
-    // côté Edge Function) — ces pages-là affichent juste un message
-    // d'attente, la confirmation réelle vient du webhook (cf. plan §2.4).
     window.location.href = data.redirectUrl;
   } catch(e) {
     toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error');
   }
 }
+
 async function voirInscritsDepl(deplId) {
   try {
     const { inscrits, deplacement: d } = await UL.getDeplacement(deplId);
