@@ -55,7 +55,7 @@ async function openDepl(deplId) {
     // peut plus se contenter de "!== 'en_attente'" pour détecter un paiement
     // confirmé — un paiement refusé n'est pas 'en_attente' mais n'est pas
     // payé non plus. On distingue explicitement les 3 cas.
-    const estPaye = monInscrit && (monInscrit.statut_paiement === 'paye_cash' || monInscrit.statut_paiement === 'paye_helloasso');
+    const estPaye = monInscrit && (monInscrit.statut_paiement === 'paye_cash' || monInscrit.statut_paiement === 'paye_ha');
     const estRefuse = monInscrit && monInscrit.statut_paiement === 'refuse';
     const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}) : '';
     let html = `
@@ -91,7 +91,7 @@ async function openDepl(deplId) {
 
     // Boutons admin déplacement
     if (hasCelluleDepl(m)) {
-      const payes = inscrits.filter(i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_helloasso');
+      const payes = inscrits.filter(i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha');
       const refuses = inscrits.filter(i => i.statut_paiement === 'refuse');
       html += `
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
