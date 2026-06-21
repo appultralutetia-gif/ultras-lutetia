@@ -1283,6 +1283,13 @@ async function getMesSticks() {
 }
 
 async function distribuerStickAdmin(stickId, membreId, quantite, modePaiement = 'cash') {
+  // ⚠️ Avant le 21/06/2026, le mode 'cash' distribuait ET décrémentait le
+  // stock immédiatement en une seule action. Depuis l'introduction du scan
+  // QR membre, TOUTE distribution (cash comme HelloAsso) reste désormais en
+  // 'en_attente' jusqu'à confirmation — par scan (cf. scan.js,
+  // afficherActionsStick) ou par le bouton manuel de filet de secours
+  // (cf. doConfirmerDistributionManuelle, boutique.js). Le mode_paiement
+  // reste stocké pour traçabilité mais ne pilote plus le statut.
   const { data: stick } = await sb.from('sticks_catalogue')
     .select('quota_par_membre, stock').eq('id', stickId).single();
   if (stick?.quota_par_membre) {
@@ -1299,18 +1306,20 @@ async function distribuerStickAdmin(stickId, membreId, quantite, modePaiement = 
     quantite,
     distribue_par: currentUser.id,
     mode_paiement: modePaiement,
-    statut: modePaiement === 'helloasso' ? 'en_attente' : 'distribue',
+    statut: 'en_attente',
   });
   if (error) throw error;
-  // Paiement déjà confirmé (cash/gratuit encaissés en présentiel) →
-  // le stock baisse immédiatement. Le cas HelloAsso reste en attente et
-  // ne décrémente le stock qu'à la confirmation (validerPaiementStick).
-  if (modePaiement !== 'helloasso' && stick) {
-    await sb.from('sticks_catalogue')
-      .update({ stock: Math.max(0, stick.stock - quantite) })
-      .eq('id', stickId);
-  }
   return { success: true };
+}
+
+// Confirme une distribution Stick et décrémente le stock — point d'entrée
+// unique utilisé par le scan QR (validerPaiementStick, déjà existante,
+// inchangée) ET par le bouton manuel de filet de secours (mêmes garanties
+// d'idempotence : jamais décrémenté deux fois si déjà confirmée).
+// Alias volontaire de validerPaiementStick pour un nommage plus clair côté
+// scan/bouton manuel, sans dupliquer la logique.
+async function confirmerDistributionStick(distribId) {
+  return validerPaiementStick(distribId);
 }
 
 async function getAllDistributions() {
@@ -1322,15 +1331,23 @@ async function getAllDistributions() {
 }
 
 async function validerPaiementStick(distribId) {
+  // ⚠️ Avant le 21/06/2026 cette fonction écrivait toujours
+  // statut:'paye_helloasso', incohérent avec le reste de l'UI qui affiche
+  // 'distribue' comme statut final de remise (cf. boutique.js,
+  // renderMesSticks/renderToutesDistribs) — un Stick confirmé via le mode
+  // Cash se serait donc retrouvé avec un statut "paye_helloasso" trompeur.
+  // Corrigé pour écrire 'distribue', cohérent quel que soit le
+  // mode_paiement d'origine (cash ou helloasso) — c'est désormais le
+  // statut final commun aux deux flux, confirmé par scan ou bouton manuel.
   const { data: distrib } = await sb.from('sticks_distribution')
     .select('stick_id, quantite, statut').eq('id', distribId).single();
   const { error } = await sb.from('sticks_distribution')
-    .update({ statut: 'paye_helloasso' })
+    .update({ statut: 'distribue' })
     .eq('id', distribId);
   if (error) throw error;
   // Décrémentation au moment de la confirmation — jamais si déjà confirmée
   // avant (évite une double décrémentation en cas de double-clic/rappel).
-  if (distrib && distrib.statut !== 'paye_helloasso') {
+  if (distrib && distrib.statut !== 'distribue') {
     const { data: stick } = await sb.from('sticks_catalogue')
       .select('stock').eq('id', distrib.stick_id).single();
     if (stick) {
@@ -1556,7 +1573,7 @@ window.UL = {
   passerCommande, getMesCommandes, getAllCommandes, updateCommandeStatut,
   // Sticks
   getSticks, createStick, getMonQuotaStick, demanderStick, getMesSticks,
-  distribuerStickAdmin, getAllDistributions, validerPaiementStick,
+  distribuerStickAdmin, getAllDistributions, validerPaiementStick, confirmerDistributionStick,
   // Cotisations
   getConfigCotisation, updateConfigCotisation, getMaCotisation,
   validerCotisationCash, validerCotisationHelloAsso, getAllCotisations,
