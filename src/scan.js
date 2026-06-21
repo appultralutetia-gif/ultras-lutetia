@@ -103,7 +103,17 @@ function demarrerCameraScan() {
 
 function arreterCameraScan() {
   if (scanHtml5QrInstance) {
-    scanHtml5QrInstance.stop().catch(() => {});
+    // html5-qrcode peut lever une erreur SYNCHRONE ("Cannot stop, scanner
+    // is not running or paused") si stop() est appelé alors que le
+    // scanner n'a jamais réellement démarré (ex: caméra indisponible) —
+    // le .catch() seul ne suffit pas à l'attraper puisqu'elle survient
+    // avant même la création de la promesse. Sans ce try/catch, cette
+    // erreur interrompait toute la fonction appelante (closeModalScan),
+    // empêchant le bouton "Fermer" de fonctionner.
+    try {
+      const p = scanHtml5QrInstance.stop();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (e) { /* scanner jamais démarré, rien à arrêter — ignoré */ }
     scanHtml5QrInstance = null;
   }
 }
