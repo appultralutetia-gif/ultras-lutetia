@@ -1,6 +1,26 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v3
+// ULTRAS LUTETIA — Service Worker v6
 // ============================================================
+//
+// v6 (21/06/2026) : ajout de src/scan.js à NETWORK_FIRST (nouveau fichier,
+// composant scan QR membre — oublié de la liste lors de son introduction,
+// ce qui empêchait toute mise à jour de ce fichier d'être reçue par un
+// navigateur ayant déjà installé une version antérieure du Service
+// Worker — exactement le bug déjà documenté et corrigé en v3 pour les
+// autres modules, reproduit par oubli sur un fichier ajouté après coup).
+//
+// index.html passe également en network-first (auparavant en cache-first
+// via ASSETS) — c'est lui qui référence tous les <script src="...">,
+// donc le laisser en cache-first pouvait empêcher un navigateur de
+// jamais découvrir l'ajout d'un nouveau fichier JS (comme scan.js),
+// même après que ce fichier ait été correctement ajouté à NETWORK_FIRST
+// dans une future mise à jour — le bug se reproduirait alors silencieusement
+// à chaque nouveau fichier ajouté au projet.
+//
+// CACHE_NAME bumpé (v5 → v6) pour invalider immédiatement l'ancien cache
+// (notamment l'ancien index.html figé sans <script src="src/scan.js">,
+// qui ne se serait jamais mis à jour seul même avec les correctifs
+// ci-dessus, puisque l'ancien Service Worker lui-même devait être remplacé).
 //
 // v3 : tous les modules JS de src/ passent en network-first (auparavant
 // seuls app.js, supabase-client.js, styles.css, config.js l'étaient —
@@ -17,17 +37,21 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v5';
+const CACHE_NAME = 'ul-v6';
 
-// Modules JS/CSS : network-first (toujours la version la plus récente,
-// avec fallback cache uniquement si le réseau est indisponible).
+// Modules JS/CSS + index.html : network-first (toujours la version la
+// plus récente, avec fallback cache uniquement si le réseau est
+// indisponible).
 const NETWORK_FIRST = [
+  '/ultras-lutetia/',
+  '/ultras-lutetia/index.html',
   '/ultras-lutetia/src/app.js',
   '/ultras-lutetia/src/supabase-client.js',
   '/ultras-lutetia/src/styles.css',
   '/ultras-lutetia/src/config.js',
   '/ultras-lutetia/src/tifos.js',
   '/ultras-lutetia/src/deplacements.js',
+  '/ultras-lutetia/src/scan.js',
   '/ultras-lutetia/src/boutique.js',
   '/ultras-lutetia/src/calendrier.js',
   '/ultras-lutetia/src/admin.js',
@@ -35,8 +59,11 @@ const NETWORK_FIRST = [
   '/ultras-lutetia/src/testable.js',
 ];
 
-// Fichiers statiques : cache-first (changent rarement, et un bump de
-// CACHE_NAME suffit à les invalider intégralement si besoin).
+// Pré-cache à l'installation + fallback offline pour la navigation (cf.
+// catch plus bas) — / et index.html sont désormais en network-first
+// (cf. NETWORK_FIRST ci-dessus) pour la mise à jour normale ; ils restent
+// listés ici uniquement pour qu'une version soit disponible en cache si
+// jamais le réseau est indisponible au moment du premier chargement.
 const ASSETS = [
   '/ultras-lutetia/',
   '/ultras-lutetia/index.html',
