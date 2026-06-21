@@ -1323,10 +1323,20 @@ async function confirmerDistributionStick(distribId) {
 }
 
 async function getAllDistributions() {
-  const { data } = await sb.from('sticks_distribution')
-    .select('*, stick:sticks_catalogue(nom, categorie), membre:membres(nom, prenom, pseudo_telegram)')
+  // ⚠️ sticks_distribution a deux FK vers membres (membre_id ET
+  // distribue_par) — sans préciser laquelle, PostgREST refuse la requête
+  // avec une erreur d'ambiguïté (statut 300), jamais détectée avant
+  // l'introduction du scan QR car personne n'avait encore appelé cette
+  // fonction en conditions réelles. getAllDistributions() retournait donc
+  // systématiquement [] en silence (pas de gestion d'erreur), masquant
+  // complètement le problème. Corrigé en précisant la contrainte FK
+  // exacte (membre:membres!sticks_distribution_membre_id_fkey) — on veut
+  // bien le membre destinataire, pas la personne qui a distribué.
+  const { data, error } = await sb.from('sticks_distribution')
+    .select('*, stick:sticks_catalogue(nom, categorie), membre:membres!sticks_distribution_membre_id_fkey(nom, prenom, pseudo_telegram)')
     .order('created_at', { ascending: false })
     .limit(100);
+  if (error) throw error;
   return data || [];
 }
 
