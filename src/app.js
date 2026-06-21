@@ -430,6 +430,13 @@ function applyRights(membre) {
   if (isBureau(membre)) document.getElementById('btnPublierAnnonce').style.display = 'block';
   if (peutValiderInscriptions(membre)) document.getElementById('demandesSection').style.display = 'block';
 
+  // Boutons scan QR membre (présence/retrait) — Cellule du périmètre +
+  // Bureau + Admin (déjà inclus dans chaque hasCellule*, aucune logique
+  // supplémentaire nécessaire). Aucune autre cellule n'y a accès.
+  if (hasCelluleDepl(membre))   document.getElementById('btnScanPresenceDepl').style.display = 'block';
+  if (hasCelluleMatos(membre))  document.getElementById('btnScanRetraitMatos').style.display = 'block';
+  if (hasCelluleSticks(membre)) document.getElementById('btnScanRemiseStick').style.display = 'block';
+
   // Onglet Admin
   if (isCellule(membre)) {
     document.getElementById('nav6').style.display = 'flex';
