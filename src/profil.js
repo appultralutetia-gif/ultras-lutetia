@@ -59,6 +59,21 @@ async function loadProfil() {
       <div class="stat-card"><div class="stat-value">${stats.deplacements}</div><div class="stat-label">Déplacements</div></div>
       <div class="stat-card"><div class="stat-value">${stats.sessionsInscrites}</div><div class="stat-label">Inscriptions</div></div>`;
   } catch(e) {}
+
+  // QR code membre — généré à la demande (lazy) au premier chargement,
+  // chargé en parallèle non-bloquant : un échec ici ne doit jamais
+  // empêcher l'affichage du reste du profil (cf. plan_qr_membre.md §3.2).
+  try {
+    const code = await UL.getOrCreateQrCodeMembre();
+    document.getElementById('profilQrCard').innerHTML = `
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Mon QR code</div>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(code)}" width="160" height="160">
+      <p style="font-size:12px;color:var(--gris);margin-top:8px;">${esc(code)}</p>
+      <p style="font-size:12px;color:var(--gris);margin-top:4px;">Présente ce code à un membre du bureau pour signaler ta présence ou récupérer ta commande.</p>
+    `;
+  } catch(e) {
+    document.getElementById('profilQrCard').innerHTML = '';
+  }
 }
 
 async function doChangeMdp() {
