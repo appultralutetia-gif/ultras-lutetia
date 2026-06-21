@@ -6,15 +6,26 @@
 
 ## 📍 État de session — reprise
 
-**Module Boutique Sticks** : flux de création + validation cash terminé et fonctionnel (bugs #22-26 ci-dessous). Reste **non démarré** : audit du module Calendrier (4 fonctions manquantes déjà identifiées et corrigées en passant, cf. #23, mais le module lui-même n'a pas eu son audit complet comme Tifos/Boutique).
+*Mise à jour 21/06/2026, fin de session : chantier QR code membre (scan présence/retrait/remise) débogué et validé pour Sticks ; chantier HelloAsso Checkout (Déplacements) codé mais bloqué en attente d'accès réels — voir `TODO_HELLOASSO.md`.*
 
-**Action en attente côté Remi avant de continuer à tester Sticks** :
-```sql
--- Nettoyage complet des sticks de test avant de repartir propre
-delete from sticks_distribution;
-delete from sticks_catalogue;
-```
-(portion déjà prête dans `sql_nettoyage_avant_lancement.sql`, section 5 — copiée ici isolément pour usage immédiat sans toucher au reste de l'app).
+**QR code membre — état réel par contexte :**
+- **Sticks** : ✅ testé de bout en bout en conditions réelles (scan → résolution membre → confirmation remise → décrémentation stock), 3 bugs trouvés et corrigés au passage (cf. #27, #28, #29 ci-dessous).
+- **Déplacement** (présence bus) : codé, **jamais testé en conditions réelles** cette session — uniquement vérifié par lecture de code. À tester en priorité à la reprise (probable que d'autres bugs du même genre que Sticks y dorment, notamment toute jointure Supabase non vérifiée).
+- **Matos** (retrait commande) : codé, **jamais testé en conditions réelles** cette session, même remarque que Déplacement.
+
+**Action en attente côté Remi avant de continuer à tester** : aucune action SQL bloquante identifiée pour la suite (la migration QR code + present_at est déjà appliquée et vérifiée en base).
+
+**Dette technique connue, non bloquante** :
+- Le bouton "Cash" pour les Sticks en catégorie "Tous les membres" **sans lien HelloAsso renseigné** laisse un membre normal sans aucun moyen de l'acquérir lui-même (ni HelloAsso car pas de lien, ni Cash car réservé à la Cellule Sticks) — découvert en session, **pas encore corrigé**, 3 pistes de solution évoquées avec Remi mais aucune tranchée. À reprendre en priorité si ça bloque un cas réel.
+- `getEvenements()`/jointures sur d'autres tables non vérifiées pour ce même type d'ambiguïté de clé étrangère que celle trouvée en #29 — seules `sticks_distribution` et `evaluations` ont été auditées (`evaluations` s'est révélée saine). Aucune autre table n'a été vérifiée systématiquement.
+
+**Prochaine session suggérée** : tester Déplacement et Matos avec le scan QR (même méthode que Sticks : `console.log` direct des fonctions `UL.xxx` avant de chercher dans l'UI), puis trancher la question du bouton Cash Sticks sans lien HelloAsso, puis reprendre HelloAsso Checkout dès que les accès sandbox sont obtenus (cf. `TODO_HELLOASSO.md`).
+
+---
+
+## 📍 Historique — état de session précédent (20/06/2026)
+
+**Module Boutique Sticks** : flux de création + validation cash terminé et fonctionnel (bugs #22-26 ci-dessous). Reste **non démarré** : audit du module Calendrier (4 fonctions manquantes déjà identifiées et corrigées en passant, cf. #23, mais le module lui-même n'a pas eu son audit complet comme Tifos/Boutique).
 
 **Dette technique connue, non bloquante** :
 - `modalDistribuer`/`doDistribuerStick()` ne sont plus accessibles depuis aucun bouton de l'UI (remplacés par le flux Cash dédié) — code mort, à supprimer si confirmé inutile à terme.
@@ -473,6 +484,71 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 
 ---
 
+## 27. Nouveau fichier JS jamais ajouté à la liste `NETWORK_FIRST` du Service Worker — mise à jour invisible côté navigateur
+
+**Symptôme** : `src/scan.js` ajouté au projet (nouveau composant scan QR membre), bouton correspondant visible dans l'UI, mais le clic ne déclenche absolument rien — aucune erreur visible, aucun effet.
+
+**Cause réelle (découverte en deux temps)** :
+1. `scan.js` n'avait pas été ajouté à la liste `NETWORK_FIRST` de `sw.js` — exactement le même piège déjà documenté et corrigé en v3 du Service Worker pour les autres modules (`app.js`, `boutique.js`, etc.), reproduit par oubli sur un fichier ajouté après coup. Pire : `index.html` lui-même était encore en cache-first (`ASSETS`), donc même la balise `<script src="src/scan.js">` ajoutée à `index.html` pouvait ne jamais être reçue par un navigateur ayant déjà une version en cache.
+2. **Cause plus simple et antérieure, découverte ensuite** : le fichier `scan.js` n'avait en réalité jamais été placé dans `src/` sur le dépôt GitHub — créé au mauvais endroit (racine du dépôt), donc `<script src="src/scan.js">` pointait vers une ressource inexistante (404 silencieux, aucune erreur bloquante visible sans ouvrir l'onglet Network/Console). Cette cause suffisait seule à expliquer tout le symptôme ; la cause Service Worker (#1) était un vrai problème mais secondaire dans ce cas précis.
+
+**Fix** :
+- `sw.js` : ajout de `scan.js` à `NETWORK_FIRST`, déplacement de `/` et `/index.html` de `ASSETS` vers `NETWORK_FIRST` (pour qu'un nouveau fichier JS ajouté au projet soit toujours découvert, même sans modifier `sw.js` à chaque fois), `CACHE_NAME` bumpé `v5` → `v6` pour invalider tout cache existant.
+- Déplacement du fichier au bon emplacement (`src/scan.js`).
+
+**Méthode de diagnostic qui a fonctionné** : demander confirmation explicite, étape par étape, de l'emplacement réel du fichier sur GitHub plutôt que de supposer que "j'ai bien recollé X" signifie "au bon endroit avec le bon contenu" — une suite de questions fermées ("le bouton apparaît-il ?", "que vois-tu en ouvrant scan.js sur GitHub ?") a révélé la cause bien plus vite qu'une investigation côté code, qui était lui-même irréprochable.
+
+**Fichiers concernés** : `sw.js`, emplacement de `src/scan.js`.
+
+---
+
+## 28. `arreterCameraScan()` — erreur synchrone de `html5-qrcode` non catchée bloque le bouton "Fermer"
+
+**Symptôme** : dans la modale de scan QR, le bouton "Fermer" ne fait rien (aucune fermeture, aucune erreur visible dans l'UI).
+
+**Cause** : `Html5Qrcode.stop()` lève une erreur **synchrone** (`Cannot stop, scanner is not running or paused`) quand on l'appelle sur une instance dont le scanner n'a jamais réellement démarré (cas réel : caméra indisponible, comme sur un PC de bureau sans webcam accessible — message "Caméra indisponible, utilise la saisie manuelle" déjà affiché par ailleurs). Le code appelait `.stop().catch(() => {})`, ce qui ne protège que contre un rejet de **promesse** — l'erreur synchrone, levée avant même la création de cette promesse, n'était jamais interceptée. Elle remontait donc telle quelle et interrompait toute la fonction appelante (`closeModalScan`), empêchant `closeModal('modalScan')` de s'exécuter.
+
+**Fix** : `arreterCameraScan()` encapsule maintenant l'appel à `.stop()` dans un `try/catch` classique (pas seulement un `.catch()` sur la promesse retournée), pour intercepter aussi bien l'erreur synchrone que le rejet asynchrone.
+
+**Méthode de diagnostic qui a fonctionné** : appeler directement la fonction suspecte (`closeModalScan()`) depuis la console du navigateur plutôt que de re-cliquer sur le bouton — l'erreur complète avec sa stack (`Uncaught Cannot stop, scanner is not running or paused`, pointant vers `html5-qrcode.min.js`) est apparue immédiatement, alors qu'un clic UI normal ne montre jamais la stack d'erreur sans ouvrir la console au bon moment.
+
+**Fichiers concernés** : `src/scan.js`.
+
+---
+
+## 29. `getAllDistributions()` — jointure ambiguë vers `membres` (deux FK sur la même table), jamais détectée avant le premier appel réel
+
+**Symptôme** : le scan QR membre, contexte Sticks, affiche systématiquement "Aucune remise en attente pour {nom}" alors que des distributions `en_attente` existent bel et bien en base pour ce membre (vérifié directement par requête SQL).
+
+**Cause** : `sticks_distribution` a **deux** clés étrangères vers `membres` — `membre_id` (le destinataire) et `distribue_par` (qui a enregistré la distribution). La requête `select('*, membre:membres(...))` ne précisait pas laquelle utiliser ; PostgREST refuse une telle requête avec une erreur d'ambiguïté (statut HTTP 300, `Could not embed because more than one relationship was found...`) plutôt que de deviner. `getAllDistributions()` n'avait **aucune gestion d'erreur** (`const { data } = await ...` sans vérifier `error`), donc `data` valait `null`, et la fonction retournait silencieusement `[]` — masquant complètement l'erreur réelle. Bug **préexistant à cette session** : cette fonction n'avait jamais été appelée en conditions réelles avant que le scan QR ne soit la première fonctionnalité à s'y fier vraiment pour produire un résultat affiché à l'utilisateur.
+
+**Fix** : précision explicite de la contrainte FK à utiliser avec la syntaxe `membre:membres!sticks_distribution_membre_id_fkey(...)`, et ajout de la gestion d'erreur manquante (`if (error) throw error`) pour qu'un futur problème similaire remonte visiblement au lieu de se traduire par un résultat vide trompeur.
+
+**Vérification complémentaire effectuée** : recherche de toutes les tables ayant plus d'une FK vers `membres` (`information_schema`), une seule autre table concernée (`evaluations`, via `notee_par` et `membre_id`) — déjà correctement écrite partout où elle est jointe (`membres!evaluations_notee_par_fkey`), donc aucune autre correction nécessaire.
+
+**Méthode de diagnostic qui a fonctionné** : isoler la requête en console, d'abord sans jointure (`select('*')` → fonctionne, 2 lignes) puis avec jointure (`select('*, membre:membres(...))` → `success:false`, statut 300) pour localiser précisément quelle partie de la requête posait problème, puis lire le message d'erreur PostgREST complet (`r.error.message`) qui nomme explicitement les deux contraintes FK en conflit et la syntaxe de résolution attendue.
+
+**Fichiers concernés** : `src/supabase-client.js` (`getAllDistributions`).
+
+---
+
+## 30. Stick "Tous les membres" sans lien HelloAsso — aucun moyen d'achat pour un membre normal
+
+**Symptôme** : un stick créé en catégorie "Tous les membres", sans lien HelloAsso renseigné dans le formulaire de création, est bien **visible** dans le catalogue pour n'importe quel membre (cohérent, `getSticks()` filtre correctement sur `niveau_acces`), mais reste **inachetable** : aucun bouton d'action n'apparaît pour un membre normal sur sa carte.
+
+**Cause** : `renderSticks()` (boutique.js) n'affiche que deux boutons d'action — "HelloAsso" (visible uniquement si `s.lien_helloasso` est renseigné) et "Cash" (visible uniquement pour `hasCelluleSticks(m)`, donc jamais pour un membre normal). Un stick sans lien HelloAsso et niveau_acces="tous" retombe dans un angle mort : aucune des deux conditions n'est remplie pour un membre simple.
+
+**Statut : non corrigé, en attente de décision produit.** Trois pistes évoquées avec Remi, aucune tranchée à la fin de cette session :
+1. Réintroduire un flux d'auto-demande côté membre (proche de l'ancienne `demanderStick()`, retirée de l'UI lors d'une session antérieure) — le membre se signale, la Cellule confirme la remise/l'encaissement physiquement ensuite.
+2. Rendre le lien HelloAsso obligatoire à la création d'un stick payant (comme prévu à l'origine, avant d'être rendu optionnel faute d'accès HelloAsso — cf. session du 20/06).
+3. Rendre le bouton "Cash" visible pour tous les membres (pas seulement la Cellule Sticks) quand aucun lien HelloAsso n'existe — le membre se signale lui-même, la Cellule confirme ensuite (recoupe en partie avec le futur flux de confirmation par scan QR, cf. #29 et le chantier QR code membre).
+
+**Lien avec le chantier QR code membre** : la piste 1 ou 3 ci-dessus s'articulerait naturellement avec le bouton manuel de filet de secours déjà ajouté (`doConfirmerDistributionManuelle`, accessible depuis "Historique distributions") et avec le scan lui-même — une fois la demande créée en `en_attente` par n'importe quel mécanisme, la confirmation finale (scan ou bouton manuel) fonctionne déjà correctement quel que soit qui a initié la demande.
+
+**Fichiers concernés (si correction future)** : `src/boutique.js` (`renderSticks`), `src/supabase-client.js` (éventuel nouveau flux d'auto-demande).
+
+---
+
 - **Reproduire un bug exige parfois un état précis** (ex: un tifo où l'on n'est *pas encore* inscrit) — un test sur le mauvais état peut masquer le vrai bug derrière un comportement différent mais correct (ex: doublon d'inscription qui ressemble au bug recherché mais n'en est pas la cause).
 - **Un renommage en masse de fichiers (GitHub web, script) peut introduire un caractère invisible (espace en tête) sans qu'aucun affichage standard ne le révèle** — si toutes les requêtes vers un dossier entier renvoient 404 alors que le déploiement est confirmé réussi et le chemin visuellement correct, vérifier l'URL "Raw" d'un seul fichier individuel avant de chercher plus loin.
 - **Un fallback de Service Worker ou de routeur qui retombe sur la page d'accueil en cas d'échec réseau peut maquiller une vraie 404 en "redirection"** — si une ressource semble "rediriger vers l'app" au lieu d'afficher une erreur claire, soupçonner un `catch()`/fallback générique avant de chercher un bug applicatif.
@@ -482,3 +558,7 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 - **Du code non branché à l'UI (fonction exportée mais jamais appelée) peut survivre longtemps sans être détecté, et accumuler ses propres bugs en silence** — `rattacherCellule()` contenait un bug de statut invalide en plus d'être totalement déconnectée ; un simple `grep` du nom de fonction dans `src/*.js` + `index.html` suffit à vérifier si une fonction est réellement utilisée avant de lui faire confiance ou de la corriger en place.
 - **Le schéma réel de la base (colonnes, buckets Storage, policies RLS) doit être vérifié par une requête `information_schema`/Table Editor avant d'écrire toute nouvelle fonction d'écriture** — une fonction de *lecture* préexistante qui semblait fonctionner (`getSticks()` lisant `niveau_acces`) ne prouve pas que la colonne existe réellement ; elle peut simplement n'avoir jamais été testée avec des données réelles. Le bug #24 a cumulé cinq variantes de ce même piège en une seule session.
 - **Un champ utilisé par une logique de vérification métier doit avoir un chemin de saisie dans le formulaire correspondant, vérifié explicitement** — sinon la valeur en base part d'un défaut arbitraire qui ne se révèle que le jour où la vérification se déclenche réellement (bug #25 : quota jamais saisi, jamais à zéro, bloquant silencieusement le premier test venu).
+- **Une table avec plusieurs clés étrangères vers la même table cible exige de préciser explicitement quelle contrainte utiliser dans toute jointure Supabase/PostgREST** (`table!nom_contrainte_fkey`) — sans ça, PostgREST refuse la requête avec un statut 300 plutôt que de deviner, et si la fonction appelante n'a pas de gestion d'erreur (`if (error) throw error`), le symptôme observé est un résultat vide trompeur, pas un message d'erreur explicite (bug #29). Avant d'écrire une jointure `table:autre_table(...)`, vérifier par une requête sur `information_schema` si la table cible a plus d'une FK vers la table source.
+- **Ajouter un nouveau fichier JS au projet est une opération à deux endroits minimum, pas un** (`index.html` pour le `<script src>`, ET `sw.js` pour `NETWORK_FIRST`) — oublier le second produit un bug à retardement qui n'apparaît que sur un navigateur ayant déjà une version mise en cache, jamais sur le premier test en local/incognito (bug #27). Avant de considérer un nouveau fichier comme "déployé", vérifier les deux.
+- **Quand un symptôme semble correspondre exactement à un bug déjà documenté et corrigé dans une session antérieure (ici : cache Service Worker, déjà vu en #4), commencer par vérifier les causes les plus simples et antérieures (le fichier existe-t-il au bon endroit ?) avant de réappliquer le correctif déjà connu** — la vraie cause du bug #27 était une erreur d'emplacement de fichier, pas (uniquement) une lacune du Service Worker ; corriger uniquement `sw.js` aurait laissé le symptôme intact.
+- **Une erreur synchrone levée par une librairie tierce n'est jamais interceptée par un simple `.catch()` sur la valeur de retour** — seul un vrai rejet de Promise l'est. Si une fonction tierce peut échouer de façon synchrone selon l'état interne (`Html5Qrcode.stop()` si le scanner n'a jamais démarré, bug #28), l'appel doit être enveloppé dans un `try/catch` classique, le `.catch()` de la promesse ne suffisant qu'au cas où l'échec survient bien après le démarrage de l'opération asynchrone.
