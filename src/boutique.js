@@ -340,15 +340,20 @@ function renderListeMembresCashStick(membres) {
 }
 
 async function doValiderCashStick(membreId, nomMembre) {
+  // ⚠️ Depuis le 21/06/2026, cette action ne distribue plus immédiatement
+  // (cf. distribuerStickAdmin, supabase-client.js) — elle crée la demande
+  // en 'en_attente', à confirmer ensuite par scan QR du membre (cf.
+  // scan.js, contexte 'stick') ou par le bouton manuel de filet de
+  // secours dans la liste "Historique distributions" (renderToutesDistribs).
   const stickId = document.getElementById('cashStickId').value;
   const qte = parseInt(document.getElementById('cashStickQte').value) || 1;
-  if (!confirm(`Valider le cash reçu de ${nomMembre} (x${qte}) ?`)) return;
+  if (!confirm(`Enregistrer la demande cash de ${nomMembre} (x${qte}) ?`)) return;
   try {
     await UL.distribuerStickAdmin(stickId, membreId, qte, 'cash');
-    toast(`Cash validé pour ${nomMembre} ✅`, 'success');
+    toast(`Demande enregistrée pour ${nomMembre} — à confirmer au retrait`, 'success');
     closeModal('modalCashStick');
     loadSticks();
-  } catch(e) { toast(e.message || 'Impossible de valider le cash', 'error'); }
+  } catch(e) { toast(e.message || 'Impossible d\'enregistrer la demande', 'error'); }
 }
 
 function renderMesSticks(distribs) {
@@ -379,7 +384,24 @@ function renderToutesDistribs(distribs) {
         </div>
         <span class="badge ${d.statut==='distribue'?'badge-vert':'badge-orange'}">${d.statut}</span>
       </div>
+      ${d.statut === 'en_attente' ? `
+      <div style="margin-top:8px;">
+        <button class="btn btn-sm btn-secondary" style="width:100%;" onclick="doConfirmerDistributionManuelle('${d.id}')">✔️ Confirmer (sans scan)</button>
+      </div>` : ''}
     </div>`).join('');
+}
+
+// Filet de secours pour confirmer une distribution Stick sans passer par
+// le scan QR (cas client sans téléphone disponible le jour J) — réutilise
+// la même fonction de confirmation que le scan, mêmes garanties
+// d'idempotence (jamais décrémenté deux fois si déjà confirmée).
+async function doConfirmerDistributionManuelle(distribId) {
+  if (!confirm('Confirmer cette distribution sans scan ?')) return;
+  try {
+    await UL.confirmerDistributionStick(distribId);
+    toast('Distribution confirmée ✅', 'success');
+    loadSticks();
+  } catch(e) { toast(e.message || 'Impossible de confirmer la distribution', 'error'); }
 }
 
 async function loadDistribuerModal() {
