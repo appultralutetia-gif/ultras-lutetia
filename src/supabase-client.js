@@ -315,7 +315,7 @@ async function getEvaluationsCourantesBatch(membreIds) {
 // { [membreId]: { tifoPresent, tifoAbsent, deplPaye, deplNonPaye } }
 // Tifo : 'present' = présence confirmée, 'absent' = no-show réel —
 // 'inscrit' (en attente de traitement) n'est compté dans aucun des deux.
-// Déplacement : 'paye_cash'/'paye_helloasso' = payé, 'en_attente' = non
+// Déplacement : 'paye_cash'/'paye_ha' = payé, 'en_attente' = non
 // payé (assimilé à un no-show, cf. demande explicite Comité de passage).
 async function getParticipationBatch(membreIds) {
   if (!membreIds || !membreIds.length) return {};
@@ -334,7 +334,7 @@ async function getParticipationBatch(membreIds) {
   });
   (depls || []).forEach(d => {
     const m = ensure(d.membre_id);
-    if (d.statut_paiement === 'paye_cash' || d.statut_paiement === 'paye_helloasso') m.deplPaye++;
+    if (d.statut_paiement === 'paye_cash' || d.statut_paiement === 'paye_ha') m.deplPaye++;
     else m.deplNonPaye++;
   });
   return parMembre;
@@ -843,10 +843,15 @@ async function validerPaiementCash(deplacementId, membreId) {
 }
 
 async function validerPaiementHelloAsso(deplacementId, membreId) {
+  // ⚠️ Avant le 21/06/2026 cette fonction écrivait 'paye_helloasso', valeur
+  // qui n'a JAMAIS existé dans la contrainte CHECK réelle de la table
+  // (seule 'paye_ha' est autorisée) — tout appel à cette fonction aurait dû
+  // échouer avec une violation de contrainte. Corrigé en même temps que
+  // l'intégration HelloAsso Checkout (cf. TODO_HELLOASSO.md).
   const qrCode = `UL-HA-${Date.now()}-${membreId.slice(0,6).toUpperCase()}`;
   const { error } = await sb.from('inscriptions_deplacement')
     .update({
-      statut_paiement: 'paye_helloasso',
+      statut_paiement: 'paye_ha',
       valide_par: currentUser.id,
       valide_at: new Date().toISOString(),
       qr_code: qrCode,
