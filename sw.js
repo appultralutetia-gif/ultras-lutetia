@@ -1,6 +1,16 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v7
+// ULTRAS LUTETIA — Service Worker v8
 // ============================================================
+//
+// v8 (24/06/2026) : CACHE_NAME bumpé (v7 → v8) suite à une deuxième vague
+// de modifications sur le même chantier que la v7 (formulaire Création
+// déplacement) : correction du bug cree_par (colonne manquante, ajoutée
+// en base), ajout du champ Lien Telegram du déplacement (affiché côté
+// membre uniquement une fois le paiement confirmé), pré-remplissage de
+// la Ville à partir du stade (table de correspondance stade→ville côté
+// JS), et passage du Point de RDV en liste déroulante (Charléty / Porte
+// de Versailles / Autre, avec champ libre si Autre). Modifications dans
+// index.html et src/deplacements.js, tous deux déjà en NETWORK_FIRST.
 //
 // v7 (24/06/2026) : CACHE_NAME bumpé (v6 → v7) suite à la modification de
 // index.html (nouveau modal Création déplacement : sélecteur Source
@@ -47,7 +57,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v7';
+const CACHE_NAME = 'ul-v8';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
