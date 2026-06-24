@@ -891,6 +891,15 @@ async function getPizzaOrders(sessionId) {
 // DÉPLACEMENTS
 // ============================================================
 
+// ⚠️ Avant le 24/06/2026, cette fonction ne renvoyait que les lignes brutes
+// de `deplacements` — ni _inscrits (nombre réel d'inscrits) ni monInscrit
+// (statut du membre courant) n'étaient calculés ici, alors que
+// renderDeplCard() dans deplacements.js lit déjà d._inscrits depuis
+// toujours pour la barre de progression des places (bug latent : la barre
+// affichait systématiquement 0/places_max, jamais le vrai nombre). Les deux
+// champs sont désormais calculés pour chaque déplacement de la liste, ce
+// qui permet aussi d'afficher sur la carte le bon bouton (M'inscrire /
+// paiement en cours / payé / refusé) sans devoir ouvrir la modal de détail.
 async function getDeplacements(upcoming = true) {
   const today = new Date().toISOString().split('T')[0];
   let query = sb.from('deplacements')
@@ -899,7 +908,21 @@ async function getDeplacements(upcoming = true) {
   if (upcoming) query = query.gte('date_match', today);
   const { data, error } = await query;
   if (error) throw error;
-  return data || [];
+  const depls = data || [];
+  if (!depls.length) return depls;
+
+  const { data: inscriptions } = await sb.from('inscriptions_deplacement')
+    .select('*')
+    .in('deplacement_id', depls.map(d => d.id));
+
+  return depls.map(d => {
+    const inscritsDuDepl = (inscriptions || []).filter(i => i.deplacement_id === d.id);
+    return {
+      ...d,
+      _inscrits: inscritsDuDepl.length,
+      monInscrit: inscritsDuDepl.find(i => i.membre_id === currentUser?.id) || null,
+    };
+  });
 }
 
 async function getDeplacement(id) {
