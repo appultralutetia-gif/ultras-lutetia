@@ -83,7 +83,8 @@ async function openDepl(deplId) {
     } else {
       html += `<div class="info-box success">✅ Paiement confirmé — ton billet est prêt</div>
         <div class="qr-container" id="qrDepl"></div>
-        <p style="text-align:center;font-size:12px;color:var(--gris);">Code: ${monInscrit.qr_code||''}</p>`;
+        <p style="text-align:center;font-size:12px;color:var(--gris);">Code: ${monInscrit.qr_code||''}</p>
+        ${d.lien_telegram ? `<a href="${esc(d.lien_telegram)}" target="_blank"><button class="btn btn-secondary" style="margin-top:10px;">💬 Groupe Telegram du déplacement</button></a>` : ''}`;
     }
 
     // Boutons admin déplacement
@@ -162,6 +163,36 @@ async function copierListeBus(deplId) {
     toast('Liste bus copiée !', 'success');
   } catch(e) { toast('Impossible de copier la liste bus', 'error'); }
 }
+// Correspondance stade → ville, pour pré-remplir le champ Ville à partir
+// du stade du match (la table `matchs` n'a pas de colonne ville dédiée).
+// Couvre les stades de Ligue 1 2026-2027 (18 clubs, dont les promus ESTAC
+// Troyes et Le Mans FC) — à étendre si Ultras Lutetia se déplace pour une
+// coupe ou un amical contre un club hors Ligue 1.
+const STADE_VERS_VILLE = {
+  'Stade Raymond Kopa': 'Angers',
+  'Stade de l\'Abbé Deschamps': 'Auxerre',
+  'Stade Francis-Le Blé': 'Brest',
+  'Stade Océane': 'Le Havre',
+  'MMArena': 'Le Mans',
+  'Stade Bollaert-Delelis': 'Lens',
+  'Stade Pierre-Mauroy': 'Villeneuve-d\'Ascq',
+  'Stade du Moustoir': 'Lorient',
+  'Groupama Stadium': 'Décines-Charpieu',
+  'Stade Vélodrome': 'Marseille',
+  'Stade Louis-II': 'Monaco',
+  'Allianz Riviera': 'Nice',
+  'Parc des Princes': 'Paris',
+  'Roazhon Park': 'Rennes',
+  'Stade de la Meinau': 'Strasbourg',
+  'Stadium de Toulouse': 'Toulouse',
+  'Stade de l\'Aube': 'Troyes',
+};
+
+function deduireVilleDepuisStade(stade) {
+  if (!stade) return '';
+  return STADE_VERS_VILLE[stade] || '';
+}
+
 // Ouvre le modal de création de déplacement et charge la liste des
 // matchs à l'extérieur à venir (seuls éligibles : Ultras Lutetia se
 // déplace pour soutenir Paris FC, jamais pour un match à domicile).
@@ -176,7 +207,11 @@ async function ouvrirCreerDepl() {
   document.getElementById('dMatchVide').style.display = 'none';
   ['dAdv','dStade','dVille'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('dDate').value = '';
-  ['dRdv','dHeure','dPrix','dPlaces','dLimite','dNotes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('dRdv').value = '';
+  document.getElementById('dRdvAutre').value = '';
+  document.getElementById('dRdvAutre').style.display = 'none';
+  document.getElementById('dTelegram').value = '';
+  ['dHeure','dPrix','dPlaces','dLimite','dNotes'].forEach(id => document.getElementById(id).value = '');
   onChangeSourceDepl();
 
   try {
@@ -212,11 +247,23 @@ function onChangeSourceDepl() {
   }
 }
 
+// Affiche le champ libre uniquement quand "Autre" est choisi comme point
+// de RDV — Charléty et Porte de Versailles n'ont pas besoin de précision.
+function onChangeRdvDepl() {
+  const rdv = document.getElementById('dRdv').value;
+  const autreInput = document.getElementById('dRdvAutre');
+  autreInput.style.display = rdv === 'autre' ? 'block' : 'none';
+  if (rdv !== 'autre') autreInput.value = '';
+}
+
 // Pré-remplit adversaire/date/stade/ville à partir du match sélectionné.
 // Les champs restent modifiables ensuite (cf. décision produit) — utile
 // si le stade ou la date affichée au calendrier n'est pas encore à jour.
 // equipe_domicile = l'adversaire, puisque seuls les matchs extérieur sont
 // proposés ici (Paris FC est toujours equipe_exterieur dans ce cas).
+// La ville est déduite du stade via STADE_VERS_VILLE (la table matchs n'a
+// pas de colonne ville) — reste vide et modifiable si le stade n'est pas
+// reconnu (amical, stade neutre, etc.).
 async function onChangeMatchDepl() {
   const matchId = document.getElementById('dMatchId').value;
   if (!matchId) return;
@@ -227,18 +274,22 @@ async function onChangeMatchDepl() {
     document.getElementById('dAdv').value = match.equipe_domicile || '';
     document.getElementById('dDate').value = match.date || '';
     document.getElementById('dStade').value = match.stade || '';
+    document.getElementById('dVille').value = deduireVilleDepuisStade(match.stade);
   } catch(e) { toast('Erreur chargement du match', 'error'); }
 }
 
 async function doCreerDepl() {
   const source = document.getElementById('dSource').value;
   const matchId = document.getElementById('dMatchId').value;
+  const rdvChoix = document.getElementById('dRdv').value;
+  const pointRdv = rdvChoix === 'autre' ? (document.getElementById('dRdvAutre').value.trim() || null) : (rdvChoix || null);
   const data = {
     adversaire: document.getElementById('dAdv').value,
     date_match: document.getElementById('dDate').value,
     stade: document.getElementById('dStade').value || null,
     ville: document.getElementById('dVille').value || null,
-    point_rdv: document.getElementById('dRdv').value || null,
+    point_rdv: pointRdv,
+    lien_telegram: document.getElementById('dTelegram').value.trim() || null,
     heure_depart: document.getElementById('dHeure').value || null,
     prix_total: parseFloat(document.getElementById('dPrix').value) || null,
     places_max: parseInt(document.getElementById('dPlaces').value) || null,
