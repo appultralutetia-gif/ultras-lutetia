@@ -6,7 +6,27 @@
 
 ---
 
-## 📍 État au 21/06/2026, fin de session
+## 📍 État au 24/06/2026 — accès sandbox obtenus, code existant confirmé fonctionnel
+
+**Accès HelloAsso sandbox obtenus cette session.** Progrès réalisés :
+- ✅ Clé API sandbox générée sur `admin.helloasso-sandbox.com/ultra-lutetia` (`client_id`/`client_secret` distincts, après une fausse alerte où les 3 valeurs avaient été confondues — corrigé)
+- ✅ Les 4 secrets Supabase posés : `HELLOASSO_CLIENT_ID`, `HELLOASSO_CLIENT_SECRET`, `HELLOASSO_ORG_SLUG` (`ultra-lutetia`), `HELLOASSO_API_BASE` (`https://api.helloasso-sandbox.com`)
+- ✅ Table `helloasso_tokens` créée (RLS activé, pas de policy — accès service_role uniquement)
+- ✅ Contrainte `inscriptions_deplacement_statut_paiement_check` vérifiée en base : contient déjà 5 valeurs (`en_attente`, `paye_cash`, `paye_ha`, `rembourse`, `refuse`) — pas de migration de contrainte nécessaire
+- ✅ **Bug découvert et corrigé** (cf. `docs/BUGS.md` #31) : colonnes `valide_par`/`valide_at` envoyées par `validerPaiementCash`/`validerPaiementHelloAsso` depuis le début mais jamais créées en base — ajoutées en nullable
+- ⚠️ **Correction importante** : `helloasso-create-checkout` et `helloasso-webhook` n'ont PAS été écrites cette session — elles **existaient déjà, déployées depuis le 21/06/2026** (9 et 4 déploiements visibles dans le Dashboard), avec les TODO[ACCÈS] déjà en place dans le code. Claude avait écrit une version alternative sans le savoir (fichiers absents de l'upload de session) ; après comparaison, le code existant s'est avéré aussi complet voire plus robuste sur certains points (`inscription_id` en metadata, gestion du statut `rembourse`) — la version alternative a été retirée pour éviter toute confusion. Copie de référence du code réellement déployé conservée dans `supabase_reel/functions/`.
+- ✅ Mémo dédié créé : `MEMO_HELLOASSO_SANDBOX_VERS_PROD.md` — à consulter au moment du vrai lancement, décrit la bascule sandbox→prod comme un changement des 4 secrets uniquement, jamais de code à toucher
+
+**Reste à faire avant le premier test réel** :
+- [ ] Désactiver "Verify JWT" sur `helloasso-webhook` dans les Settings de la fonction si pas déjà fait (cf. BUGS.md #3c) — à vérifier, pas confirmé cette session
+- [ ] Configurer l'URL de notification webhook côté back-office HelloAsso **sandbox** (`Mon Compte → Intégrations et API`) — jamais fait jusqu'ici d'après le commentaire du code
+- [ ] Valider le compte sandbox avec des documents fictifs (requis par HelloAsso avant tout premier paiement test)
+- [ ] Test de bout en bout : inscription → paiement carte test sandbox → webhook → `paye_ha`
+- [ ] Confirmer en conditions réelles le header IP exact (`x-forwarded-for` supposé dans `originAutorisee()`, jamais vérifié) — TODO[ACCÈS] toujours ouvert dans le code existant
+
+---
+
+## 📍 État au 21/06/2026, fin de session (historique, conservé)
 
 **Aucun progrès sur l'obtention des accès HelloAsso cette session** — le chantier HelloAsso est resté en pause (point 1 ci-dessous toujours "à faire", rien commencé). La session a été consacrée à un chantier différent (QR code membre pour la présence/le retrait, sans rapport direct avec HelloAsso) — voir `docs/BUGS.md` #27-30 pour le détail de ce qui a été fait à la place. Tout ce qui suit dans ce fichier reste donc valable et inchangé depuis la dernière mise à jour.
 
