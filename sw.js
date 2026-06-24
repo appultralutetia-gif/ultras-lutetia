@@ -1,6 +1,20 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v11
+// ULTRAS LUTETIA — Service Worker v12
 // ============================================================
+//
+// v12 (24/06/2026) : CACHE_NAME bumpé (v11 → v12) suite à l'exploitation
+// de la colonne present_at (déjà existante, déjà mise à jour par le scan
+// QR via confirmerPresenceDeplacement) côté affichage src/deplacements.js
+// — jusqu'ici aucune carte ni liste ne lisait cette colonne : (1) badge
+// "✅ Présent" / "⏳ Pas encore présent" ajouté à côté du badge "✅ Payé"
+// sur la carte de liste (renderDeplCard), affiché seulement une fois le
+// paiement confirmé ; (2) liste "Inscrits" (voirInscritsDepl, désormais
+// scindée en renderListeInscritsDepl pour permettre le filtrage sans
+// recharger) enrichie d'un badge présence par ligne et de 3 boutons filtre
+// Tous / Présents / Absents — "Absents" ne porte que sur les inscrits
+// payés (un non-payé n'a jamais pu être scanné présent, le scan bloque
+// sans paiement confirmé sauf force=true côté admin). Fichier modifié :
+// src/deplacements.js, déjà en NETWORK_FIRST.
 //
 // v11 (24/06/2026) : CACHE_NAME bumpé (v10 → v11) suite à l'ajout de la
 // modification (édition complète) pour 4 modules qui n'en disposaient pas
@@ -104,7 +118,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v11';
+const CACHE_NAME = 'ul-v12';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
