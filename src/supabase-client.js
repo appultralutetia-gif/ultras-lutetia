@@ -925,13 +925,23 @@ async function getDeplacements(upcoming = true) {
   });
 }
 
+// ⚠️ Bug corrigé le 24/06/2026 (PGRST201) : depuis l'ajout de la colonne
+// valide_par (qui référence elle aussi membres(id)), inscriptions_deplacement
+// a DEUX clés étrangères vers membres (membre_id et valide_par). PostgREST
+// ne peut plus deviner laquelle utiliser pour l'embed implicite
+// membre:membres(...) et renvoie une erreur PGRST201 (relation ambiguë),
+// silencieusement absorbée ici par `inscrits || []` — résultat : data
+// devenait null, masqué comme un simple "aucun inscrit". La syntaxe
+// membres!inscriptions_deplacement_membre_id_fkey(...) précise explicitement
+// quelle FK suivre (celle du membre inscrit, pas celle du validateur).
 async function getDeplacement(id) {
   const { data } = await sb.from('deplacements')
     .select('*, match:matchs(*)')
     .eq('id', id).single();
-  const { data: inscrits } = await sb.from('inscriptions_deplacement')
-    .select('*, membre:membres(nom, prenom, pseudo_telegram)')
+  const { data: inscrits, error: inscritsError } = await sb.from('inscriptions_deplacement')
+    .select('*, membre:membres!inscriptions_deplacement_membre_id_fkey(nom, prenom, pseudo_telegram)')
     .eq('deplacement_id', id);
+  if (inscritsError) console.error('[UL] getDeplacement — erreur chargement inscrits:', inscritsError.message);
   const monInscrit = (inscrits || []).find(i => i.membre_id === currentUser?.id);
   const nbInscrits = (inscrits || []).length;
   return { deplacement: data, inscrits: inscrits || [], monInscrit, nbInscrits };
