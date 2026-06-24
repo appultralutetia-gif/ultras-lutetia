@@ -1,6 +1,16 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v6
+// ULTRAS LUTETIA — Service Worker v7
 // ============================================================
+//
+// v7 (24/06/2026) : CACHE_NAME bumpé (v6 → v7) suite à la modification de
+// index.html (nouveau modal Création déplacement : sélecteur Source
+// match du calendrier / autre événement, dropdown matchs, suppression du
+// champ Lien HelloAsso) et de src/deplacements.js (ouvrirCreerDepl,
+// onChangeSourceDepl, onChangeMatchDepl, doCreerDepl mis à jour). index.html
+// et deplacements.js étant tous les deux en NETWORK_FIRST depuis la v6,
+// ce bump n'est pas strictement nécessaire pour qu'un navigateur les
+// récupère — mais il invalide immédiatement le reste du cache (cache-first)
+// par précaution, et donne un repère de version clair en cas de débogage.
 //
 // v6 (21/06/2026) : ajout de src/scan.js à NETWORK_FIRST (nouveau fichier,
 // composant scan QR membre — oublié de la liste lors de son introduction,
@@ -37,7 +47,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v6';
+const CACHE_NAME = 'ul-v7';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
