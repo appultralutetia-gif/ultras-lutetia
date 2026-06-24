@@ -82,6 +82,7 @@ function renderMatos(produits) {
         </button>` : ''}
         ${hasCelluleMatos(UL.getCurrentMembre()) ? `
         <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierProduit('${p.id}')">✏️ Modifier</button>
           <button class="btn btn-sm btn-secondary" onclick="modifierStock('${p.id}','${esc(p.nom)}',${p.stock})">📦 Stock</button>
           <button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${p.id}','matos')">🖼️ Photo</button>
           <button class="btn btn-sm btn-danger" onclick="doArchiverProduit('${p.id}')">Archiver</button>
@@ -293,6 +294,7 @@ function renderSticks(sticks) {
         ${s.stock > 0 || s.mode === 'precommande' ? `
         ${s.lien_helloasso ? `<a href="${s.lien_helloasso}" target="_blank"><button class="btn btn-sm btn-primary" style="width:100%;">HelloAsso</button></a>` : ''}
         ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirCashStick('${s.id}','${esc(s.nom)}')">Cash</button>` : ''}` : ''}
+        ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirModifierStick('${s.id}')">✏️ Modifier</button>` : ''}
         ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${s.id}','stick')">🖼️</button>` : ''}
       </div>
     </div>`).join('') + `</div>`;
@@ -617,6 +619,7 @@ async function doCreerProduit() {
 
     toast(`Article créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Généraliste'}`, 'success');
     closeModal('modalCreerProduit');
+    reinitialiserFormulaireProduit();
     ['pNom','pDesc','pPrix','pStock','pQuota'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('pPhoto').value = '';
     document.getElementById('photoPreviewMatos').style.display = 'none';
@@ -628,6 +631,105 @@ async function doCreerProduit() {
     hideLoading();
     toast(e.message || 'Erreur création article', 'error');
   }
+}
+
+// Ouvre le modal modalCreerProduit en mode édition, pré-rempli avec les
+// valeurs actuelles — réutilise allProduits (déjà chargée par loadMatos)
+// plutôt que de resolliciter le réseau. Même principe de swap dynamique
+// (titre + bouton submit) que pour les matchs (cf. ouvrirModifierMatch
+// dans admin.js), pour rester cohérent avec ce pattern déjà en place dans
+// le projet plutôt que de dupliquer un second modal complet.
+async function ouvrirModifierProduit(produitId) {
+  const p = allProduits.find(pr => pr.id === produitId);
+  if (!p) return toast('Article introuvable', 'error');
+
+  await loadSectionsForModal();
+
+  document.getElementById('pId').value = p.id;
+  document.getElementById('modalProduitTitre').textContent = "Modifier l'article";
+  document.getElementById('pNom').value = p.nom || '';
+  document.getElementById('pDesc').value = p.description || '';
+  document.getElementById('pCat').value = p.categorie || 'textile';
+  document.getElementById('pPrix').value = p.prix ?? '';
+  document.getElementById('pStock').value = p.stock ?? '';
+  document.getElementById('pQuota').value = p.quota_par_membre ?? '';
+  document.getElementById('pTailles').checked = !!p.avec_tailles;
+  document.getElementById('pAcces').value = p.niveau_acces || 'tous';
+  document.getElementById('pMode').value = p.mode || 'stock';
+  document.getElementById('pPhoto').value = '';
+  if (p.photo_url) {
+    document.getElementById('photoPreviewImgMatos').src = p.photo_url;
+    document.getElementById('photoPreviewMatos').style.display = 'block';
+  } else {
+    document.getElementById('photoPreviewMatos').style.display = 'none';
+  }
+  toggleSectionSelect();
+  if (p.section_id) document.getElementById('pSection').value = p.section_id;
+
+  const btn = document.getElementById('modalProduitSubmitBtn');
+  btn.textContent = '💾 Enregistrer';
+  btn.setAttribute('onclick', 'doModifierProduit()');
+
+  showModal('modalCreerProduit');
+}
+
+async function doModifierProduit() {
+  const id = document.getElementById('pId').value;
+  const nom = document.getElementById('pNom').value.trim();
+  const prix = parseFloat(document.getElementById('pPrix').value);
+  const acces = document.getElementById('pAcces').value;
+  const sectionId = acces === 'section' ? document.getElementById('pSection').value : null;
+
+  if (!nom) return toast('Nom requis', 'error');
+  if (!prix || isNaN(prix)) return toast('Prix requis', 'error');
+  if (acces === 'section' && !sectionId) return toast('Sélectionne une section', 'error');
+
+  try {
+    showLoading();
+
+    // Upload d'une nouvelle photo seulement si l'admin en a choisi une —
+    // sinon on conserve photo_url existante (ne pas envoyer ce champ dans
+    // l'update pour ne pas l'écraser avec null).
+    const photoFile = document.getElementById('pPhoto').files[0];
+    const updates = {
+      nom,
+      description: document.getElementById('pDesc').value || null,
+      categorie: document.getElementById('pCat').value,
+      prix,
+      stock: parseInt(document.getElementById('pStock').value) || 0,
+      quota_par_membre: parseInt(document.getElementById('pQuota').value) || null,
+      avec_tailles: document.getElementById('pTailles').checked,
+      niveau_acces: acces,
+      section_id: sectionId,
+      mode: document.getElementById('pMode').value,
+    };
+    if (photoFile) {
+      updates.photo_url = await UL.uploadPhotoMatos(photoFile, nom);
+    }
+
+    await UL.updateProduit(id, updates);
+
+    hideLoading();
+    toast('Article modifié ✅', 'success');
+    closeModal('modalCreerProduit');
+    reinitialiserFormulaireProduit();
+    loadMatos();
+  } catch(e) {
+    hideLoading();
+    toast(e.message || 'Erreur modification article', 'error');
+  }
+}
+
+// Remet le modal modalCreerProduit en mode "création" (titre, bouton,
+// champ pId) — appelé après une création ou une modification réussie, et
+// peut aussi être appelé avant d'ouvrir le modal en mode ajout pour
+// repartir d'un état propre si le modal avait été laissé en mode édition.
+function reinitialiserFormulaireProduit() {
+  document.getElementById('pId').value = '';
+  document.getElementById('modalProduitTitre').textContent = 'Ajouter un article matos';
+  const btn = document.getElementById('modalProduitSubmitBtn');
+  btn.textContent = 'Ajouter l\'article';
+  btn.setAttribute('onclick', 'doCreerProduit()');
 }
 
 // ── STICKS — création (Admin/Cellule Sticks) ───────────────────
@@ -686,6 +788,7 @@ async function doCreerStick() {
 
     toast(`Stick créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Tous les membres'}`, 'success');
     closeModal('modalCreerStick');
+    reinitialiserFormulaireStick();
     ['stNom','stPrix','stLot','stQuota','stStock','stHelloasso'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('stLot').value = '1';
     document.getElementById('stMode').value = 'stock';
@@ -697,4 +800,93 @@ async function doCreerStick() {
     hideLoading();
     toast(e.message || 'Erreur création stick', 'error');
   }
+}
+
+// Ouvre modalCreerStick en mode édition, pré-rempli — réutilise allSticks
+// (déjà chargée par loadSticks) plutôt que de resolliciter le réseau. Même
+// principe de swap dynamique (titre + bouton submit) que pour les produits
+// Matos et les matchs, pour rester cohérent avec ce pattern.
+async function ouvrirModifierStick(stickId) {
+  const s = allSticks.find(st => st.id === stickId);
+  if (!s) return toast('Stick introuvable', 'error');
+
+  await loadSectionsForModalStick();
+
+  document.getElementById('stId').value = s.id;
+  document.getElementById('modalStickTitre').textContent = 'Modifier le stick';
+  document.getElementById('stNom').value = s.nom || '';
+  document.getElementById('stCat').value = s.niveau_acces || 'tous';
+  document.getElementById('stPrix').value = s.prix ?? '';
+  document.getElementById('stLot').value = s.lot || 1;
+  document.getElementById('stQuota').value = s.quota_par_membre ?? '';
+  document.getElementById('stStock').value = s.stock ?? '';
+  document.getElementById('stMode').value = s.mode || 'stock';
+  document.getElementById('stHelloasso').value = s.lien_helloasso || '';
+  document.getElementById('stPhoto').value = '';
+  if (s.visuel_url) {
+    document.getElementById('photoPreviewImgStick').src = s.visuel_url;
+    document.getElementById('photoPreviewStick').style.display = 'block';
+  } else {
+    document.getElementById('photoPreviewStick').style.display = 'none';
+  }
+  if (s.section_id) document.getElementById('stSection').value = s.section_id;
+
+  const btn = document.getElementById('modalStickSubmitBtn');
+  btn.textContent = '💾 Enregistrer';
+  btn.setAttribute('onclick', 'doModifierStick()');
+
+  showModal('modalCreerStick');
+}
+
+async function doModifierStick() {
+  const id = document.getElementById('stId').value;
+  const nom = document.getElementById('stNom').value.trim();
+  const prixRaw = document.getElementById('stPrix').value;
+  const prix = prixRaw ? parseFloat(prixRaw) : null;
+  const niveauAcces = document.getElementById('stCat').value;
+  const sectionId = document.getElementById('stSection').value || null;
+  const lienHelloasso = document.getElementById('stHelloasso').value.trim() || null;
+
+  if (!nom) return toast('Nom requis', 'error');
+  if (niveauAcces !== 'tous' && !sectionId) return toast('Sélectionne une section', 'error');
+
+  try {
+    showLoading();
+
+    const photoFile = document.getElementById('stPhoto').files[0];
+    const updates = {
+      nom,
+      niveau_acces: niveauAcces,
+      section_id: sectionId,
+      prix,
+      lot: parseInt(document.getElementById('stLot').value) || 1,
+      quota_par_membre: parseInt(document.getElementById('stQuota').value) || null,
+      stock: parseInt(document.getElementById('stStock').value) || 0,
+      mode: document.getElementById('stMode').value,
+      lien_helloasso: lienHelloasso,
+    };
+    if (photoFile) {
+      updates.visuel_url = await UL.uploadPhotoStick(photoFile, nom);
+    }
+
+    await UL.updateStick(id, updates);
+
+    hideLoading();
+    toast('Stick modifié ✅', 'success');
+    closeModal('modalCreerStick');
+    reinitialiserFormulaireStick();
+    loadSticks();
+  } catch(e) {
+    hideLoading();
+    toast(e.message || 'Erreur modification stick', 'error');
+  }
+}
+
+// Remet modalCreerStick en mode "création" (titre, bouton, champ stId).
+function reinitialiserFormulaireStick() {
+  document.getElementById('stId').value = '';
+  document.getElementById('modalStickTitre').textContent = 'Ajouter un stick';
+  const btn = document.getElementById('modalStickSubmitBtn');
+  btn.textContent = 'Ajouter le stick';
+  btn.setAttribute('onclick', 'doCreerStick()');
 }
