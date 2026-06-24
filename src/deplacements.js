@@ -29,6 +29,7 @@ function renderDeplCard(d) {
   const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}) : '';
   const pct = d.places_max ? Math.min(100, Math.round(((d._inscrits||0)/d.places_max)*100)) : 0;
   const { estInscrit, estPaye, estRefuse } = calculerStatutPaiementDepl(d.monInscrit);
+  const estPresent = !!d.monInscrit?.present_at;
 
   // Bouton d'action directement visible sur la carte, sans devoir l'ouvrir —
   // reflète le même statut que la modal de détail (cf. openDepl). Le
@@ -42,7 +43,11 @@ function renderDeplCard(d) {
   } else if (!estPaye) {
     boutonAction = `<span class="badge badge-orange">⏳ Paiement en cours</span>`;
   } else {
-    boutonAction = `<span class="badge badge-vert">✅ Payé</span>`;
+    // Badge présence affiché uniquement une fois le paiement confirmé — un
+    // membre non payé ne peut de toute façon pas avoir été scanné présent
+    // (confirmerPresenceDeplacement bloque le scan sans paiement, sauf
+    // force=true côté admin, cf. supabase-client.js).
+    boutonAction = `<span class="badge badge-vert">✅ Payé</span> <span class="badge ${estPresent?'badge-vert':'badge-orange'}">${estPresent?'✅ Présent':'⏳ Pas encore présent'}</span>`;
   }
 
   // Barre de places + boutons admin bus
@@ -159,27 +164,71 @@ async function doInscritDepl(id) {
   }
 }
 
+// Inscrits du déplacement actuellement affiché dans modalAdminSession,
+// conservés pour permettre de changer de filtre (Tous/Présents/Absents)
+// sans resolliciter le réseau à chaque clic.
+let _inscritsDeplCourant = [];
+let _deplCourantPourListe = null;
+let _filtreInscritsDepl = 'tous';
+
 async function voirInscritsDepl(deplId) {
   try {
     const { inscrits, deplacement: d } = await UL.getDeplacement(deplId);
-    document.getElementById('modalAdminSessionContent').innerHTML = `
-      <h3 class="modal-title">Inscrits — ${d.adversaire}</h3>
-      ${inscrits.map(i => `
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
-          <div style="flex:1;">
-            <div style="font-weight:600;">@${i.membre?.pseudo_telegram||'?'}</div>
-            <div style="color:var(--gris);">${i.membre?.prenom||''} ${i.membre?.nom||''}</div>
-          </div>
-          <span class="badge ${i.statut_paiement==='en_attente'?'badge-orange':i.statut_paiement.includes('paye')?'badge-vert':'badge-gris'}">
-            ${i.statut_paiement==='en_attente'?'⏳':i.statut_paiement==='paye_cash'?'Cash ✅':'HA ✅'}
-          </span>
-          ${i.statut_paiement==='en_attente' ? `
-            <button class="btn btn-sm btn-success" onclick="validerCash('${deplId}','${i.membre_id}')">Cash</button>` : ''}
-        </div>`).join('')}
-    `;
+    _inscritsDeplCourant = inscrits;
+    _deplCourantPourListe = { id: deplId, adversaire: d.adversaire };
+    _filtreInscritsDepl = 'tous';
+    renderListeInscritsDepl();
     showModal('modalAdminSession');
   } catch(e) { toast('Impossible de charger les inscrits du déplacement', 'error'); }
 }
+
+function filtrerInscritsDepl(filtre) {
+  _filtreInscritsDepl = filtre;
+  renderListeInscritsDepl();
+}
+
+function renderListeInscritsDepl() {
+  const d = _deplCourantPourListe;
+  if (!d) return;
+
+  // Filtre appliqué uniquement sur les inscriptions payées — un membre non
+  // payé n'a de toute façon jamais pu être scanné présent (cf. note dans
+  // renderDeplCard), donc le filtre "Présents"/"Absents" n'a de sens que
+  // parmi les payés ; "Tous" continue d'afficher tout le monde, paiement
+  // en attente compris, pour ne pas perdre la visibilité d'ensemble.
+  let liste = _inscritsDeplCourant;
+  if (_filtreInscritsDepl === 'presents') liste = liste.filter(i => !!i.present_at);
+  if (_filtreInscritsDepl === 'absents') {
+    const estPaye = i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha';
+    liste = liste.filter(i => estPaye(i) && !i.present_at);
+  }
+
+  const filtreBtn = (val, label) => `<button class="btn btn-sm ${_filtreInscritsDepl===val?'btn-primary':'btn-secondary'}" onclick="filtrerInscritsDepl('${val}')">${label}</button>`;
+
+  document.getElementById('modalAdminSessionContent').innerHTML = `
+    <h3 class="modal-title">Inscrits — ${esc(d.adversaire)}</h3>
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+      ${filtreBtn('tous', 'Tous')}
+      ${filtreBtn('presents', '✅ Présents')}
+      ${filtreBtn('absents', '⏳ Absents')}
+    </div>
+    ${!liste.length ? '<p style="color:var(--gris);font-size:13px;">Aucun inscrit pour ce filtre</p>' : liste.map(i => `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+        <div style="flex:1;">
+          <div style="font-weight:600;">@${i.membre?.pseudo_telegram||'?'}</div>
+          <div style="color:var(--gris);">${i.membre?.prenom||''} ${i.membre?.nom||''}</div>
+        </div>
+        <span class="badge ${i.statut_paiement==='en_attente'?'badge-orange':i.statut_paiement.includes('paye')?'badge-vert':'badge-gris'}">
+          ${i.statut_paiement==='en_attente'?'⏳':i.statut_paiement==='paye_cash'?'Cash ✅':'HA ✅'}
+        </span>
+        ${(i.statut_paiement==='paye_cash'||i.statut_paiement==='paye_ha') ? `
+          <span class="badge ${i.present_at?'badge-vert':'badge-orange'}">${i.present_at?'✅ Présent':'⏳ Absent'}</span>` : ''}
+        ${i.statut_paiement==='en_attente' ? `
+          <button class="btn btn-sm btn-success" onclick="validerCash('${d.id}','${i.membre_id}')">Cash</button>` : ''}
+      </div>`).join('')}
+  `;
+}
+
 async function validerCash(deplId, membreId) {
   try { await UL.validerPaiementCash(deplId, membreId); toast('Paiement cash validé ✅', 'success'); voirInscritsDepl(deplId); }
   catch(e) { toast('Impossible de valider le paiement cash', 'error'); }
