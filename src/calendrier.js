@@ -109,6 +109,12 @@ function renderMatchCard(match, membre) {
   const depl = depParMatchId[match.id];
   const deplBtn = depl
     ? `<button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="openDepl('${depl.id}')">🚌 Voir le déplacement</button>` : '';
+  // Modifier directement depuis la carte calendrier, sans dépendre d'un
+  // passage préalable par Admin > Matchs (cf. ouvrirModifierMatchDepuisCalendrier
+  // dans admin.js, qui reçoit l'objet match déjà chargé ici plutôt que de
+  // le rechercher dans allMatchsAdmin, potentiellement vide à ce stade).
+  const modifierMatchBtn = isBureau(membre)
+    ? `<button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="ouvrirModifierMatchDepuisCalendrier('${match.id}')">✏️ Modifier le match</button>` : '';
 
   // Mise en page façon calendrier officiel LFP : logo domicile à gauche,
   // "VS" au centre, logo extérieur à droite, nom de l'équipe sous chaque logo.
@@ -142,7 +148,18 @@ function renderMatchCard(match, membre) {
     ${saisieScore}
     ${confirmerBtn}
     ${deplBtn}
+    ${modifierMatchBtn}
   </div>`;
+}
+
+// Ouvre le formulaire de modification d'un match directement depuis la
+// carte calendrier — réutilise allMatchs (déjà chargée par loadCalendrier)
+// plutôt que de resolliciter le réseau, et délègue à ouvrirModifierMatch
+// (admin.js) qui gère le formulaire et le swap du modal modalMatchs.
+function ouvrirModifierMatchDepuisCalendrier(matchId) {
+  const match = allMatchs.find(m => m.id === matchId);
+  if (!match) return toast('Match introuvable', 'error');
+  ouvrirModifierMatch(matchId, match);
 }
 
 function renderEvenementCard(ev) {
