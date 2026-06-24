@@ -555,6 +555,22 @@ async function addMatch(matchData) {
   return data;
 }
 
+// Mise à jour générique d'un match (édition libre de tous les champs),
+// distincte de confirmerDateMatch (qui ne touche que date/horaire/stade et
+// force statut_date à 'confirmee') et de saisirScoreMatch (scores
+// uniquement) — celles-ci restent utilisées pour leurs actions rapides
+// dédiées sur la carte calendrier ; updateMatch sert au formulaire
+// d'édition complète.
+async function updateMatch(id, data) {
+  const { data: result, error } = await sb.from('matchs')
+    .update(data)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return result;
+}
+
 async function getMatchs() {
   const { data } = await sb.from('matchs').select('*').order('date');
   return data || [];
@@ -1016,6 +1032,16 @@ async function createDeplacement(data) {
   return result;
 }
 
+async function updateDeplacement(id, data) {
+  const { data: result, error } = await sb.from('deplacements')
+    .update(data)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return result;
+}
+
 async function getListeBusTelegram(deplacementId) {
   const { inscrits, deplacement } = await getDeplacement(deplacementId);
   const payes = inscrits.filter(i => i.statut_paiement !== 'en_attente');
@@ -1274,6 +1300,16 @@ async function getSticks() {
 async function createStick(stick) {
   const { data, error } = await sb.from('sticks_catalogue')
     .insert(stick).select().single();
+  if (error) throw error;
+  return data;
+}
+
+async function updateStick(id, updates) {
+  const { data, error } = await sb.from('sticks_catalogue')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
   if (error) throw error;
   return data;
 }
@@ -1594,7 +1630,7 @@ window.UL = {
   // Référentiels
   getSections,
   // Calendrier
-  getCalendar, addMatch, getMatchs, deleteMatch,
+  getCalendar, addMatch, updateMatch, getMatchs, deleteMatch,
   saisirScoreMatch, confirmerDateMatch, rouvrirConfirmationMatch,
   getEvenements, getEvenement, saveEvenement, deleteEvenement,
   // Charte
@@ -1606,7 +1642,7 @@ window.UL = {
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   // Déplacements
   getDeplacements, getDeplacement, sInscrireDeplacements,
-  validerPaiementCash, validerPaiementHelloAsso, createDeplacement, getListeBusTelegram,
+  validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
   // Annonces
   getAnnonces, publierAnnonce,
   // Stats
@@ -1615,7 +1651,7 @@ window.UL = {
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
   passerCommande, getMesCommandes, getAllCommandes, updateCommandeStatut,
   // Sticks
-  getSticks, createStick, getMonQuotaStick, demanderStick, getMesSticks,
+  getSticks, createStick, updateStick, getMonQuotaStick, demanderStick, getMesSticks,
   distribuerStickAdmin, getAllDistributions, validerPaiementStick, confirmerDistributionStick,
   // Cotisations
   getConfigCotisation, updateConfigCotisation, getMaCotisation,
