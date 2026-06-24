@@ -211,6 +211,13 @@ async function doPublierAnnonce() {
 }
 
 // ─── MATCHS ───────────────────────────────────────────────────
+// Liste des matchs chargée par loadMatchsList, conservée pour permettre à
+// ouvrirModifierMatchParId() de retrouver l'objet match complet sans
+// resolliciter le réseau ni sérialiser l'objet dans un attribut onclick
+// (fragile avec apostrophes/accents — cf. esc() utilisé partout ailleurs
+// pour le texte, mais inadapté à un objet entier).
+let allMatchsAdmin = [];
+
 async function doAjouterMatch() {
   const data = {
     equipe_domicile: 'Paris FC',
@@ -228,9 +235,17 @@ async function doAjouterMatch() {
     loadMatchsList();
   } catch(e) { toast(e.message, 'error'); }
 }
+
+function ouvrirModifierMatchParId(matchId) {
+  const match = allMatchsAdmin.find(m => m.id === matchId);
+  if (!match) return toast('Match introuvable', 'error');
+  ouvrirModifierMatch(matchId, match);
+}
+
 async function loadMatchsList() {
   try {
     const matchs = await UL.getMatchs();
+    allMatchsAdmin = matchs;
     document.getElementById('matchsList').innerHTML = matchs.slice(0,40).map(m => {
       const statutBadge = m.statut_date === 'a_confirmer'
         ? '<span class="badge badge-orange" style="font-size:10px;">⏳ À confirmer</span>'
@@ -246,6 +261,7 @@ async function loadMatchsList() {
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0;">
           ${actionBtn}
+          <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierMatchParId('${m.id}')">✏️</button>
           <button class="btn btn-sm btn-danger" onclick="doSupprimerMatch('${m.id}')">🗑</button>
         </div>
       </div>`;
@@ -258,6 +274,10 @@ async function loadMatchsList() {
 // formulaire d'ajout en mode "confirmer la date de tel match" plutôt
 // que de créer un modal HTML dédié.
 let _matchEnConfirmation = null;
+// Modification complète d'un match (tous les champs) — même principe de
+// swap dynamique du modal modalMatchs, ajouté comme 3e mode aux côtés
+// d'ajout et de confirmation de date.
+let _matchEnModification = null;
 
 function ouvrirConfirmerDate(matchId) {
   _matchEnConfirmation = matchId;
@@ -276,12 +296,68 @@ function ouvrirConfirmerDate(matchId) {
   setTimeout(() => document.getElementById('mDate').focus(), 150);
 }
 
+// Ouvre le formulaire en mode édition complète : adversaire, date, heure,
+// type (domicile/extérieur), stade, compétition et journée — tous les
+// champs visibles, contrairement au mode "confirmer la date" qui en
+// masque une partie. mComp/mJournee sont ajoutés au modal spécifiquement
+// pour ce mode (cf. modalMatchs dans index.html).
+function ouvrirModifierMatch(matchId, match) {
+  _matchEnModification = matchId;
+  _matchEnConfirmation = null;
+  document.getElementById('modalMatchsTitre').textContent = 'Modifier le match';
+  document.getElementById('modalMatchsFormLabel').textContent = 'Tous les champs';
+  document.getElementById('mExtGroup').style.display = '';
+  document.getElementById('mTypeGroup').style.display = '';
+  document.getElementById('mCompGroup').style.display = '';
+  document.getElementById('mExt').value = match.type === 'domicile' ? (match.equipe_exterieur || '') : (match.equipe_domicile || '');
+  document.getElementById('mDate').value = match.date || '';
+  document.getElementById('mHeure').value = match.horaire ? match.horaire.slice(0,5) : '';
+  document.getElementById('mType').value = match.type || 'exterieur';
+  document.getElementById('mStade').value = match.stade || '';
+  document.getElementById('mComp').value = match.competition || 'Ligue 1';
+  document.getElementById('mJournee').value = match.journee || '';
+  const btn = document.getElementById('modalMatchsSubmitBtn');
+  btn.textContent = '💾 Enregistrer';
+  btn.setAttribute('onclick', 'doModifierMatch()');
+  document.getElementById('modalMatchsCancelBtn').style.display = '';
+  showModal('modalMatchs');
+}
+
+async function doModifierMatch() {
+  if (!_matchEnModification) return;
+  const adversaire = document.getElementById('mExt').value;
+  const date = document.getElementById('mDate').value;
+  const type = document.getElementById('mType').value;
+  if (!adversaire || !date) return toast('Adversaire et date requis', 'error');
+  // Paris FC est toujours l'une des deux équipes — laquelle dépend du type
+  // (domicile/extérieur), exactement comme pour la création (doAjouterMatch).
+  const data = {
+    equipe_domicile: type === 'domicile' ? 'Paris FC' : adversaire,
+    equipe_exterieur: type === 'domicile' ? adversaire : 'Paris FC',
+    date,
+    horaire: document.getElementById('mHeure').value || null,
+    type,
+    stade: document.getElementById('mStade').value || null,
+    competition: document.getElementById('mComp').value.trim() || 'Ligue 1',
+    journee: parseInt(document.getElementById('mJournee').value) || null,
+  };
+  try {
+    await UL.updateMatch(_matchEnModification, data);
+    toast('Match modifié ✅', 'success');
+    annulerConfirmerDate();
+    loadMatchsList();
+    if (document.getElementById('pageCalendrier')?.classList.contains('active')) loadCalendrier();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 function annulerConfirmerDate() {
   _matchEnConfirmation = null;
+  _matchEnModification = null;
   document.getElementById('modalMatchsTitre').textContent = 'Calendrier matchs';
   document.getElementById('modalMatchsFormLabel').textContent = 'Ajouter un match';
   document.getElementById('mExtGroup').style.display = '';
   document.getElementById('mTypeGroup').style.display = '';
+  document.getElementById('mCompGroup').style.display = 'none';
   document.getElementById('mDate').value = '';
   document.getElementById('mHeure').value = '';
   document.getElementById('mStade').value = '';
