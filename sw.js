@@ -1,6 +1,24 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v9
+// ULTRAS LUTETIA — Service Worker v10
 // ============================================================
+//
+// v10 (24/06/2026) : CACHE_NAME bumpé (v9 → v10) suite à la correction
+// d'un bug PGRST201 dans src/supabase-client.js : getDeplacement() (la
+// fonction singulier, utilisée par voirInscritsDepl/openDepl) faisait un
+// embed implicite membre:membres(...) sur inscriptions_deplacement, table
+// qui possède DEUX clés étrangères vers membres depuis l'ajout de la
+// colonne valide_par le 24/06/2026 (membre_id et valide_par) — PostgREST
+// ne pouvait plus deviner laquelle utiliser et renvoyait une erreur
+// PGRST201 (relation ambiguë), absorbée silencieusement par le code
+// existant (`inscrits || []`), si bien que la liste "Inscrits" d'un
+// déplacement restait vide même quand des inscriptions existaient bel et
+// bien en base (confirmé manuellement : un membre payé via HelloAsso en
+// sandbox n'apparaissait pas dans sa propre liste d'inscrits). Corrigé en
+// précisant explicitement la contrainte à suivre :
+// membres!inscriptions_deplacement_membre_id_fkey(...) — syntaxe déjà
+// utilisée correctement ailleurs dans le fichier pour des tables au même
+// problème potentiel (evaluations, sticks_distribution), seul ce point
+// précis avait été oublié au moment de l'ajout de valide_par.
 //
 // v9 (24/06/2026) : CACHE_NAME bumpé (v8 → v9) suite à une troisième vague
 // de modifications : (1) bouton M'inscrire/statut paiement directement sur
@@ -71,7 +89,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v9';
+const CACHE_NAME = 'ul-v10';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
