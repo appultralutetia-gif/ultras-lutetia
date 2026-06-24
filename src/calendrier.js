@@ -1,5 +1,10 @@
 // ─── CALENDRIER ──────────────────────────────────────────────
 let allMatchs = [], allEvenements = [], currentFiltreCalendrier = 'tous';
+// Map match_id → déplacement correspondant (un match extérieur peut avoir
+// au plus un déplacement organisé). Alimentée par loadCalendrier, utilisée
+// par renderMatchCard pour proposer un accès direct au déplacement lié
+// sans dupliquer la requête à chaque rendu de carte.
+let depParMatchId = {};
 
 // Formatage de date "Jour court + jour/mois" indépendant du moteur JS du
 // navigateur (toLocaleDateString peut donner des abréviations différentes
@@ -29,12 +34,18 @@ function formatHeureCourte(horaireStr) {
 async function loadCalendrier() {
   document.getElementById('calendrierListe').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
-    const [matchs, evenements] = await Promise.all([
+    const [matchs, evenements, deplacements] = await Promise.all([
       UL.getMatchs(),
       UL.getEvenements ? UL.getEvenements() : Promise.resolve([]),
+      UL.getDeplacements ? UL.getDeplacements(false) : Promise.resolve([]),
     ]);
     allMatchs = matchs || [];
     allEvenements = evenements || [];
+    // upcoming=false : un déplacement passé doit aussi rester lié à son
+    // match dans le calendrier (consultation historique), pas seulement
+    // les déplacements à venir.
+    depParMatchId = {};
+    (deplacements || []).forEach(d => { if (d.match_id) depParMatchId[d.match_id] = d; });
     filtrerCalendrier('tous');
   } catch(e) { document.getElementById('calendrierListe').innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
 }
@@ -92,6 +103,12 @@ function renderMatchCard(match, membre) {
     ? '<span class="badge badge-orange" style="font-size:10px;">⏳ Date à confirmer</span>' : '';
   const confirmerBtn = isBureau(membre) && match.statut_date === 'a_confirmer'
     ? `<button class="btn btn-sm btn-success" style="margin-top:8px;" onclick="ouvrirConfirmerDate('${match.id}')">✅ Confirmer la date</button>` : '';
+  // Accès direct au déplacement organisé pour ce match, s'il existe — rien
+  // n'est affiché si aucun déplacement n'a encore été créé (cf. décision
+  // produit : pas de bruit visuel pour signaler l'absence de déplacement).
+  const depl = depParMatchId[match.id];
+  const deplBtn = depl
+    ? `<button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="openDepl('${depl.id}')">🚌 Voir le déplacement</button>` : '';
 
   // Mise en page façon calendrier officiel LFP : logo domicile à gauche,
   // "VS" au centre, logo extérieur à droite, nom de l'équipe sous chaque logo.
@@ -124,6 +141,7 @@ function renderMatchCard(match, membre) {
     </div>
     ${saisieScore}
     ${confirmerBtn}
+    ${deplBtn}
   </div>`;
 }
 
