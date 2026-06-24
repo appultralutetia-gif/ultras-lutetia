@@ -1,6 +1,21 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v10
+// ULTRAS LUTETIA — Service Worker v11
 // ============================================================
+//
+// v11 (24/06/2026) : CACHE_NAME bumpé (v10 → v11) suite à l'ajout de la
+// modification (édition complète) pour 4 modules qui n'en disposaient pas
+// encore : Déplacements (nouveau modal modalModifierDepl, deux modals
+// séparés comme pour les sessions tifo), Matchs (3e mode ajouté au modal
+// modalMatchs à swap dynamique, aux côtés d'ajout et de confirmation de
+// date), Matos (modal modalCreerProduit basculé en mode édition via swap
+// titre/bouton, nouvelle fonction updateProduit déjà existante côté
+// supabase-client.js réutilisée), Sticks (modal modalCreerStick basculé en
+// mode édition, nouvelles fonctions updateStick/exportées). Bouton
+// "Modifier" accessible à la fois depuis la carte de liste et la modal de
+// détail pour Déplacements ; depuis la carte calendrier et l'admin pour
+// Matchs ; depuis la carte catalogue pour Matos et Sticks. Fichiers
+// modifiés : index.html, src/admin.js, src/boutique.js, src/calendrier.js,
+// src/deplacements.js, src/supabase-client.js — tous déjà en NETWORK_FIRST.
 //
 // v10 (24/06/2026) : CACHE_NAME bumpé (v9 → v10) suite à la correction
 // d'un bug PGRST201 dans src/supabase-client.js : getDeplacement() (la
@@ -89,7 +104,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v10';
+const CACHE_NAME = 'ul-v11';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
