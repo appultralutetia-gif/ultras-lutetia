@@ -162,7 +162,77 @@ async function copierListeBus(deplId) {
     toast('Liste bus copiée !', 'success');
   } catch(e) { toast('Impossible de copier la liste bus', 'error'); }
 }
+// Ouvre le modal de création de déplacement et charge la liste des
+// matchs à l'extérieur à venir (seuls éligibles : Ultras Lutetia se
+// déplace pour soutenir Paris FC, jamais pour un match à domicile).
+// Le formulaire démarre toujours en mode "match du calendrier" — c'est
+// le cas le plus fréquent — avec bascule possible vers "Autre événement"
+// (cf. onChangeSourceDepl) pour les déplacements hors calendrier officiel
+// (amicaux, Coupe, etc. pas encore dans la table matchs).
+async function ouvrirCreerDepl() {
+  document.getElementById('dSource').value = 'match';
+  document.getElementById('dMatchId').innerHTML = '<option value="">— Sélectionner un match —</option>';
+  document.getElementById('dMatchId').value = '';
+  document.getElementById('dMatchVide').style.display = 'none';
+  ['dAdv','dStade','dVille'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('dDate').value = '';
+  ['dRdv','dHeure','dPrix','dPlaces','dLimite','dNotes'].forEach(id => document.getElementById(id).value = '');
+  onChangeSourceDepl();
+
+  try {
+    const matchs = await UL.getMatchs();
+    const today = new Date().toISOString().split('T')[0];
+    const matchsExterieurFuturs = (matchs || [])
+      .filter(m => m.type === 'exterieur' && m.date && m.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const sel = document.getElementById('dMatchId');
+    if (!matchsExterieurFuturs.length) {
+      document.getElementById('dMatchVide').style.display = 'block';
+    } else {
+      sel.innerHTML = '<option value="">— Sélectionner un match —</option>' +
+        matchsExterieurFuturs.map(m => {
+          const dateAff = formatDateCourte ? (formatDateCourte(m.date) || m.date) : m.date;
+          return `<option value="${m.id}">${esc(m.equipe_domicile || '?')} — ${dateAff}</option>`;
+        }).join('');
+    }
+  } catch(e) { toast('Erreur chargement des matchs', 'error'); }
+
+  showModal('modalCreerDepl');
+}
+
+// Bascule entre mode "match du calendrier" (bloc sélecteur visible, champs
+// pré-remplis attendus) et "autre événement" (saisie 100% manuelle, comme
+// avant l'introduction de ce sélecteur).
+function onChangeSourceDepl() {
+  const source = document.getElementById('dSource').value;
+  document.getElementById('dBlocMatch').style.display = source === 'match' ? 'block' : 'none';
+  if (source === 'autre') {
+    document.getElementById('dMatchId').value = '';
+  }
+}
+
+// Pré-remplit adversaire/date/stade/ville à partir du match sélectionné.
+// Les champs restent modifiables ensuite (cf. décision produit) — utile
+// si le stade ou la date affichée au calendrier n'est pas encore à jour.
+// equipe_domicile = l'adversaire, puisque seuls les matchs extérieur sont
+// proposés ici (Paris FC est toujours equipe_exterieur dans ce cas).
+async function onChangeMatchDepl() {
+  const matchId = document.getElementById('dMatchId').value;
+  if (!matchId) return;
+  try {
+    const matchs = await UL.getMatchs();
+    const match = (matchs || []).find(m => m.id === matchId);
+    if (!match) return;
+    document.getElementById('dAdv').value = match.equipe_domicile || '';
+    document.getElementById('dDate').value = match.date || '';
+    document.getElementById('dStade').value = match.stade || '';
+  } catch(e) { toast('Erreur chargement du match', 'error'); }
+}
+
 async function doCreerDepl() {
+  const source = document.getElementById('dSource').value;
+  const matchId = document.getElementById('dMatchId').value;
   const data = {
     adversaire: document.getElementById('dAdv').value,
     date_match: document.getElementById('dDate').value,
@@ -172,9 +242,9 @@ async function doCreerDepl() {
     heure_depart: document.getElementById('dHeure').value || null,
     prix_total: parseFloat(document.getElementById('dPrix').value) || null,
     places_max: parseInt(document.getElementById('dPlaces').value) || null,
-    lien_helloasso: document.getElementById('dHelloasso').value || null,
     date_limite_inscription: document.getElementById('dLimite').value || null,
     notes: document.getElementById('dNotes').value || null,
+    match_id: (source === 'match' && matchId) ? matchId : null,
   };
   if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
   try {
