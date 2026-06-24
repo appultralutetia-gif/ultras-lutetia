@@ -1,4 +1,4 @@
-=<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -388,7 +388,7 @@
       </div>
       <!-- Bouton admin -->
       <div id="btnAddProduit" style="display:none;margin-bottom:12px;">
-        <button class="btn btn-primary" onclick="showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
+        <button class="btn btn-primary" onclick="reinitialiserFormulaireProduit();showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
       </div>
       <!-- Bouton scan retrait (Cellule Matos + Bureau + Admin uniquement) -->
       <div id="btnScanRetraitMatos" style="display:none;margin-bottom:12px;">
@@ -531,7 +531,7 @@
       <div class="section-title">🛍️ Matos</div>
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
+          <button class="btn btn-secondary" onclick="reinitialiserFormulaireProduit();showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
           <button class="btn btn-secondary" onclick="showPage('pageBoutique')">📋 Gérer la boutique matos</button>
         </div>
       </div>
@@ -542,7 +542,7 @@
       <div class="section-title">🎟️ Sticks</div>
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showModal('modalCreerStick');loadSectionsForModalStick()">+ Ajouter un stick</button>
+          <button class="btn btn-secondary" onclick="reinitialiserFormulaireStick();showModal('modalCreerStick');loadSectionsForModalStick()">+ Ajouter un stick</button>
           <button class="btn btn-secondary" onclick="showPage('pageBoutique');setTimeout(()=>switchBoutiqueTab('sticks'),100)">📋 Gérer la boutique sticks</button>
         </div>
       </div>
@@ -862,6 +862,65 @@
   </div>
 </div>
 
+<!-- Modal Modifier Déplacement (Bureau+) -->
+<div class="modal-overlay" id="modalModifierDepl" style="display:none;" onclick="closeModalOutside(event,'modalModifierDepl')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title">Modifier le déplacement</h3>
+    <input type="hidden" id="dmId">
+
+    <div class="form-group">
+      <label>Source</label>
+      <select id="dmSource" onchange="onChangeSourceDeplModif()">
+        <option value="match">Match du calendrier (extérieur)</option>
+        <option value="autre">Autre événement</option>
+      </select>
+    </div>
+
+    <div id="dmBlocMatch" class="form-group">
+      <label>Match</label>
+      <select id="dmMatchId" onchange="onChangeMatchDeplModif()">
+        <option value="">— Sélectionner un match —</option>
+      </select>
+      <div id="dmMatchVide" style="display:none;font-size:12px;color:var(--gris);margin-top:6px;">
+        Aucun match extérieur à venir dans le calendrier. Passe en « Autre événement » ou ajoute d'abord le match au calendrier.
+      </div>
+    </div>
+
+    <div class="form-group"><label>Adversaire</label><input type="text" id="dmAdv" placeholder="OGC Nice"></div>
+    <div class="form-group"><label>Date du match</label><input type="date" id="dmDate"></div>
+    <div class="form-group"><label>Stade</label><input type="text" id="dmStade" placeholder="Allianz Riviera"></div>
+    <div class="form-group"><label>Ville</label><input type="text" id="dmVille" placeholder="Nice"></div>
+    <div class="form-group">
+      <label>Point de RDV</label>
+      <select id="dmRdv" onchange="onChangeRdvDeplModif()">
+        <option value="">— Choisir —</option>
+        <option value="Stade Charléty">Stade Charléty</option>
+        <option value="Porte de Versailles">Porte de Versailles</option>
+        <option value="autre">Autre</option>
+      </select>
+      <input type="text" id="dmRdvAutre" placeholder="Préciser le point de RDV" style="display:none;margin-top:8px;">
+    </div>
+    <div class="form-group"><label>Lien Telegram du déplacement</label><input type="url" id="dmTelegram" placeholder="https://t.me/..."></div>
+    <div class="form-group"><label>Heure départ bus</label><input type="time" id="dmHeure"></div>
+    <div class="form-group"><label>Prix total (€)</label><input type="number" id="dmPrix" placeholder="55"></div>
+    <div class="form-group"><label>Places max</label><input type="number" id="dmPlaces" placeholder="40"></div>
+    <div class="form-group"><label>Date limite inscription</label><input type="date" id="dmLimite"></div>
+    <div class="form-group"><label>Notes</label><textarea id="dmNotes" rows="2" placeholder="Infos complémentaires..."></textarea></div>
+    <div class="form-group">
+      <label>Statut</label>
+      <select id="dmStatut">
+        <option value="ouvert">Ouvert</option>
+        <option value="complet">Complet</option>
+        <option value="ferme">Fermé</option>
+        <option value="annule">Annulé</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="doModifierDepl()">💾 Enregistrer</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalModifierDepl')">Annuler</button>
+  </div>
+</div>
+
 <!-- Modal Admin — Gestion session (ouvrir/fermer/inscrits) -->
 <div class="modal-overlay" id="modalAdminSession" style="display:none;" onclick="closeModalOutside(event,'modalAdminSession')">
   <div class="modal" onclick="event.stopPropagation()">
@@ -950,6 +1009,10 @@
         <select id="mType"><option value="exterieur">Extérieur</option><option value="domicile">Domicile</option></select>
       </div>
       <div class="form-group"><input type="text" id="mStade" placeholder="Stade"></div>
+      <div class="form-group" id="mCompGroup" style="display:none;">
+        <input type="text" id="mComp" placeholder="Compétition (ex: Ligue 1)">
+        <input type="number" id="mJournee" placeholder="Journée" style="margin-top:8px;">
+      </div>
       <button class="btn btn-primary btn-sm" id="modalMatchsSubmitBtn" style="width:auto;" onclick="doAjouterMatch()">+ Ajouter</button>
       <button class="btn btn-secondary btn-sm" id="modalMatchsCancelBtn" style="width:auto;display:none;" onclick="annulerConfirmerDate()">Annuler</button>
     </div>
@@ -962,7 +1025,8 @@
 <div class="modal-overlay" id="modalCreerProduit" style="display:none;" onclick="closeModalOutside(event,'modalCreerProduit')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
-    <h3 class="modal-title">Ajouter un article matos</h3>
+    <h3 class="modal-title" id="modalProduitTitre">Ajouter un article matos</h3>
+    <input type="hidden" id="pId">
     <div class="form-group"><label>Nom de l'article</label><input type="text" id="pNom" placeholder="ex: Tee-shirt UL 2026"></div>
     <div class="form-group">
       <label>Photo de l'article</label>
@@ -1012,7 +1076,7 @@
         <option value="precommande">Précommande groupée</option>
       </select>
     </div>
-    <button class="btn btn-primary" onclick="doCreerProduit()">Ajouter l'article</button>
+    <button class="btn btn-primary" id="modalProduitSubmitBtn" onclick="doCreerProduit()">Ajouter l'article</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerProduit')">Annuler</button>
   </div>
 </div>
@@ -1021,7 +1085,8 @@
 <div class="modal-overlay" id="modalCreerStick" style="display:none;" onclick="closeModalOutside(event,'modalCreerStick')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
-    <h3 class="modal-title">Ajouter un stick</h3>
+    <h3 class="modal-title" id="modalStickTitre">Ajouter un stick</h3>
+    <input type="hidden" id="stId">
     <div class="form-group"><label>Nom du stick</label><input type="text" id="stNom" placeholder="ex: Sticker tag 2026"></div>
     <div class="form-group">
       <label>Visuel du stick</label>
@@ -1057,7 +1122,7 @@
       </select>
     </div>
     <div class="form-group"><label>Lien HelloAsso (obligatoire si stick payant)</label><input type="url" id="stHelloasso" placeholder="https://www.helloasso.com/..."></div>
-    <button class="btn btn-primary" onclick="doCreerStick()">Ajouter le stick</button>
+    <button class="btn btn-primary" id="modalStickSubmitBtn" onclick="doCreerStick()">Ajouter le stick</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerStick')">Annuler</button>
   </div>
 </div>
