@@ -50,6 +50,7 @@ function renderDeplCard(d) {
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();voirInscritsDepl('${d.id}')">👥 Inscrits</button>
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();copierListeBus('${d.id}')">📋 Liste bus</button>
+      <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ouvrirModifierDepl('${d.id}')">✏️ Modifier</button>
     </div>` : '';
 
   return `<div class="depl-card" onclick="openDepl('${d.id}')">
@@ -124,6 +125,7 @@ async function openDepl(deplId) {
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-sm btn-secondary" onclick="voirInscritsDepl('${d.id}')">👥 Voir inscrits</button>
             <button class="btn btn-sm btn-secondary" onclick="copierListeBus('${d.id}')">📋 Liste bus</button>
+            <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierDepl('${d.id}')">✏️ Modifier</button>
           </div>
         </div>`;
     }
@@ -328,6 +330,124 @@ async function doCreerDepl() {
     await UL.createDeplacement(data);
     toast('Déplacement créé ✅', 'success');
     closeModal('modalCreerDepl');
+    loadDeplacements();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// Ouvre le modal de modification, pré-rempli avec les valeurs actuelles du
+// déplacement. Suit le même pattern à deux modals séparés que les sessions
+// tifo (modalCreerSession / modalModifierSession) plutôt qu'un seul modal
+// réutilisé, pour rester cohérent avec le reste du projet.
+async function ouvrirModifierDepl(deplId) {
+  try {
+    const { deplacement: d } = await UL.getDeplacement(deplId);
+    document.getElementById('dmId').value = d.id;
+    document.getElementById('dmSource').value = d.match_id ? 'match' : 'autre';
+    document.getElementById('dmAdv').value = d.adversaire || '';
+    document.getElementById('dmDate').value = d.date_match || '';
+    document.getElementById('dmStade').value = d.stade || '';
+    document.getElementById('dmVille').value = d.ville || '';
+    document.getElementById('dmTelegram').value = d.lien_telegram || '';
+    document.getElementById('dmHeure').value = d.heure_depart || '';
+    document.getElementById('dmPrix').value = d.prix_total || '';
+    document.getElementById('dmPlaces').value = d.places_max || '';
+    document.getElementById('dmLimite').value = d.date_limite_inscription || '';
+    document.getElementById('dmNotes').value = d.notes || '';
+    document.getElementById('dmStatut').value = d.statut || 'ouvert';
+
+    // Point de RDV : si la valeur actuelle correspond à une des options
+    // prédéfinies, on la sélectionne ; sinon on bascule sur "Autre" avec
+    // le champ libre pré-rempli (cas d'un RDV saisi avant l'introduction
+    // de ce sélecteur, ou un point de RDV non standard).
+    const rdvConnu = ['Stade Charléty', 'Porte de Versailles'].includes(d.point_rdv);
+    document.getElementById('dmRdv').value = rdvConnu ? d.point_rdv : (d.point_rdv ? 'autre' : '');
+    document.getElementById('dmRdvAutre').value = (!rdvConnu && d.point_rdv) ? d.point_rdv : '';
+    document.getElementById('dmRdvAutre').style.display = (!rdvConnu && d.point_rdv) ? 'block' : 'none';
+
+    onChangeSourceDeplModif();
+
+    // Charge la liste des matchs extérieur (mêmes critères que la création)
+    // — inclut aussi le match déjà lié même s'il est passé, pour ne pas le
+    // faire disparaître du sélecteur lors d'une modification tardive.
+    const matchs = await UL.getMatchs();
+    const today = new Date().toISOString().split('T')[0];
+    const matchsExterieur = (matchs || [])
+      .filter(m => m.type === 'exterieur' && (m.id === d.match_id || (m.date && m.date >= today)))
+      .sort((a, b) => (a.date||'').localeCompare(b.date||''));
+
+    const sel = document.getElementById('dmMatchId');
+    if (!matchsExterieur.length) {
+      document.getElementById('dmMatchVide').style.display = 'block';
+      sel.innerHTML = '<option value="">— Sélectionner un match —</option>';
+    } else {
+      document.getElementById('dmMatchVide').style.display = 'none';
+      sel.innerHTML = '<option value="">— Sélectionner un match —</option>' +
+        matchsExterieur.map(m => {
+          const dateAff = formatDateCourte ? (formatDateCourte(m.date) || m.date) : m.date;
+          return `<option value="${m.id}">${esc(m.equipe_domicile || '?')} — ${dateAff}</option>`;
+        }).join('');
+    }
+    sel.value = d.match_id || '';
+
+    showModal('modalModifierDepl');
+  } catch(e) { toast('Erreur chargement du déplacement', 'error'); }
+}
+
+function onChangeSourceDeplModif() {
+  const source = document.getElementById('dmSource').value;
+  document.getElementById('dmBlocMatch').style.display = source === 'match' ? 'block' : 'none';
+  if (source === 'autre') {
+    document.getElementById('dmMatchId').value = '';
+  }
+}
+
+function onChangeRdvDeplModif() {
+  const rdv = document.getElementById('dmRdv').value;
+  const autreInput = document.getElementById('dmRdvAutre');
+  autreInput.style.display = rdv === 'autre' ? 'block' : 'none';
+  if (rdv !== 'autre') autreInput.value = '';
+}
+
+async function onChangeMatchDeplModif() {
+  const matchId = document.getElementById('dmMatchId').value;
+  if (!matchId) return;
+  try {
+    const matchs = await UL.getMatchs();
+    const match = (matchs || []).find(m => m.id === matchId);
+    if (!match) return;
+    document.getElementById('dmAdv').value = match.equipe_domicile || '';
+    document.getElementById('dmDate').value = match.date || '';
+    document.getElementById('dmStade').value = match.stade || '';
+    document.getElementById('dmVille').value = deduireVilleDepuisStade(match.stade);
+  } catch(e) { toast('Erreur chargement du match', 'error'); }
+}
+
+async function doModifierDepl() {
+  const id = document.getElementById('dmId').value;
+  const source = document.getElementById('dmSource').value;
+  const matchId = document.getElementById('dmMatchId').value;
+  const rdvChoix = document.getElementById('dmRdv').value;
+  const pointRdv = rdvChoix === 'autre' ? (document.getElementById('dmRdvAutre').value.trim() || null) : (rdvChoix || null);
+  const data = {
+    adversaire: document.getElementById('dmAdv').value,
+    date_match: document.getElementById('dmDate').value,
+    stade: document.getElementById('dmStade').value || null,
+    ville: document.getElementById('dmVille').value || null,
+    point_rdv: pointRdv,
+    lien_telegram: document.getElementById('dmTelegram').value.trim() || null,
+    heure_depart: document.getElementById('dmHeure').value || null,
+    prix_total: parseFloat(document.getElementById('dmPrix').value) || null,
+    places_max: parseInt(document.getElementById('dmPlaces').value) || null,
+    date_limite_inscription: document.getElementById('dmLimite').value || null,
+    notes: document.getElementById('dmNotes').value || null,
+    statut: document.getElementById('dmStatut').value,
+    match_id: (source === 'match' && matchId) ? matchId : null,
+  };
+  if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
+  try {
+    await UL.updateDeplacement(id, data);
+    toast('Déplacement modifié ✅', 'success');
+    closeModal('modalModifierDepl');
     loadDeplacements();
   } catch(e) { toast(e.message, 'error'); }
 }
