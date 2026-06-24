@@ -514,7 +514,47 @@ async function loadAccueil() {
         <span style="font-size:13px;">${a.contenu}</span>
       </div>`).join('');
   } catch(e) {}
-  // Sessions (visibles seulement si le membre a le droit de voir les tifos)
+
+  // Prochain match domicile / extérieur — réutilise renderMatchCard (calendrier.js)
+  // pour garder un rendu identique à la page Calendrier (logos, score, bouton
+  // déplacement lié si présent, etc.) plutôt que de dupliquer le template ici.
+  try {
+    const m = UL.getCurrentMembre();
+    const matchs = await UL.getMatchs();
+    const today = new Date().toISOString().split('T')[0];
+    const matchsFuturs = (matchs || []).filter(mt => mt.date && mt.date >= today).sort((a,b) => a.date.localeCompare(b.date));
+    const prochainDomicile = matchsFuturs.find(mt => mt.type === 'domicile');
+    const prochainExterieur = matchsFuturs.find(mt => mt.type === 'exterieur');
+
+    // depParMatchId (calendrier.js) alimente le bouton "Voir le déplacement"
+    // dans renderMatchCard — on la peuple ici aussi si elle n'a pas encore
+    // été chargée par un passage sur la page Calendrier dans cette session.
+    if (prochainExterieur && !Object.keys(depParMatchId || {}).length) {
+      try {
+        const deplacements = await UL.getDeplacements(false);
+        depParMatchId = {};
+        (deplacements || []).forEach(d => { if (d.match_id) depParMatchId[d.match_id] = d; });
+      } catch(e) {}
+    }
+
+    document.getElementById('matchDomicileAccueil').innerHTML = prochainDomicile
+      ? renderMatchCard(prochainDomicile, m)
+      : '<p style="color:var(--gris);font-size:14px;">Aucun match à domicile à venir</p>';
+    document.getElementById('matchExterieurAccueil').innerHTML = prochainExterieur
+      ? renderMatchCard(prochainExterieur, m)
+      : '<p style="color:var(--gris);font-size:14px;">Aucun match à l\'extérieur à venir</p>';
+  } catch(e) {}
+
+  // Déplacement
+  try {
+    const depls = await UL.getDeplacements(true);
+    const el = document.getElementById('deplAccueil');
+    el.innerHTML = depls.length
+      ? renderDeplCard(depls[0])
+      : '<p style="color:var(--gris);font-size:14px;">Aucun déplacement à venir</p>';
+  } catch(e) {}
+
+  // Sessions tifo (visibles seulement si le membre a le droit de voir les tifos)
   try {
     const m = UL.getCurrentMembre();
     const el = document.getElementById('tifosAccueil');
@@ -529,14 +569,6 @@ async function loadAccueil() {
         : '<p style="color:var(--gris);font-size:14px;">Aucun tifo à venir</p>';
       await refreshTifosActions(sessions.slice(0,2), 'acc_');
     }
-  } catch(e) {}
-  // Déplacement
-  try {
-    const depls = await UL.getDeplacements(true);
-    const el = document.getElementById('deplAccueil');
-    el.innerHTML = depls.length
-      ? renderDeplCard(depls[0])
-      : '<p style="color:var(--gris);font-size:14px;">Aucun déplacement à venir</p>';
   } catch(e) {}
   // Stats perso
   try {
