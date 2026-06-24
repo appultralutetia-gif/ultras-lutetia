@@ -1,6 +1,20 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v8
+// ULTRAS LUTETIA — Service Worker v9
 // ============================================================
+//
+// v9 (24/06/2026) : CACHE_NAME bumpé (v8 → v9) suite à une troisième vague
+// de modifications : (1) bouton M'inscrire/statut paiement directement sur
+// la carte de la liste Déplacements (plus besoin d'ouvrir la modal pour
+// voir son statut) — nécessite que getDeplacements() (supabase-client.js)
+// calcule désormais _inscrits et monInscrit pour chaque déplacement, ce
+// qui corrige au passage un bug latent où la barre de places affichait
+// toujours 0 ; (2) bouton "Voir le déplacement" sur la carte d'un match
+// extérieur du calendrier, visible seulement si un déplacement existe pour
+// ce match (calendrier.js, nouvelle map depParMatchId) ; (3) réorganisation
+// de l'accueil (app.js, index.html) : Prochain match domicile → Prochain
+// match extérieur → Prochain déplacement → Prochaine session tifo → Mes
+// stats. Fichiers modifiés : index.html, src/app.js, src/calendrier.js,
+// src/deplacements.js, src/supabase-client.js — tous déjà en NETWORK_FIRST.
 //
 // v8 (24/06/2026) : CACHE_NAME bumpé (v7 → v8) suite à une deuxième vague
 // de modifications sur le même chantier que la v7 (formulaire Création
@@ -57,7 +71,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v8';
+const CACHE_NAME = 'ul-v9';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
