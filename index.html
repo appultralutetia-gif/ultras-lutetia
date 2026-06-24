@@ -251,7 +251,7 @@
 
     <!-- Bouton créer déplacement (Bureau+) -->
     <div id="btnCreerDepl" style="display:none;margin-bottom:16px;">
-      <button class="btn btn-primary" onclick="showModal('modalCreerDepl')">+ Nouveau déplacement</button>
+      <button class="btn btn-primary" onclick="ouvrirCreerDepl()">+ Nouveau déplacement</button>
     </div>
 
     <!-- Bouton scan présence (Cellule Déplacement + Bureau + Admin uniquement) -->
@@ -502,7 +502,7 @@
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button class="btn btn-secondary" onclick="showPage('pageDeplacements')">📋 Gérer les déplacements</button>
-          <button class="btn btn-secondary" onclick="showModal('modalCreerDepl')">+ Créer un déplacement</button>
+          <button class="btn btn-secondary" onclick="ouvrirCreerDepl()">+ Créer un déplacement</button>
         </div>
       </div>
     </div>
@@ -811,6 +811,26 @@
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
     <h3 class="modal-title">Nouveau déplacement</h3>
+
+    <div class="form-group">
+      <label>Source</label>
+      <select id="dSource" onchange="onChangeSourceDepl()">
+        <option value="match">Match du calendrier (extérieur)</option>
+        <option value="autre">Autre événement</option>
+      </select>
+    </div>
+
+    <!-- Bloc affiché uniquement en mode "match du calendrier" -->
+    <div id="dBlocMatch" class="form-group">
+      <label>Match</label>
+      <select id="dMatchId" onchange="onChangeMatchDepl()">
+        <option value="">— Sélectionner un match —</option>
+      </select>
+      <div id="dMatchVide" style="display:none;font-size:12px;color:var(--gris);margin-top:6px;">
+        Aucun match extérieur à venir dans le calendrier. Passe en « Autre événement » ou ajoute d'abord le match au calendrier.
+      </div>
+    </div>
+
     <div class="form-group"><label>Adversaire</label><input type="text" id="dAdv" placeholder="OGC Nice"></div>
     <div class="form-group"><label>Date du match</label><input type="date" id="dDate"></div>
     <div class="form-group"><label>Stade</label><input type="text" id="dStade" placeholder="Allianz Riviera"></div>
@@ -819,7 +839,6 @@
     <div class="form-group"><label>Heure départ bus</label><input type="time" id="dHeure"></div>
     <div class="form-group"><label>Prix total (€)</label><input type="number" id="dPrix" placeholder="55"></div>
     <div class="form-group"><label>Places max</label><input type="number" id="dPlaces" placeholder="40"></div>
-    <div class="form-group"><label>Lien HelloAsso</label><input type="url" id="dHelloasso" placeholder="https://www.helloasso.com/..."></div>
     <div class="form-group"><label>Date limite inscription</label><input type="date" id="dLimite"></div>
     <div class="form-group"><label>Notes</label><textarea id="dNotes" rows="2" placeholder="Infos complémentaires..."></textarea></div>
     <button class="btn btn-primary" onclick="doCreerDepl()">Créer le déplacement</button>
