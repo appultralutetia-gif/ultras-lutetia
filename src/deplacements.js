@@ -9,10 +9,41 @@ async function loadDeplacements() {
   } catch(e) { toast('Erreur chargement déplacements', 'error'); }
 }
 
+// Calcule le statut de paiement du membre courant pour un déplacement, à
+// partir de son inscription (ou son absence). Centralisé ici pour être
+// utilisé à la fois par la carte de liste (renderDeplCard) et la modal de
+// détail (openDepl) — éviter que les deux affichages divergent un jour.
+// ⚠️ Avec l'ajout du statut 'refuse' (paiement HelloAsso refusé), on ne
+// peut plus se contenter de "!== 'en_attente'" pour détecter un paiement
+// confirmé — un paiement refusé n'est pas 'en_attente' mais n'est pas
+// payé non plus. On distingue explicitement les 3 cas.
+function calculerStatutPaiementDepl(monInscrit) {
+  const estInscrit = !!monInscrit;
+  const estPaye = !!monInscrit && (monInscrit.statut_paiement === 'paye_cash' || monInscrit.statut_paiement === 'paye_ha');
+  const estRefuse = !!monInscrit && monInscrit.statut_paiement === 'refuse';
+  return { estInscrit, estPaye, estRefuse };
+}
+
 function renderDeplCard(d) {
   const m = UL.getCurrentMembre();
   const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}) : '';
   const pct = d.places_max ? Math.min(100, Math.round(((d._inscrits||0)/d.places_max)*100)) : 0;
+  const { estInscrit, estPaye, estRefuse } = calculerStatutPaiementDepl(d.monInscrit);
+
+  // Bouton d'action directement visible sur la carte, sans devoir l'ouvrir —
+  // reflète le même statut que la modal de détail (cf. openDepl). Le
+  // stopPropagation empêche le clic sur le bouton de déclencher en plus
+  // l'ouverture de la modal (la carte entière reste cliquable pour le détail).
+  let boutonAction;
+  if (!estInscrit) {
+    boutonAction = `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}')">M'inscrire</button>`;
+  } else if (estRefuse) {
+    boutonAction = `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}')">❌ Réessayer le paiement</button>`;
+  } else if (!estPaye) {
+    boutonAction = `<span class="badge badge-orange">⏳ Paiement en cours</span>`;
+  } else {
+    boutonAction = `<span class="badge badge-vert">✅ Payé</span>`;
+  }
 
   // Barre de places + boutons admin bus
   const adminBar = hasCelluleDepl(m) ? `
@@ -41,6 +72,7 @@ function renderDeplCard(d) {
       <div class="places-bar" style="flex:1;"><div class="places-fill" style="width:${pct}%"></div></div>
       <span style="font-size:11px;color:var(--gris);flex-shrink:0;">${d._inscrits||0}/${d.places_max}</span>
     </div>` : ''}
+    <div style="margin-top:10px;">${boutonAction}</div>
     ${adminBar}
   </div>`;
 }
@@ -50,13 +82,7 @@ async function openDepl(deplId) {
   const m = UL.getCurrentMembre();
   try {
     const { deplacement: d, inscrits, monInscrit, nbInscrits } = await UL.getDeplacement(deplId);
-    const estInscrit = !!monInscrit;
-    // ⚠️ Avec l'ajout du statut 'refuse' (paiement HelloAsso refusé), on ne
-    // peut plus se contenter de "!== 'en_attente'" pour détecter un paiement
-    // confirmé — un paiement refusé n'est pas 'en_attente' mais n'est pas
-    // payé non plus. On distingue explicitement les 3 cas.
-    const estPaye = monInscrit && (monInscrit.statut_paiement === 'paye_cash' || monInscrit.statut_paiement === 'paye_ha');
-    const estRefuse = monInscrit && monInscrit.statut_paiement === 'refuse';
+    const { estInscrit, estPaye, estRefuse } = calculerStatutPaiementDepl(monInscrit);
     const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}) : '';
     let html = `
       <h3 class="modal-title">${esc(d.adversaire||d.match?.equipe_domicile||'?')} — Paris FC</h3>
