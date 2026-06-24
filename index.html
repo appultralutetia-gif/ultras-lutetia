@@ -835,7 +835,17 @@
     <div class="form-group"><label>Date du match</label><input type="date" id="dDate"></div>
     <div class="form-group"><label>Stade</label><input type="text" id="dStade" placeholder="Allianz Riviera"></div>
     <div class="form-group"><label>Ville</label><input type="text" id="dVille" placeholder="Nice"></div>
-    <div class="form-group"><label>Point de RDV</label><input type="text" id="dRdv" placeholder="Porte de Vincennes"></div>
+    <div class="form-group">
+      <label>Point de RDV</label>
+      <select id="dRdv" onchange="onChangeRdvDepl()">
+        <option value="">— Choisir —</option>
+        <option value="Stade Charléty">Stade Charléty</option>
+        <option value="Porte de Versailles">Porte de Versailles</option>
+        <option value="autre">Autre</option>
+      </select>
+      <input type="text" id="dRdvAutre" placeholder="Préciser le point de RDV" style="display:none;margin-top:8px;">
+    </div>
+    <div class="form-group"><label>Lien Telegram du déplacement</label><input type="url" id="dTelegram" placeholder="https://t.me/..."></div>
     <div class="form-group"><label>Heure départ bus</label><input type="time" id="dHeure"></div>
     <div class="form-group"><label>Prix total (€)</label><input type="number" id="dPrix" placeholder="55"></div>
     <div class="form-group"><label>Places max</label><input type="number" id="dPlaces" placeholder="40"></div>
