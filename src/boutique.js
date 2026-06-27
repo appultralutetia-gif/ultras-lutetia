@@ -598,6 +598,8 @@ async function doCreerProduit() {
   if (!prix || isNaN(prix)) return toast('Prix requis', 'error');
   if (acces === 'section' && !sectionId) return toast('Sélectionne une section', 'error');
 
+  const notifier = document.getElementById('pNotifier')?.checked;
+
   try {
     showLoading();
 
@@ -634,6 +636,20 @@ async function doCreerProduit() {
     ['pNom','pDesc','pPrix','pStock','pQuota'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('pPhoto').value = '';
     document.getElementById('photoPreviewMatos').style.display = 'none';
+    // Notification réservée à ceux qui ont le droit de voir cet article —
+    // cible:'matos' reproduit côté serveur la même règle que getProduits
+    // (supabase-client.js) : 'tous' = tout le monde, 'section' = Confirmés
+    // partout + Draft de la section visée uniquement.
+    if (notifier) {
+      UL.envoyerNotificationPushGroupe({
+        cible: 'matos',
+        niveauAcces: acces,
+        sectionId,
+        titre: '🛍️ Nouvel article boutique',
+        corps: nom,
+        url: '/ultras-lutetia/',
+      });
+    }
     document.getElementById('pAcces').value = 'tous';
     document.getElementById('pTailles').checked = false;
     document.getElementById('sectionSelectGroup').style.display = 'none';
@@ -680,6 +696,7 @@ async function ouvrirModifierProduit(produitId) {
   const btn = document.getElementById('modalProduitSubmitBtn');
   btn.textContent = '💾 Enregistrer';
   btn.setAttribute('onclick', 'doModifierProduit()');
+  document.getElementById('pNotifierGroup').style.display = 'none';
 
   showModal('modalCreerProduit');
 }
@@ -741,6 +758,8 @@ function reinitialiserFormulaireProduit() {
   const btn = document.getElementById('modalProduitSubmitBtn');
   btn.textContent = 'Ajouter l\'article';
   btn.setAttribute('onclick', 'doCreerProduit()');
+  document.getElementById('pNotifierGroup').style.display = '';
+  document.getElementById('pNotifier').checked = true;
 }
 
 // ── STICKS — création (Admin/Cellule Sticks) ───────────────────
@@ -767,6 +786,8 @@ async function doCreerStick() {
 
   if (!nom) return toast('Nom requis', 'error');
   if (niveauAcces !== 'tous' && !sectionId) return toast('Sélectionne une section', 'error');
+
+  const notifier = document.getElementById('stNotifier')?.checked;
 
   try {
     showLoading();
@@ -807,6 +828,20 @@ async function doCreerStick() {
     document.getElementById('photoPreviewStick').style.display = 'none';
     document.getElementById('stCat').value = 'tous';
     loadSticks();
+    // Notification réservée à ceux qui ont le droit de voir ce stick —
+    // cible:'sticks' reproduit côté serveur la même règle que getSticks
+    // (supabase-client.js) : 'tous' = tout le monde, 'draft_confirme'/
+    // 'confirme' = restreint à la section choisie + statut minimum requis.
+    if (notifier) {
+      UL.envoyerNotificationPushGroupe({
+        cible: 'sticks',
+        niveauAcces,
+        sectionId,
+        titre: '🎟️ Nouveau stick',
+        corps: nom,
+        url: '/ultras-lutetia/',
+      });
+    }
   } catch(e) {
     hideLoading();
     toast(e.message || 'Erreur création stick', 'error');
@@ -845,6 +880,7 @@ async function ouvrirModifierStick(stickId) {
   const btn = document.getElementById('modalStickSubmitBtn');
   btn.textContent = '💾 Enregistrer';
   btn.setAttribute('onclick', 'doModifierStick()');
+  document.getElementById('stNotifierGroup').style.display = 'none';
 
   showModal('modalCreerStick');
 }
@@ -900,4 +936,6 @@ function reinitialiserFormulaireStick() {
   const btn = document.getElementById('modalStickSubmitBtn');
   btn.textContent = 'Ajouter le stick';
   btn.setAttribute('onclick', 'doCreerStick()');
+  document.getElementById('stNotifierGroup').style.display = '';
+  document.getElementById('stNotifier').checked = true;
 }
