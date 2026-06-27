@@ -36,7 +36,7 @@ function renderMembres(membres) {
         <button class="btn btn-sm ${m.actif?'btn-danger':'btn-success'}" onclick="toggleMembre('${m.id}',${!m.actif})">
           ${m.actif?'Bloquer':'Débloquer'}
         </button>
-        <button class="btn btn-sm btn-danger" onclick="supprimerMembre('${m.id}','${esc(m.prenom||'')} ${esc(m.nom||'')}')">🗑</button>
+        <button class="btn btn-sm btn-danger" aria-label="Supprimer ${esc(m.prenom||'')} ${esc(m.nom||'')}" onclick="supprimerMembre('${m.id}','${esc(m.prenom||'')} ${esc(m.nom||'')}')">🗑 Supprimer</button>
       </div>
     </div>`).join('');
 }
@@ -83,7 +83,12 @@ async function openEditMembre(id) {
   const container = document.getElementById('rolesContainer');
   container.innerHTML = ROLES_DEFS.map(r => {
     const actif = _rolesActifs.has(r.key);
-    return `<div onclick="toggleRole('${r.key}',this)" data-role="${r.key}"
+    // role="checkbox" + aria-checked + tabindex : sans ces attributs, un
+    // lecteur d'écran ne peut pas percevoir que cette ligne est une case à
+    // cocher, et le clavier (Tab puis Espace/Entrée) ne fonctionne pas —
+    // ce <div> est sinon invisible pour qui n'utilise pas la souris/le tactile.
+    return `<div onclick="toggleRole('${r.key}',this)" onkeydown="onKeydownRole(event,'${r.key}',this)"
+      data-role="${r.key}" role="checkbox" aria-checked="${actif}" tabindex="0"
       style="display:flex;align-items:center;gap:12px;padding:11px 14px;
              background:${actif?'rgba(26,86,219,0.18)':'rgba(255,255,255,.07)'};
              border:1.5px solid ${actif?'#1A56DB':'rgba(255,255,255,.12)'};
@@ -100,9 +105,20 @@ async function openEditMembre(id) {
   showModal('modalEditMembre');
 }
 
+// Active/désactive un rôle au clavier (Espace ou Entrée), en plus du clic
+// souris/tactile géré par toggleRole. Sans ce gestionnaire, une case
+// focusée au clavier (Tab) ne réagirait à aucune touche.
+function onKeydownRole(event, key, rowEl) {
+  if (event.key === ' ' || event.key === 'Enter') {
+    event.preventDefault();
+    toggleRole(key, rowEl);
+  }
+}
+
 function toggleRole(key, rowEl) {
   if (_rolesActifs.has(key)) {
     _rolesActifs.delete(key);
+    rowEl.setAttribute('aria-checked', 'false');
     rowEl.style.background = 'rgba(255,255,255,.07)';
     rowEl.style.border = '1.5px solid rgba(255,255,255,.12)';
     const box = rowEl.querySelector('div');
@@ -112,6 +128,7 @@ function toggleRole(key, rowEl) {
     rowEl.querySelector('span').style.color = '#94A3B8';
   } else {
     _rolesActifs.add(key);
+    rowEl.setAttribute('aria-checked', 'true');
     rowEl.style.background = 'rgba(26,86,219,0.18)';
     rowEl.style.border = '1.5px solid #1A56DB';
     const box = rowEl.querySelector('div');
