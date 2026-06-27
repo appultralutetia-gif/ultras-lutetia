@@ -420,17 +420,23 @@ async function loadDistribuerModal() {
   } catch(e) {}
 }
 
-async function doDistribuerStick() {
+async function doDistribuerStick(btn) {
   const stickId = document.getElementById('distribStickId').value;
   const membreId = document.getElementById('distribMembreId').value;
   const qte = parseInt(document.getElementById('distribQte').value) || 1;
   const mode = document.getElementById('distribMode').value;
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.distribuerStickAdmin(stickId, membreId, qte, mode);
     toast('Distribution enregistrée ✅', 'success');
     closeModal('modalDistribuer');
     loadSticks();
-  } catch(e) { toast(e.message || 'Impossible d\'enregistrer la distribution', 'error'); }
+  } catch(e) {
+    toast(e.message || 'Impossible d\'enregistrer la distribution', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 
 // ── COTISATION ─────────────────────────────────────────────────
