@@ -1611,6 +1611,126 @@ async function updatePhotoStick(stickId, visuelUrl) {
 }
 
 // ============================================================
+// NOTIFICATIONS PUSH (générique — utilisable pour tout type d'alerte)
+// ============================================================
+//
+// Principe en 2 temps :
+// 1. Côté navigateur (ce fichier) : demander la permission au membre,
+//    créer un "abonnement push" via le Service Worker, l'enregistrer dans
+//    la table push_subscriptions (cf. migration_notifications_push.sql).
+// 2. Côté serveur (Edge Function send-push-notification, à déployer
+//    séparément) : envoyer réellement la notification à un membre donné,
+//    quel que soit l'événement qui la déclenche (validation de compte,
+//    rappel de déplacement, nouvelle annonce, etc. — un seul point d'envoi
+//    générique, réutilisable pour tous les cas futurs).
+//
+// IMPORTANT iOS : sur iPhone/iPad, les notifications ne fonctionnent que
+// si l'app a été installée sur l'écran d'accueil (Safari → Partager →
+// Sur l'écran d'accueil) — impossible de les activer depuis un simple
+// onglet Safari. Sur Android/Chrome, aucune installation n'est requise.
+
+// Convertit la clé publique VAPID (texte base64url, cf. UL_CONFIG dans
+// config.js) au format binaire attendu par PushManager.subscribe().
+// Étape technique obligatoire — sans cette conversion, le navigateur
+// rejette la clé.
+function _urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+// true si ce navigateur sait techniquement faire du push (indépendant de
+// la permission accordée ou non — sert à savoir si on doit même proposer
+// le bouton "Activer les notifications" à ce membre sur cet appareil).
+function notificationsPushSupportees() {
+  return 'serviceWorker' in navigator && 'PushManager' in window;
+}
+
+// État actuel pour CET appareil (pas pour le membre en général — un même
+// membre peut avoir activé sur son téléphone et pas sur sa tablette).
+// Retourne 'non-supporte' | 'refuse' | 'active' | 'inactif'.
+async function getStatutNotificationsPush() {
+  if (!notificationsPushSupportees()) return 'non-supporte';
+  if (Notification.permission === 'denied') return 'refuse';
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  return sub ? 'active' : 'inactif';
+}
+
+// Demande la permission (déclenche la popup native du navigateur — doit
+// être appelée depuis un clic explicite du membre, jamais automatiquement
+// au chargement de la page, sous peine d'être bloquée par le navigateur)
+// puis crée et enregistre l'abonnement. À appeler depuis un bouton
+// "Activer les notifications" dans l'UI (page Profil par ex.).
+async function activerNotificationsPush() {
+  if (!notificationsPushSupportees()) {
+    throw new Error('Notifications non supportées sur cet appareil/navigateur');
+  }
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    throw new Error('Notifications refusées');
+  }
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true, // obligatoire : on s'engage à toujours montrer une notif visible
+      applicationServerKey: _urlBase64ToUint8Array(UL_CONFIG.VAPID_PUBLIC_KEY),
+    });
+  }
+  const json = sub.toJSON();
+  // upsert sur endpoint (unique) : si ce même appareil se réabonne (ex:
+  // après avoir révoqué puis ré-autorisé), on remplace la ligne existante
+  // plutôt que d'en créer une seconde orpheline.
+  const { error } = await sb.from('push_subscriptions').upsert({
+    membre_id: currentUser.id,
+    endpoint: json.endpoint,
+    p256dh: json.keys.p256dh,
+    auth: json.keys.auth,
+  }, { onConflict: 'endpoint' });
+  if (error) throw new Error('Impossible d\'enregistrer l\'abonnement: ' + error.message);
+  return true;
+}
+
+// Désactive les notifications sur CET appareil uniquement (désinscrit le
+// navigateur + supprime la ligne correspondante en base).
+async function desactiverNotificationsPush() {
+  if (!notificationsPushSupportees()) return true;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) {
+    const endpoint = sub.endpoint;
+    await sub.unsubscribe();
+    await sb.from('push_subscriptions').delete().eq('endpoint', endpoint);
+  }
+  return true;
+}
+
+// Déclenche l'envoi d'une notification push à un membre, via l'Edge
+// Function send-push-notification (cf. supabase/functions/send-push-notification/
+// — à déployer séparément, voir GUIDE_NOTIFICATIONS_PUSH.md). Générique :
+// n'importe quel code de l'app peut appeler cette fonction pour n'importe
+// quel motif (validation de compte, rappel de déplacement, etc.), il
+// suffit de fournir titre + texte. url (optionnelle) est la page ouverte
+// si le membre tape sur la notification (ex: '/ultras-lutetia/').
+// Échoue silencieusement par design : un problème d'envoi de notification
+// ne doit jamais faire échouer l'action métier qui la déclenche (ex: la
+// validation d'un membre doit réussir même si l'envoi de la notif échoue).
+async function envoyerNotificationPush(membreId, titre, corps, url = null) {
+  try {
+    const { error } = await sb.functions.invoke('send-push-notification', {
+      body: { membreId, titre, corps, url },
+    });
+    if (error) console.error('Notification push non envoyée:', error.message);
+  } catch (e) {
+    console.error('Notification push non envoyée:', e);
+  }
+}
+
+// ============================================================
 // EXPORT GLOBAL
 // ============================================================
 
@@ -1660,6 +1780,9 @@ window.UL = {
   uploadPhotoMatos, uploadPhotoStick, updatePhotoMatos, updatePhotoStick,
   // Email
   envoyerEmailValidation,
+  // Notifications push
+  notificationsPushSupportees, getStatutNotificationsPush,
+  activerNotificationsPush, desactiverNotificationsPush, envoyerNotificationPush,
   // Direct Supabase access
   sb, getCurrentUser: () => currentUser, getCurrentMembre: () => currentMembre,
 };
