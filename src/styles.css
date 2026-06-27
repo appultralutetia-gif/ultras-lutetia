@@ -336,7 +336,7 @@ input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   border-radius: var(--radius-sm);
   color: var(--blanc);
   padding: 11px 14px;
-  font-size: 15px;
+  font-size: 16px;
   font-family: 'Barlow', sans-serif;
   transition: border-color var(--transition);
   -webkit-appearance: none;
@@ -643,6 +643,7 @@ select option { background: var(--navy); color: var(--blanc); }
 }
 
 .modal {
+  position: relative;
   background: var(--navy);
   border-radius: var(--radius) var(--radius) 0 0;
   padding: 24px;
@@ -665,7 +666,31 @@ select option { background: var(--navy); color: var(--blanc); }
   font-size: 24px; letter-spacing: .05em;
   color: var(--blanc);
   margin-bottom: 18px;
+  padding-right: 36px;
 }
+
+/* Bouton ✕ de fermeture, injecté en JS dans showModal() (app.js) — un
+   seul point d'injection pour les ~20 modales plutôt que de reprendre
+   chaque bloc HTML individuellement. Position absolute par rapport à
+   .modal (relative) : reste fixe en haut à droite même quand le contenu
+   scrolle (.modal a overflow-y:auto), donc toujours accessible sans
+   avoir à scroller un formulaire long. */
+.modal-close-btn {
+  position: absolute;
+  top: 14px; right: 14px;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.08);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--blanc-soft);
+  font-size: 18px; line-height: 1;
+  cursor: pointer;
+  z-index: 10;
+  transition: all .15s;
+}
+.modal-close-btn:hover { background: rgba(255,255,255,.15); color: var(--blanc); }
+.modal-close-btn:active { transform: scale(.92); }
 
 /* ── Scrollbar ──────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
