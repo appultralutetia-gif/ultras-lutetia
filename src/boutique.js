@@ -206,7 +206,8 @@ async function changerStatutCommande(id, statut) {
 async function modifierStock(id, nom, stockActuel) {
   const nouveau = prompt(`Stock actuel: ${stockActuel}
 Nouveau stock pour "${nom}" :`, stockActuel);
-  if (nouveau === null || isNaN(parseInt(nouveau))) return;
+  if (nouveau === null) return; // Annulé par l'utilisateur — pas d'erreur à afficher
+  if (isNaN(parseInt(nouveau))) return toast('Stock invalide — saisis un nombre', 'error');
   try {
     await UL.updateProduit(id, { stock: parseInt(nouveau) });
     toast('Stock mis à jour ✅', 'success');
