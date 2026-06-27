@@ -295,7 +295,7 @@ async function ouvrirModifierEvenement(id) {
   } catch(e) { toast('Erreur chargement événement', 'error'); }
 }
 
-async function doSauvegarderEvenement() {
+async function doSauvegarderEvenement(btn) {
   const nom = document.getElementById('evNom').value.trim();
   const date = document.getElementById('evDate').value;
   if (!nom || !date) return toast('Nom et date requis', 'error');
@@ -307,6 +307,8 @@ async function doSauvegarderEvenement() {
     lien_helloasso: document.getElementById('evHelloasso').value.trim() || null,
   };
   const id = document.getElementById('evId').value;
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     if (id) {
       await UL.saveEvenement(data, id);
@@ -317,7 +319,11 @@ async function doSauvegarderEvenement() {
     }
     closeModal('modalEvenement');
     if (document.getElementById('pageCalendrier')?.classList.contains('active')) loadCalendrier();
-  } catch(e) { toast(e.message || 'Erreur', 'error'); }
+  } catch(e) {
+    toast(e.message || 'Erreur', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 
 async function doSupprimerEvenement(id) {
