@@ -488,6 +488,7 @@ async function doCreerSession(btn) {
     description: document.getElementById('sDesc').value.trim() || null,
   };
   if (!data.nom || !data.date) return toast('Nom et date requis', 'error');
+  const notifier = document.getElementById('sNotifier')?.checked;
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
@@ -495,6 +496,17 @@ async function doCreerSession(btn) {
     toast('Session créée ✅', 'success');
     closeModal('modalCreerSession');
     loadTifos();
+    // Notification réservée à ceux qui ont le droit de voir les tifos —
+    // cible:'tifo' reproduit côté serveur la même règle que peutVoirTifos
+    // (app.js) : Confirmé + Draft validé + cellule Tifo/Bureau/Admin.
+    if (notifier) {
+      UL.envoyerNotificationPushGroupe({
+        cible: 'tifo',
+        titre: '🎨 Nouveau tifo',
+        corps: data.nom,
+        url: '/ultras-lutetia/',
+      });
+    }
   } catch(e) {
     toast(e.message, 'error');
   } finally {
