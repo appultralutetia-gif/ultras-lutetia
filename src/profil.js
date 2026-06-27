@@ -74,6 +74,65 @@ async function loadProfil() {
   } catch(e) {
     document.getElementById('profilQrCard').innerHTML = '';
   }
+
+  chargerStatutNotifsProfil();
+}
+
+// Détecte le cas iOS spécifique : Safari (ou tout navigateur sur iOS,
+// qui utilise WebKit dans tous les cas) hors mode "installé sur l'écran
+// d'accueil" — seul cas où les notifications sont structurellement
+// impossibles à activer sur iPhone/iPad, quel que soit le code de l'app.
+function _estIOSHorsEcranAccueil() {
+  const estIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const estStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  return estIOS && !estStandalone;
+}
+
+// Affiche, selon le statut réel détecté sur CET appareil : un bouton
+// "Activer", une confirmation si déjà activées, ou une explication si
+// impossible (iOS hors écran d'accueil, ou navigateur non compatible).
+async function chargerStatutNotifsProfil() {
+  const el = document.getElementById('profilNotifsContainer');
+  if (!el) return;
+
+  if (_estIOSHorsEcranAccueil()) {
+    el.innerHTML = `
+      <div class="info-box" style="font-size:13px;">
+        📲 Sur iPhone/iPad, les notifications nécessitent d'installer l'app sur l'écran d'accueil :
+        appuie sur <strong>Partager</strong> dans Safari, puis <strong>Sur l'écran d'accueil</strong>.
+      </div>`;
+    return;
+  }
+
+  const statut = await UL.getStatutNotificationsPush();
+  if (statut === 'non-supporte') {
+    el.innerHTML = ''; // navigateur ne supportant pas le push — pas de message, pas d'action possible
+  } else if (statut === 'refuse') {
+    el.innerHTML = `
+      <div class="info-box" style="font-size:13px;">
+        🔕 Notifications bloquées pour cette app dans les réglages de ton navigateur/téléphone.
+      </div>`;
+  } else if (statut === 'active') {
+    el.innerHTML = `<button class="btn btn-secondary" onclick="doDesactiverNotifs()">🔔 Notifications activées — désactiver</button>`;
+  } else {
+    el.innerHTML = `<button class="btn btn-primary" onclick="doActiverNotifs()">🔔 Activer les notifications</button>`;
+  }
+}
+
+async function doActiverNotifs() {
+  try {
+    await UL.activerNotificationsPush();
+    toast('Notifications activées ✅', 'success');
+    chargerStatutNotifsProfil();
+  } catch(e) { toast(e.message || 'Impossible d\'activer les notifications', 'error'); }
+}
+
+async function doDesactiverNotifs() {
+  try {
+    await UL.desactiverNotificationsPush();
+    toast('Notifications désactivées', 'success');
+    chargerStatutNotifsProfil();
+  } catch(e) { toast(e.message || 'Impossible de désactiver les notifications', 'error'); }
 }
 
 async function doChangeMdp() {
