@@ -475,7 +475,7 @@ function copierListeComplete(membres) {
 }
 
 // ── Créer / Modifier session ──────────────────────────────────
-async function doCreerSession() {
+async function doCreerSession(btn) {
   const data = {
     nom: document.getElementById('sNom').value.trim(),
     date: document.getElementById('sDate').value,
@@ -488,12 +488,18 @@ async function doCreerSession() {
     description: document.getElementById('sDesc').value.trim() || null,
   };
   if (!data.nom || !data.date) return toast('Nom et date requis', 'error');
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.createSession(data);
     toast('Session créée ✅', 'success');
     closeModal('modalCreerSession');
     loadTifos();
-  } catch(e) { toast(e.message, 'error'); }
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 
 async function ouvrirModifierSession() {
@@ -527,7 +533,7 @@ async function chargerSessionAModifier(id) {
   } catch(e) { toast('Erreur chargement session', 'error'); }
 }
 
-async function doModifierSession() {
+async function doModifierSession(btn) {
   const id = document.getElementById('msSelectSession').value;
   if (!id) return toast('Sélectionne un tifo', 'error');
   const data = {
@@ -542,13 +548,19 @@ async function doModifierSession() {
     description: document.getElementById('msDesc').value.trim() || null,
   };
   if (!data.nom || !data.date) return toast('Nom et date requis', 'error');
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.updateSession(id, data);
     toast('Session modifiée ✅', 'success');
     closeModal('modalModifierSession');
     loadTifos();
     loadAdminTifos();
-  } catch(e) { toast(e.message || 'Erreur modification', 'error'); }
+  } catch(e) {
+    toast(e.message || 'Erreur modification', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 
 function loadAdminTifos() {
