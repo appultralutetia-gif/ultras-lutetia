@@ -771,7 +771,7 @@
       </label>
     </div>
     <div class="form-group"><label>Description</label><textarea id="sDesc" rows="2" placeholder="Optionnel"></textarea></div>
-    <button class="btn btn-primary" onclick="doCreerSession()">Créer la session</button>
+    <button class="btn btn-primary" onclick="doCreerSession(this)">Créer la session</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerSession')">Annuler</button>
   </div>
 </div>
@@ -806,7 +806,7 @@
         </label>
       </div>
       <div class="form-group"><label>Description</label><textarea id="msDesc" rows="2" placeholder="Optionnel"></textarea></div>
-      <button class="btn btn-primary" onclick="doModifierSession()">💾 Enregistrer</button>
+      <button class="btn btn-primary" onclick="doModifierSession(this)">💾 Enregistrer</button>
     </div>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalModifierSession')">Annuler</button>
   </div>
@@ -857,7 +857,7 @@
     <div class="form-group"><label>Places max</label><input type="number" id="dPlaces" placeholder="40"></div>
     <div class="form-group"><label>Date limite inscription</label><input type="date" id="dLimite"></div>
     <div class="form-group"><label>Notes</label><textarea id="dNotes" rows="2" placeholder="Infos complémentaires..."></textarea></div>
-    <button class="btn btn-primary" onclick="doCreerDepl()">Créer le déplacement</button>
+    <button class="btn btn-primary" onclick="doCreerDepl(this)">Créer le déplacement</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerDepl')">Annuler</button>
   </div>
 </div>
@@ -916,7 +916,7 @@
         <option value="annule">Annulé</option>
       </select>
     </div>
-    <button class="btn btn-primary" onclick="doModifierDepl()">💾 Enregistrer</button>
+    <button class="btn btn-primary" onclick="doModifierDepl(this)">💾 Enregistrer</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalModifierDepl')">Annuler</button>
   </div>
 </div>
@@ -971,7 +971,7 @@
       <div id="rolesContainer" style="display:flex;flex-direction:column;gap:8px;"></div>
     </div>
 
-    <button class="btn btn-primary" onclick="doSauvegarderMembre()">Enregistrer</button>
+    <button class="btn btn-primary" onclick="doSauvegarderMembre(this)">Enregistrer</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalEditMembre')">Annuler</button>
   </div>
 </div>
@@ -990,7 +990,7 @@
         <option value="cellule">Cellule</option>
       </select>
     </div>
-    <button class="btn btn-primary" onclick="doPublierAnnonce()">Publier</button>
+    <button class="btn btn-primary" onclick="doPublierAnnonce(this)">Publier</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalAnnonce')">Annuler</button>
   </div>
 </div>
@@ -1160,7 +1160,7 @@
         <option value="gratuit">Gratuit</option>
       </select>
     </div>
-    <button class="btn btn-primary" onclick="doDistribuerStick()">Enregistrer</button>
+    <button class="btn btn-primary" onclick="doDistribuerStick(this)">Enregistrer</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalDistribuer')">Annuler</button>
   </div>
 </div>
@@ -1204,7 +1204,7 @@
     <div class="form-group"><label>Lieu</label><input type="text" id="evLieu" placeholder="Paris, Parc des Princes..."></div>
     <div class="form-group"><label>Description</label><textarea id="evDesc" rows="2" placeholder="Optionnel"></textarea></div>
     <div class="form-group"><label>Lien HelloAsso (inscriptions)</label><input type="url" id="evHelloasso" placeholder="https://www.helloasso.com/..."></div>
-    <button class="btn btn-primary" onclick="doSauvegarderEvenement()">Enregistrer</button>
+    <button class="btn btn-primary" onclick="doSauvegarderEvenement(this)">Enregistrer</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalEvenement')">Annuler</button>
   </div>
 </div>
