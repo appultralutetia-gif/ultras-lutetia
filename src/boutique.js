@@ -199,6 +199,10 @@ function renderToutesCommandes(commandes) {
 }
 
 async function changerStatutCommande(id, statut) {
+  // Confirmation demandée uniquement pour l'annulation — les autres
+  // transitions (validée → prête → récupérée) sont des étapes normales du
+  // suivi de commande, pas des actions à risque pour le membre.
+  if (statut === 'annulee' && !confirm('Annuler cette commande ?')) return;
   try { await UL.updateCommandeStatut(id, statut); toast('Commande mise à jour ✅', 'success'); loadMatos(); }
   catch(e) { toast('Impossible de modifier le statut de la commande', 'error'); }
 }
