@@ -381,7 +381,7 @@
     <div class="boutique-tabs-wrap">
       <button class="btn-tab active" id="tabMatos" onclick="switchBoutiqueTab('matos')">🛍️ Matos</button>
       <button class="btn-tab" id="tabSticks" onclick="switchBoutiqueTab('sticks')">🎟️ Sticks</button>
-      <button class="btn-tab" id="tabCotisation" onclick="switchBoutiqueTab('cotisation')">💶 Cotisation</button>
+      <button class="btn-tab" id="tabCotisation" onclick="switchBoutiqueTab('cotisation')">🗂️ Cartage</button>
     </div>
 
     <!-- ─ MATOS ─ -->
@@ -443,7 +443,7 @@
       <div id="cotisationStatut" class="card"></div>
       <!-- Admin : liste membres + config -->
       <div id="adminCotisationSection" style="display:none;">
-        <div class="section-title" style="margin-top:20px;">⚙️ Gestion cotisations</div>
+        <div class="section-title" style="margin-top:20px;">⚙️ Gestion du cartage</div>
         <div class="card" style="margin-bottom:12px;">
           <div class="card-label">Configuration</div>
           <div class="form-group"><label>Lien HelloAsso cotisations</label><input type="url" id="configLienCotisation" placeholder="https://www.helloasso.com/..."></div>
@@ -777,6 +777,12 @@
       </label>
     </div>
     <div class="form-group"><label>Description</label><textarea id="sDesc" rows="2" placeholder="Optionnel"></textarea></div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
+        <input type="checkbox" id="sNotifier" checked style="width:20px;height:20px;accent-color:#1A56DB;">
+        <span style="font-size:14px;">🔔 Notifier les membres</span>
+      </label>
+    </div>
     <button class="btn btn-primary" onclick="doCreerSession(this)">Créer la session</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerSession')">Annuler</button>
   </div>
@@ -863,6 +869,12 @@
     <div class="form-group"><label>Places max</label><input type="number" id="dPlaces" placeholder="40"></div>
     <div class="form-group"><label>Date limite inscription</label><input type="date" id="dLimite"></div>
     <div class="form-group"><label>Notes</label><textarea id="dNotes" rows="2" placeholder="Infos complémentaires..."></textarea></div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
+        <input type="checkbox" id="dNotifier" checked style="width:20px;height:20px;accent-color:#1A56DB;">
+        <span style="font-size:14px;">🔔 Notifier les membres</span>
+      </label>
+    </div>
     <button class="btn btn-primary" onclick="doCreerDepl(this)">Créer le déplacement</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerDepl')">Annuler</button>
   </div>
@@ -1082,6 +1094,12 @@
         <option value="precommande">Précommande groupée</option>
       </select>
     </div>
+    <div class="form-group" id="pNotifierGroup">
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
+        <input type="checkbox" id="pNotifier" checked style="width:20px;height:20px;accent-color:#1A56DB;">
+        <span style="font-size:14px;">🔔 Notifier les membres</span>
+      </label>
+    </div>
     <button class="btn btn-primary" id="modalProduitSubmitBtn" onclick="doCreerProduit()">Ajouter l'article</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerProduit')">Annuler</button>
   </div>
@@ -1128,6 +1146,12 @@
       </select>
     </div>
     <div class="form-group"><label>Lien HelloAsso (obligatoire si stick payant)</label><input type="url" id="stHelloasso" placeholder="https://www.helloasso.com/..."></div>
+    <div class="form-group" id="stNotifierGroup">
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
+        <input type="checkbox" id="stNotifier" checked style="width:20px;height:20px;accent-color:#1A56DB;">
+        <span style="font-size:14px;">🔔 Notifier les membres</span>
+      </label>
+    </div>
     <button class="btn btn-primary" id="modalStickSubmitBtn" onclick="doCreerStick()">Ajouter le stick</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCreerStick')">Annuler</button>
   </div>
