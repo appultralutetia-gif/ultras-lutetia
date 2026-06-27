@@ -497,6 +497,17 @@ async function validerDemandeAdmin(membreId, statut) {
     if (membre && membre.email) {
       UL.envoyerEmailValidation(membre).catch(() => {});
     }
+    // Notification push en plus de l'email — n'échoue jamais l'action de
+    // validation elle-même si l'envoi échoue (cf. envoyerNotificationPush,
+    // qui avale ses propres erreurs). Si le membre n'a jamais activé les
+    // notifications sur aucun appareil, l'Edge Function ne fait rien — il
+    // recevra quand même l'email.
+    UL.envoyerNotificationPush(
+      membreId,
+      '✅ Compte activé !',
+      'Ton compte Ultras Lutetia a été validé par le bureau — tu peux te connecter.',
+      '/ultras-lutetia/',
+    );
     loadDemandesAdmin();
   } catch(e) { toast('Impossible de valider la demande', 'error'); }
 }
