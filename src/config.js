@@ -12,5 +12,5 @@ const UL_CONFIG = {
   // client (le navigateur en a besoin pour créer l'abonnement push). La clé
   // PRIVÉE correspondante ne doit JAMAIS apparaître ici — elle va uniquement
   // dans les secrets Supabase, lue par l'Edge Function send-push-notification.
-  VAPID_PUBLIC_KEY: 'REMPLACER_PAR_TA_CLE_PUBLIQUE_VAPID',
+  VAPID_PUBLIC_KEY: 'BDnkDRpRhNFXMWKQ7ArJV-ywXCKX8iteXDSuwMoNVhZuVgUdpncZ8hK-1DOqk2dS76kN0KLWScj7J0DqGs9g310',
 };
