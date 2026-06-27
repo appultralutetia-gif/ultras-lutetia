@@ -1,6 +1,13 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v12
+// ULTRAS LUTETIA — Service Worker v13
 // ============================================================
+//
+// v13 (27/06/2026) : ajout des écouteurs 'push' et 'notificationclick'
+// (infrastructure notifications push — cf. supabase-client.js section
+// NOTIFICATIONS PUSH, et l'Edge Function send-push-notification à déployer
+// séparément, cf. GUIDE_NOTIFICATIONS_PUSH.md). CACHE_NAME bumpé (v12 → v13)
+// par précaution comme à chaque mise à jour de ce fichier, même si ces
+// deux écouteurs n'affectent pas la logique de cache existante.
 //
 // v12 (24/06/2026) : CACHE_NAME bumpé (v11 → v12) suite à l'exploitation
 // de la colonne present_at (déjà existante, déjà mise à jour par le scan
@@ -118,7 +125,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v12';
+const CACHE_NAME = 'ul-v13';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
@@ -206,6 +213,43 @@ self.addEventListener('fetch', e => {
         }
         return Response.error();
       });
+    })
+  );
+});
+
+// ── Notifications push ──────────────────────────────────────
+// Réception d'une notification envoyée par l'Edge Function
+// send-push-notification (cf. supabase-client.js → envoyerNotificationPush).
+// Le payload attendu est un JSON { titre, corps, url }. showNotification()
+// est OBLIGATOIRE ici (userVisibleOnly:true côté abonnement, cf.
+// activerNotificationsPush) — un push reçu sans notification visible
+// affichée expose au risque que le navigateur désactive silencieusement
+// les futurs push pour cette app.
+self.addEventListener('push', e => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch (err) { /* payload non-JSON, ignoré */ }
+  const titre = data.titre || 'Ultras Lutetia';
+  const options = {
+    body: data.corps || '',
+    icon: '/ultras-lutetia/icons/icon-192.png',
+    badge: '/ultras-lutetia/icons/icon-192.png',
+    data: { url: data.url || '/ultras-lutetia/' },
+  };
+  e.waitUntil(self.registration.showNotification(titre, options));
+});
+
+// Clic sur la notification (depuis le centre de notifications du téléphone,
+// app fermée ou en arrière-plan) : ouvre l'app sur l'URL fournie, ou
+// réutilise un onglet déjà ouvert si un existe déjà plutôt que d'en
+// ouvrir un nouveau.
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = e.notification.data?.url || '/ultras-lutetia/';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientsArr => {
+      const dejaOuvert = clientsArr.find(c => c.url.includes('/ultras-lutetia/'));
+      if (dejaOuvert) return dejaOuvert.focus();
+      return self.clients.openWindow(url);
     })
   );
 });
