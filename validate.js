@@ -84,6 +84,7 @@ const KNOWN_DYNAMIC = new Set([
   'pizzaChoixContainer', 'pinteChoixContainer',
   'evalTifoListe', 'evalTifoSearch',
   'evalComiteSympaListe', 'evalComiteDraftListe',
+  'modalPropositionNotifs', // modale créée dynamiquement (cf. afficherModalePropositionNotifs, app.js) — jamais dans le HTML statique
 ]);
 
 // ── Validation d'un fichier ─────────────────────────────────────
