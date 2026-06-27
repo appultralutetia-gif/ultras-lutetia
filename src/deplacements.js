@@ -299,6 +299,7 @@ async function ouvrirCreerDepl() {
   document.getElementById('dRdvAutre').style.display = 'none';
   document.getElementById('dTelegram').value = '';
   ['dHeure','dPrix','dPlaces','dLimite','dNotes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('dNotifier').checked = true;
   onChangeSourceDepl();
 
   try {
@@ -385,13 +386,25 @@ async function doCreerDepl(btn) {
     match_id: (source === 'match' && matchId) ? matchId : null,
   };
   if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
+  const notifier = document.getElementById('dNotifier')?.checked;
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    await UL.createDeplacement(data);
+    const depl = await UL.createDeplacement(data);
     toast('Déplacement créé ✅', 'success');
     closeModal('modalCreerDepl');
     loadDeplacements();
+    // Notification "nouveau contenu" — ouverte à tous les membres actifs,
+    // sans restriction de statut (cf. cible:'tous', cohérent avec
+    // getDeplacements qui n'applique aucun filtre de droits côté lecture).
+    if (notifier) {
+      UL.envoyerNotificationPushGroupe({
+        cible: 'tous',
+        titre: '🚌 Nouveau déplacement',
+        corps: `${data.adversaire} — inscriptions ouvertes`,
+        url: '/ultras-lutetia/',
+      });
+    }
   } catch(e) {
     toast(e.message, 'error');
   } finally {
