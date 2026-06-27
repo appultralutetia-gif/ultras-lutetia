@@ -468,7 +468,23 @@ function el(id) { return document.getElementById(id); }
 // peutValiderInscriptions défini dans les helpers droits
 
 // ─── Navigation ───────────────────────────────────────────────
-function showPage(pageId) {
+// showPage(pageId) : point d'entrée utilisé partout dans l'app (boutons,
+// nav, etc.) — affiche la page ET ajoute une entrée dans l'historique du
+// navigateur, sauf si depuisPopstate=true (cas où c'est déjà le bouton
+// retour qui nous amène ici, cf. l'écouteur popstate plus bas — repousser
+// un état dans ce cas créerait une boucle/un doublon).
+//
+// Avant cet ajout, le bouton retour physique (Android notamment) quittait
+// directement la PWA au lieu de revenir à l'écran précédent dans l'app,
+// puisque showPage ne touchait jamais à l'historique du navigateur.
+function showPage(pageId, depuisPopstate = false) {
+  afficherPage(pageId);
+  if (!depuisPopstate) {
+    history.pushState({ ulPage: pageId }, '', '');
+  }
+}
+
+function afficherPage(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const pg = document.getElementById(pageId);
   if (pg) pg.classList.add('active');
@@ -502,6 +518,15 @@ function showPage(pageId) {
   // Scroll top
   window.scrollTo(0,0);
 }
+
+// Bouton retour (navigateur ou physique Android) : revient à la page
+// précédente dans l'historique de l'app plutôt que de quitter la PWA.
+// Si l'état ne contient pas de page (ex: tout premier écran, avant le
+// premier pushState), on retombe sur l'accueil.
+window.addEventListener('popstate', (e) => {
+  const pageId = e.state?.ulPage || 'pageAccueil';
+  afficherPage(pageId);
+});
 
 // ─── ACCUEIL ──────────────────────────────────────────────────
 async function loadAccueil() {
@@ -684,6 +709,16 @@ const MODAL_CLOSERS = {
   modalScan: () => closeModalScan(),
 };
 
+// Ferme une modale en respectant les mêmes règles que le bouton ✕ :
+// jamais pour les modales volontairement sans sortie (MODALS_SANS_FERMETURE),
+// et via le closer spécifique d'une modale si elle en a un (MODAL_CLOSERS,
+// ex: modalScan qui doit couper la caméra) plutôt que toujours closeModal().
+function fermerModaleGenerique(id) {
+  if (MODALS_SANS_FERMETURE.has(id)) return;
+  const closer = MODAL_CLOSERS[id];
+  if (closer) closer(); else closeModal(id);
+}
+
 function showModal(id) {
   const overlay = document.getElementById(id);
   overlay.style.display = 'flex';
@@ -699,8 +734,7 @@ function showModal(id) {
     btn.textContent = '✕';
     btn.onclick = (e) => {
       e.stopPropagation();
-      const closer = MODAL_CLOSERS[id];
-      if (closer) closer(); else closeModal(id);
+      fermerModaleGenerique(id);
     };
     modalEl.appendChild(btn);
   }
@@ -708,6 +742,19 @@ function showModal(id) {
 }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 function closeModalOutside(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
+
+// Touche Échap : ferme la modale actuellement ouverte, avec les mêmes
+// règles que le bouton ✕ (fermerModaleGenerique). En pratique une seule
+// modale est ouverte à la fois dans cette app — on ferme la première
+// trouvée. getComputedStyle plutôt qu'un match sur l'attribut style brut :
+// plus fiable, indépendant de la façon dont le navigateur a sérialisé
+// l'attribut (espaces, ordre des propriétés…).
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const overlayOuvert = Array.from(document.querySelectorAll('.modal-overlay'))
+    .find(el => getComputedStyle(el).display !== 'none');
+  if (overlayOuvert) fermerModaleGenerique(overlayOuvert.id);
+});
 
 function toast(msg, type='info', duree=2800) {
   const el = document.createElement('div');
