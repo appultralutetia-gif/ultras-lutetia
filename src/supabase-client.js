@@ -1730,6 +1730,26 @@ async function envoyerNotificationPush(membreId, titre, corps, url = null) {
   }
 }
 
+// Notification "nouveau contenu" envoyée à TOUS les membres ayant le
+// droit de voir ce contenu (pas une personne précise) — déplacement,
+// session tifo, article matos, ou stick. Le calcul des destinataires est
+// fait côté serveur (Edge Function send-push-notification-groupe), pas
+// ici : on transmet seulement le critère de ciblage (cible, niveauAcces,
+// sectionId), jamais une liste de membreId calculée dans le navigateur.
+// cible : 'tous' (déplacement) | 'tifo' (session) | 'matos' | 'sticks'.
+// Échoue silencieusement par design, comme envoyerNotificationPush — un
+// souci d'envoi ne doit jamais faire échouer la création du contenu.
+async function envoyerNotificationPushGroupe({ cible, titre, corps, url = null, niveauAcces = null, sectionId = null }) {
+  try {
+    const { error } = await sb.functions.invoke('send-push-notification-groupe', {
+      body: { cible, titre, corps, url, niveauAcces, sectionId },
+    });
+    if (error) console.error('Notification groupée non envoyée:', error.message);
+  } catch (e) {
+    console.error('Notification groupée non envoyée:', e);
+  }
+}
+
 // ============================================================
 // EXPORT GLOBAL
 // ============================================================
@@ -1782,7 +1802,8 @@ window.UL = {
   envoyerEmailValidation,
   // Notifications push
   notificationsPushSupportees, getStatutNotificationsPush,
-  activerNotificationsPush, desactiverNotificationsPush, envoyerNotificationPush,
+  activerNotificationsPush, desactiverNotificationsPush,
+  envoyerNotificationPush, envoyerNotificationPushGroupe,
   // Direct Supabase access
   sb, getCurrentUser: () => currentUser, getCurrentMembre: () => currentMembre,
 };
