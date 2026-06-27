@@ -419,7 +419,7 @@ select option { background: var(--navy); color: var(--blanc); }
   padding: 14px; margin-bottom: 8px;
 }
 .membre-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.membre-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.membre-card-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* ── Stats / KPI ────────────────────────────────────────────── */
 .stats-grid {
