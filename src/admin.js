@@ -121,8 +121,10 @@ function toggleRole(key, rowEl) {
     rowEl.querySelector('span').style.color = '#E2E8F0';
   }
 }
-async function doSauvegarderMembre() {
+async function doSauvegarderMembre(btn) {
   const id = document.getElementById('editMembreId').value;
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.updateMembre(id, {
       prenom: document.getElementById('editPrenom').value.trim(),
@@ -137,7 +139,11 @@ async function doSauvegarderMembre() {
     toast('Membre mis à jour ✅', 'success');
     closeModal('modalEditMembre');
     loadMembres();
-  } catch(e) { toast('Erreur: ' + (e.message||''), 'error'); }
+  } catch(e) {
+    toast('Erreur: ' + (e.message||''), 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 async function toggleMembre(id, actif) {
   try { await UL.toggleBlocageMembre(id, actif); toast(actif?'Compte réactivé':'Compte bloqué', 'success'); loadMembres(); }
@@ -195,11 +201,13 @@ async function loadStats() {
 }
 
 // ─── ANNONCES ─────────────────────────────────────────────────
-async function doPublierAnnonce() {
+async function doPublierAnnonce(btn) {
   const titre = document.getElementById('annonceTitre').value.trim();
   const contenu = document.getElementById('annonceContenu').value.trim();
   const cat = document.getElementById('annonceCat').value;
   if (!titre || !contenu) return toast('Titre et contenu requis', 'error');
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.publierAnnonce(titre, contenu, cat);
     toast('Annonce publiée ✅', 'success');
@@ -207,7 +215,11 @@ async function doPublierAnnonce() {
     document.getElementById('annonceTitre').value = '';
     document.getElementById('annonceContenu').value = '';
     loadAccueil();
-  } catch(e) { toast(e.message || 'Une erreur est survenue', 'error'); }
+  } catch(e) {
+    toast(e.message || 'Une erreur est survenue', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 
 // ─── MATCHS ───────────────────────────────────────────────────
@@ -229,11 +241,18 @@ async function doAjouterMatch() {
     competition: 'Ligue 1',
   };
   if (!data.equipe_exterieur || !data.date) return toast('Adversaire et date requis', 'error');
+  const btn = document.getElementById('modalMatchsSubmitBtn');
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.addMatch(data);
     toast('Match ajouté ✅', 'success');
     loadMatchsList();
-  } catch(e) { toast(e.message, 'error'); }
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 
 function ouvrirModifierMatchParId(matchId) {
@@ -341,13 +360,23 @@ async function doModifierMatch() {
     competition: document.getElementById('mComp').value.trim() || 'Ligue 1',
     journee: parseInt(document.getElementById('mJournee').value) || null,
   };
+  const btn = document.getElementById('modalMatchsSubmitBtn');
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.updateMatch(_matchEnModification, data);
     toast('Match modifié ✅', 'success');
     annulerConfirmerDate();
     loadMatchsList();
     if (document.getElementById('pageCalendrier')?.classList.contains('active')) loadCalendrier();
-  } catch(e) { toast(e.message, 'error'); }
+  } catch(e) {
+    toast(e.message, 'error');
+    // Ce bouton change de libellé/onclick selon le mode actif (ajout,
+    // modification, confirmation de date — cf. annulerConfirmerDate) : en
+    // cas d'échec on le réactive avec le texte qu'il avait avant l'appel,
+    // pas un texte générique, car le mode courant n'a pas changé.
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 
 function annulerConfirmerDate() {
@@ -373,13 +402,19 @@ async function doConfirmerDateMatch() {
   const horaire = document.getElementById('mHeure').value || null;
   const stade = document.getElementById('mStade').value || null;
   if (!date) return toast('Date requise', 'error');
+  const btn = document.getElementById('modalMatchsSubmitBtn');
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.confirmerDateMatch(_matchEnConfirmation, { date, horaire, stade });
     toast('Date confirmée ✅', 'success');
     annulerConfirmerDate();
     loadMatchsList();
     if (document.getElementById('pageCalendrier')?.classList.contains('active')) loadCalendrier();
-  } catch(e) { toast(e.message || 'Impossible de confirmer la date', 'error'); }
+  } catch(e) {
+    toast(e.message || 'Impossible de confirmer la date', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 
 async function doRouvrirConfirmation(id) {
