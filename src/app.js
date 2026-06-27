@@ -653,8 +653,40 @@ async function refuserDemande(membreId) {
 // ─── UTILS ────────────────────────────────────────────────────
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+// Modales volontairement sans sortie possible (flux forcé) — le bouton
+// ✕ générique n'est pas injecté pour ces ids. Actuellement : modalResetMdp,
+// affichée après clic sur un lien email de réinitialisation — on force
+// la saisie d'un nouveau mot de passe avant de continuer.
+const MODALS_SANS_FERMETURE = new Set(['modalResetMdp']);
+
+// Certaines modales ont besoin d'une fermeture spécifique plutôt que le
+// simple display:none de closeModal (ex: modalScan doit couper la caméra
+// — cf. closeModalScan dans scan.js). Le bouton ✕ générique consulte
+// cette table avant de retomber sur closeModal(id) par défaut.
+const MODAL_CLOSERS = {
+  modalScan: () => closeModalScan(),
+};
+
 function showModal(id) {
-  document.getElementById(id).style.display = 'flex';
+  const overlay = document.getElementById(id);
+  overlay.style.display = 'flex';
+  // Injecte le bouton ✕ une seule fois par modale (idempotent — si la
+  // modale est rouverte, on ne duplique pas le bouton). Placé dans
+  // showModal() plutôt que dans chaque bloc HTML : un seul endroit à
+  // maintenir pour les ~20 modales de l'app.
+  const modalEl = overlay.querySelector('.modal');
+  if (modalEl && !MODALS_SANS_FERMETURE.has(id) && !modalEl.querySelector('.modal-close-btn')) {
+    const btn = document.createElement('button');
+    btn.className = 'modal-close-btn';
+    btn.setAttribute('aria-label', 'Fermer');
+    btn.textContent = '✕';
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const closer = MODAL_CLOSERS[id];
+      if (closer) closer(); else closeModal(id);
+    };
+    modalEl.appendChild(btn);
+  }
   if (id === 'modalMatchs') loadMatchsList();
 }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
