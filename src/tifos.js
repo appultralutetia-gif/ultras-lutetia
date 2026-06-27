@@ -345,7 +345,7 @@ async function voirInscrits(id, nom, e) {
             <div style="font-size:11px;margin-top:2px;">${i._noteTifo ? renderEtoiles(EVAL_EMOJI.tifo, i._noteTifo) : '<span style="color:var(--gris);opacity:.6;">Non noté</span>'}</div>
           </div>
           <span class="badge ${i.statut==='present'?'badge-vert':i.statut==='absent'?'badge-rouge':'badge-bleu'}" style="font-size:10px;flex-shrink:0;">${statutLabel[i.statut]||i.statut}</span>
-          ${hasCelluleTifo(m)?`<button class="btn btn-sm btn-danger" style="padding:4px 8px;font-size:11px;" onclick="doDesinscrireAdmin('${id}','${i.membre_id}','${esc(nom)}')">✕</button>`:''}
+          ${hasCelluleTifo(m)?`<button class="btn btn-sm btn-danger" style="padding:4px 8px;font-size:11px;" aria-label="Désinscrire ${esc(i.membre?.prenom||'')} ${esc(i.membre?.nom||'')}" onclick="doDesinscrireAdmin('${id}','${i.membre_id}','${esc(nom)}')">✕</button>`:''}
         </div>`).join('')}`;
     showModal('modalAdminSession');
   } catch(e) { toast('Impossible de charger les inscrits', 'error'); }
