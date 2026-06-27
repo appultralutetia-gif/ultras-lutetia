@@ -247,11 +247,24 @@ function filtrerCartage(filtre) {
       </div>
       ${!m.cotisation_a_jour ? `
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
-        <button class="btn btn-sm btn-success" onclick="doValiderCotisationCash('${m.id}');setTimeout(loadCartage,400)">💵 Cash</button>
-        <button class="btn btn-sm btn-primary" onclick="doValiderCotisationHA('${m.id}');setTimeout(loadCartage,400)">💳 HA</button>
+        <button class="btn btn-sm btn-success" onclick="doValiderCotisationCashEtRafraichirCartage('${m.id}')">💵 Cash</button>
+        <button class="btn btn-sm btn-primary" onclick="doValiderCotisationHAEtRafraichirCartage('${m.id}')">💳 HA</button>
       </div>` : ''}
     </div>`;
   }).join('');
+}
+
+// Wrappers attendant la fin réelle de la validation (doValiderCotisationCash/HA,
+// boutique.js) avant de rafraîchir la page Cartage — remplace l'ancien
+// setTimeout(loadCartage, 400) qui pouvait rafraîchir avant que la requête
+// réseau soit confirmée (connexion lente) et laisser l'ancien statut affiché.
+async function doValiderCotisationCashEtRafraichirCartage(membreId) {
+  await doValiderCotisationCash(membreId);
+  loadCartage();
+}
+async function doValiderCotisationHAEtRafraichirCartage(membreId) {
+  await doValiderCotisationHA(membreId);
+  loadCartage();
 }
 
 // ─── ÉVÉNEMENTS ──────────────────────────────────────────────
