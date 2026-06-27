@@ -37,9 +37,9 @@ function renderDeplCard(d) {
   // l'ouverture de la modal (la carte entière reste cliquable pour le détail).
   let boutonAction;
   if (!estInscrit) {
-    boutonAction = `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}')">M'inscrire</button>`;
+    boutonAction = `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">M'inscrire</button>`;
   } else if (estRefuse) {
-    boutonAction = `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}')">❌ Réessayer le paiement</button>`;
+    boutonAction = `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">❌ Réessayer le paiement</button>`;
   } else if (!estPaye) {
     boutonAction = `<span class="badge badge-orange">⏳ Paiement en cours</span>`;
   } else {
@@ -104,14 +104,14 @@ async function openDepl(deplId) {
       <div style="font-size:14px;margin-bottom:16px;font-weight:600;">👥 ${nbInscrits} inscrit${nbInscrits>1?'s':''}${d.places_max?' / '+d.places_max+' places':''}</div>`;
 
     if (!estInscrit) {
-      html += `<button class="btn btn-primary" onclick="doInscritDepl('${d.id}')">M'inscrire</button>`;
+      html += `<button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">M'inscrire</button>`;
     } else if (estRefuse) {
       html += `<div class="info-box error">❌ Paiement refusé</div>
-        <button class="btn btn-primary" onclick="doInscritDepl('${d.id}')">Réessayer le paiement</button>`;
+        <button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">Réessayer le paiement</button>`;
     } else if (!estPaye) {
       html += `<div class="info-box">⏳ Inscrit — paiement en cours</div>
         <p style="text-align:center;font-size:12px;color:var(--gris);margin-top:8px;">Si le paiement n'a pas démarré ou a été abandonné, tu peux réessayer.</p>
-        <button class="btn btn-secondary" onclick="doInscritDepl('${d.id}')">Relancer le paiement</button>`;
+        <button class="btn btn-secondary" onclick="doInscritDepl('${d.id}',this)">Relancer le paiement</button>`;
     } else {
       html += `<div class="info-box success">✅ Paiement confirmé — ton billet est prêt</div>
         <div class="qr-container" id="qrDepl"></div>
@@ -148,7 +148,13 @@ async function openDepl(deplId) {
 // action : Déplacements n'a aujourd'hui aucun mode cash actif, HelloAsso
 // est donc le seul chemin — pas besoin de proposer un choix de mode de
 // paiement à l'utilisateur ici.
-async function doInscritDepl(id) {
+// btn (optionnel) : le bouton cliqué, désactivé pendant l'appel réseau pour
+// empêcher un double-tap de déclencher deux fois la création du checkout
+// HelloAsso (cf. point d'audit ergonomique — seul flux de paiement réel de
+// l'app, donc le plus sensible à un double déclenchement).
+async function doInscritDepl(id, btn) {
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     toast('Redirection vers le paiement…', 'success');
     const { data, error } = await UL.sb.functions.invoke('helloasso-create-checkout', {
@@ -159,8 +165,12 @@ async function doInscritDepl(id) {
     if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
     closeModal('modalDepl');
     window.location.href = data.redirectUrl;
+    // Pas de réactivation du bouton ici : la page va quitter l'app vers
+    // HelloAsso (redirection complète), donc inutile de remettre le bouton
+    // dans un état cliquable juste avant de partir.
   } catch(e) {
     toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
   }
 }
 
@@ -355,7 +365,7 @@ async function onChangeMatchDepl() {
   } catch(e) { toast('Erreur chargement du match', 'error'); }
 }
 
-async function doCreerDepl() {
+async function doCreerDepl(btn) {
   const source = document.getElementById('dSource').value;
   const matchId = document.getElementById('dMatchId').value;
   const rdvChoix = document.getElementById('dRdv').value;
@@ -375,12 +385,18 @@ async function doCreerDepl() {
     match_id: (source === 'match' && matchId) ? matchId : null,
   };
   if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.createDeplacement(data);
     toast('Déplacement créé ✅', 'success');
     closeModal('modalCreerDepl');
     loadDeplacements();
-  } catch(e) { toast(e.message, 'error'); }
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 
 // Ouvre le modal de modification, pré-rempli avec les valeurs actuelles du
@@ -471,7 +487,7 @@ async function onChangeMatchDeplModif() {
   } catch(e) { toast('Erreur chargement du match', 'error'); }
 }
 
-async function doModifierDepl() {
+async function doModifierDepl(btn) {
   const id = document.getElementById('dmId').value;
   const source = document.getElementById('dmSource').value;
   const matchId = document.getElementById('dmMatchId').value;
@@ -493,10 +509,16 @@ async function doModifierDepl() {
     match_id: (source === 'match' && matchId) ? matchId : null,
   };
   if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     await UL.updateDeplacement(id, data);
     toast('Déplacement modifié ✅', 'success');
     closeModal('modalModifierDepl');
     loadDeplacements();
-  } catch(e) { toast(e.message, 'error'); }
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
