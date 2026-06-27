@@ -280,6 +280,82 @@ async function showApp(membre) {
   document.getElementById('charteGate').style.display = 'none';
 
   await loadAccueil();
+  proposerNotificationsPushSiPertinent();
+}
+
+// Détecte le cas iOS spécifique : Safari (ou tout navigateur sur iOS, qui
+// utilise WebKit dans tous les cas) hors mode "installé sur l'écran
+// d'accueil" — seul cas où les notifications sont structurellement
+// impossibles à activer sur iPhone/iPad, quel que soit le code de l'app.
+// Utilisée ici (popup de bienvenue) et dans profil.js (message d'aide).
+function _estIOSHorsEcranAccueil() {
+  const estIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const estStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  return estIOS && !estStandalone;
+}
+
+// Propose l'activation des notifications une seule fois par appareil,
+// juste après la première connexion réussie (showApp s'exécute à chaque
+// connexion, mais cette popup ne doit apparaître qu'une fois dans la vie
+// de cet appareil — cf. localStorage ci-dessous). N'apparaît jamais si :
+// déjà proposée avant (quelle qu'ait été la réponse), notifications déjà
+// activées, déjà refusées dans le navigateur, ou techniquement impossibles
+// ici (iOS hors écran d'accueil, navigateur non compatible).
+async function proposerNotificationsPushSiPertinent() {
+  if (localStorage.getItem('ul_notifs_proposees')) return;
+  if (_estIOSHorsEcranAccueil()) return;
+  if (!UL.notificationsPushSupportees()) return;
+
+  const statut = await UL.getStatutNotificationsPush();
+  if (statut !== 'inactif') return; // déjà activées, déjà refusées, ou non supporté
+
+  afficherModalePropositionNotifs();
+}
+
+function afficherModalePropositionNotifs() {
+  // Modale créée dynamiquement plutôt qu'ajoutée en dur dans index.html :
+  // c'est un cas d'usage ponctuel (une fois par appareil), pas la peine
+  // d'alourdir le HTML statique pour ça. Suit le même système showModal/
+  // closeModal que toutes les autres modales (bouton ✕ injecté automatique-
+  // ment, fermeture par tap-outside, etc. — cf. showModal dans ce fichier).
+  if (document.getElementById('modalPropositionNotifs')) return; // déjà injectée (sécurité si appelée deux fois)
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modalPropositionNotifs';
+  overlay.setAttribute('onclick', "if(event.target===this) fermerPropositionNotifs()");
+  overlay.innerHTML = `
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title">🔔 Reste informé</h3>
+      <p style="font-size:14px;color:var(--blanc-soft);margin-bottom:18px;line-height:1.5;">
+        Active les notifications pour être prévenu directement sur ton téléphone : validation de compte, et bientôt d'autres alertes utiles (déplacements, tifos…).
+      </p>
+      <button class="btn btn-primary" onclick="doActiverNotifsDepuisPopup()">🔔 Activer les notifications</button>
+      <button class="btn btn-secondary" style="margin-top:8px;" onclick="fermerPropositionNotifs()">Plus tard</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  showModal('modalPropositionNotifs');
+}
+
+// Marque la proposition comme faite (quelle que soit la réponse) puis
+// ferme et retire la modale du DOM — pas besoin de la garder en mémoire,
+// elle ne réapparaîtra plus jamais sur cet appareil.
+function fermerPropositionNotifs() {
+  localStorage.setItem('ul_notifs_proposees', '1');
+  closeModal('modalPropositionNotifs');
+  document.getElementById('modalPropositionNotifs')?.remove();
+}
+
+async function doActiverNotifsDepuisPopup() {
+  try {
+    await UL.activerNotificationsPush();
+    toast('Notifications activées ✅', 'success');
+  } catch(e) {
+    toast(e.message || 'Impossible d\'activer les notifications', 'error');
+  } finally {
+    fermerPropositionNotifs();
+  }
 }
 
 // ─── Rendu visuel de la charte (parsing du texte structuré) ────
@@ -677,6 +753,15 @@ async function validerDemande(membreId, nouveauStatut) {
     if (membre && membre.email) {
       UL.envoyerEmailValidation(membre).catch(() => {});
     }
+    // Même notification push que sur le chemin de validation depuis la
+    // page Admin (cf. validerDemandeAdmin dans admin.js) — deux chemins
+    // différents pour la même action, doivent rester cohérents.
+    UL.envoyerNotificationPush(
+      membreId,
+      '✅ Compte activé !',
+      'Ton compte Ultras Lutetia a été validé par le bureau — tu peux te connecter.',
+      '/ultras-lutetia/',
+    );
     await loadDemandes();
   } catch(e) { toast(e.message || 'Une erreur est survenue', 'error'); }
 }
@@ -707,6 +792,7 @@ const MODALS_SANS_FERMETURE = new Set(['modalResetMdp']);
 // cette table avant de retomber sur closeModal(id) par défaut.
 const MODAL_CLOSERS = {
   modalScan: () => closeModalScan(),
+  modalPropositionNotifs: () => fermerPropositionNotifs(),
 };
 
 // Ferme une modale en respectant les mêmes règles que le bouton ✕ :
