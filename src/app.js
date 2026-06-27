@@ -506,18 +506,23 @@ function showPage(pageId) {
 // ─── ACCUEIL ──────────────────────────────────────────────────
 async function loadAccueil() {
   // Annonces
+  document.getElementById('annoncesContainer').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
     const annonces = await UL.getAnnonces();
     document.getElementById('annoncesContainer').innerHTML = annonces.slice(0,2).map(a => `
       <div class="info-box ${a.categorie === 'urgent' ? '' : a.categorie === 'info' ? '' : 'success'}">
         <strong>${a.titre}</strong><br>
         <span style="font-size:13px;">${a.contenu}</span>
-      </div>`).join('');
-  } catch(e) {}
+      </div>`).join('') || '<p style="color:var(--gris);font-size:14px;">Aucune annonce</p>';
+  } catch(e) {
+    document.getElementById('annoncesContainer').innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger les annonces</div>';
+  }
 
   // Prochain match domicile / extérieur — réutilise renderMatchCard (calendrier.js)
   // pour garder un rendu identique à la page Calendrier (logos, score, bouton
   // déplacement lié si présent, etc.) plutôt que de dupliquer le template ici.
+  document.getElementById('matchDomicileAccueil').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  document.getElementById('matchExterieurAccueil').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
     const m = UL.getCurrentMembre();
     const matchs = await UL.getMatchs();
@@ -543,18 +548,25 @@ async function loadAccueil() {
     document.getElementById('matchExterieurAccueil').innerHTML = prochainExterieur
       ? renderMatchCard(prochainExterieur, m)
       : '<p style="color:var(--gris);font-size:14px;">Aucun match à l\'extérieur à venir</p>';
-  } catch(e) {}
+  } catch(e) {
+    document.getElementById('matchDomicileAccueil').innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger</div>';
+    document.getElementById('matchExterieurAccueil').innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger</div>';
+  }
 
   // Déplacement
+  document.getElementById('deplAccueil').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
     const depls = await UL.getDeplacements(true);
     const el = document.getElementById('deplAccueil');
     el.innerHTML = depls.length
       ? renderDeplCard(depls[0])
       : '<p style="color:var(--gris);font-size:14px;">Aucun déplacement à venir</p>';
-  } catch(e) {}
+  } catch(e) {
+    document.getElementById('deplAccueil').innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger</div>';
+  }
 
   // Sessions tifo (visibles seulement si le membre a le droit de voir les tifos)
+  document.getElementById('tifosAccueil').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
     const m = UL.getCurrentMembre();
     const el = document.getElementById('tifosAccueil');
@@ -569,8 +581,11 @@ async function loadAccueil() {
         : '<p style="color:var(--gris);font-size:14px;">Aucun tifo à venir</p>';
       await refreshTifosActions(sessions.slice(0,2), 'acc_');
     }
-  } catch(e) {}
+  } catch(e) {
+    document.getElementById('tifosAccueil').innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger</div>';
+  }
   // Stats perso
+  document.getElementById('mesStats').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div>⏳</div>Chargement…</div>';
   try {
     const stats = await UL.getMesStats();
     document.getElementById('mesStats').innerHTML = `
@@ -578,7 +593,9 @@ async function loadAccueil() {
       <div class="stat-card"><div class="stat-value">${stats.tauxPresence}%</div><div class="stat-label">Assiduité</div></div>
       <div class="stat-card"><div class="stat-value">${stats.deplacements}</div><div class="stat-label">Déplacements</div></div>
       <div class="stat-card"><div class="stat-value">${stats.sessionsInscrites}</div><div class="stat-label">Inscriptions</div></div>`;
-  } catch(e) {}
+  } catch(e) {
+    document.getElementById('mesStats').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div>⚠️</div>Impossible de charger</div>';
+  }
 
   // Demandes en attente
   const m = UL.getCurrentMembre();
