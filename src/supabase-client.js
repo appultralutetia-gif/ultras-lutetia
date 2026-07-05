@@ -1344,6 +1344,13 @@ async function getSticks() {
   });
 }
 
+async function getStickById(id) {
+  const { data } = await sb.from('sticks_catalogue')
+    .select('*, section:sections(id, nom)')
+    .eq('id', id).single();
+  return data;
+}
+
 async function createStick(stick) {
   const { data, error } = await sb.from('sticks_catalogue')
     .insert(stick).select().single();
@@ -1863,7 +1870,7 @@ window.UL = {
   passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande,
   getMesCommandes, getAllCommandes, updateCommandeStatut,
   // Sticks
-  getSticks, createStick, updateStick, getMonQuotaStick,
+  getSticks, getStickById, createStick, updateStick, getMonQuotaStick,
   demanderStickHelloAsso, receptionnerStick, getMesSticks,
   distribuerStickAdmin, getAllDistributions, validerPaiementStick, confirmerDistributionStick,
   // Cotisations
