@@ -92,9 +92,15 @@ function renderMatos(produits) {
   }).join('');
 }
 
+// Article actuellement ouvert dans modalCommander — permet à
+// changerQuantiteCommande() de connaître les bornes (stock, quota) sans
+// resolliciter le réseau à chaque clic +/-.
+let _produitCommandeCourant = null;
+
 async function openCommander(produitId) {
   try {
     const p = await UL.getProduitById(produitId);
+    _produitCommandeCourant = p;
     const icones = { textile:'👕', accessoire:'🎒' };
 
     // Section tailles — boutons cliquables
@@ -127,6 +133,15 @@ async function openCommander(produitId) {
       ${p.quota_par_membre ? `<div class="info-box warning">⚠️ Quota: max ${p.quota_par_membre} par membre</div>` : ''}
       ${taillesHtml}
       <div class="form-group">
+        <label>Quantité</label>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="changerQuantiteCommande(-1)">−</button>
+          <span id="cmdQuantiteAffichage" style="font-size:17px;font-weight:700;min-width:26px;text-align:center;">1</span>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="changerQuantiteCommande(1)">+</button>
+        </div>
+        <input type="hidden" id="cmdQuantite" value="1">
+      </div>
+      <div class="form-group">
         <label>Mode de paiement</label>
         <select id="cmdMode" style="background:#1F2937;border:1.5px solid #4B5563;color:white;padding:11px 14px;border-radius:9px;width:100%;font-size:15px;">
           <option value="helloasso">💳 HelloAsso (en ligne)</option>
@@ -141,6 +156,25 @@ async function openCommander(produitId) {
   } catch(e) { toast('Erreur chargement article', 'error'); }
 }
 
+// Borne la quantité entre 1 et le plus restrictif de : stock disponible
+// (si mode 'stock', un article en 'precommande' n'a pas cette limite) et
+// quota_par_membre. Pas de vérification du quota déjà consommé ici (ça
+// reste fait côté passerCommande/Edge Function au moment de valider) —
+// juste un garde-fou évident côté UI pour éviter de saisir une quantité
+// absurde.
+function changerQuantiteCommande(delta) {
+  const p = _produitCommandeCourant;
+  if (!p) return;
+  const input = document.getElementById('cmdQuantite');
+  const affichage = document.getElementById('cmdQuantiteAffichage');
+  let max = 99;
+  if (p.mode !== 'precommande' && p.stock > 0) max = Math.min(max, p.stock);
+  if (p.quota_par_membre) max = Math.min(max, p.quota_par_membre);
+  const nouvelle = Math.max(1, Math.min(max, (parseInt(input.value) || 1) + delta));
+  input.value = nouvelle;
+  affichage.textContent = nouvelle;
+}
+
 function selectTaille(taille) {
   document.querySelectorAll('.taille-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll(`.taille-btn[data-taille="${taille}"]`).forEach(b => b.classList.add('active'));
@@ -149,6 +183,7 @@ function selectTaille(taille) {
 
 async function doCommander(produitId, avecTailles = false) {
   const taille = avecTailles ? (document.getElementById('cmdTaille')?.value || null) : null;
+  const quantite = parseInt(document.getElementById('cmdQuantite')?.value) || 1;
   const mode = document.getElementById('cmdMode').value;
   if (avecTailles && !taille) return toast('Sélectionne une taille', 'error');
   const btn = event?.target;
@@ -156,12 +191,12 @@ async function doCommander(produitId, avecTailles = false) {
   try {
     if (mode === 'helloasso') {
       toast('Redirection vers le paiement…', 'success');
-      const { redirectUrl } = await UL.demanderCommandeHelloAsso(produitId, taille);
+      const { redirectUrl } = await UL.demanderCommandeHelloAsso(produitId, taille, quantite);
       closeModal('modalCommander');
       window.location.href = redirectUrl;
       // Pas de réactivation du bouton : la page quitte l'app vers HelloAsso.
     } else {
-      await UL.passerCommande(produitId, taille);
+      await UL.passerCommande(produitId, taille, quantite);
       toast('Commande enregistrée ✅', 'success');
       closeModal('modalCommander');
       loadMatos();
@@ -332,7 +367,7 @@ function renderSticks(sticks) {
       ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
       <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">
         ${s.stock > 0 || s.mode === 'precommande' ? `
-        ${s.prix > 0 ? `<button class="btn btn-sm btn-primary" style="width:100%;" onclick="doCommanderStickHelloAsso('${s.id}', this)">💳 HelloAsso</button>` : ''}
+        ${s.prix > 0 ? `<button class="btn btn-sm btn-primary" style="width:100%;" onclick="ouvrirCommanderStick('${s.id}')">💳 HelloAsso</button>` : ''}
         ${peutEncaisser && s.mode !== 'precommande' ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirCashStick('${s.id}','${esc(s.nom)}')">Cash</button>` : ''}` : ''}
         ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirModifierStick('${s.id}')">✏️ Modifier</button>` : ''}
         ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${s.id}','stick')">🖼️</button>` : ''}
@@ -341,16 +376,74 @@ function renderSticks(sticks) {
 }
 
 // ── Paiement HelloAsso (membre) ─────────────────────────────────
+// Article actuellement ouvert dans modalCommanderStick — mêmes bornes
+// (stock/quota) que _produitCommandeCourant pour Matos.
+let _stickCommandeCourant = null;
+
+async function ouvrirCommanderStick(stickId) {
+  try {
+    const s = await UL.getStickById(stickId);
+    if (!s) return toast('Article introuvable', 'error');
+    _stickCommandeCourant = s;
+
+    let quotaHtml = '';
+    try {
+      const quota = await UL.getMonQuotaStick(stickId);
+      if (quota) quotaHtml = `<div class="info-box warning">⚠️ Quota: il te reste ${quota.restant} sur ${quota.quota}</div>`;
+    } catch(e) {}
+
+    document.getElementById('modalCommanderStickContent').innerHTML = `
+      <h3 class="modal-title">${esc(s.nom)}</h3>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+        ${s.visuel_url ? `<img src="${s.visuel_url}" style="width:70px;height:70px;object-fit:cover;border-radius:10px;">` : `<div style="font-size:42px;">🎟️</div>`}
+        <div>
+          <div style="font-size:24px;font-family:'Bebas Neue',sans-serif;color:var(--bleu-clair);">${s.prix}€</div>
+          <div style="font-size:12px;color:var(--gris);">${s.mode==='precommande' ? 'Précommande' : 'Stock: ' + s.stock}${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}</div>
+        </div>
+      </div>
+      ${quotaHtml}
+      <div class="form-group">
+        <label>Quantité</label>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="changerQuantiteStick(-1)">−</button>
+          <span id="stickQuantiteAffichage" style="font-size:17px;font-weight:700;min-width:26px;text-align:center;">1</span>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="changerQuantiteStick(1)">+</button>
+        </div>
+        <input type="hidden" id="stickQuantite" value="1">
+      </div>
+      ${s.mode === 'precommande' ? `<div class="info-box" style="font-size:12px;">📋 Article en précommande — disponible au retrait une fois reçu par la cellule Sticks.</div>` : ''}
+      <button class="btn btn-primary" onclick="doCommanderStickHelloAsso('${s.id}', this)">💳 Payer avec HelloAsso</button>
+      <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCommanderStick')">Annuler</button>
+    `;
+    showModal('modalCommanderStick');
+  } catch(e) { toast('Erreur chargement article', 'error'); }
+}
+
+function changerQuantiteStick(delta) {
+  const s = _stickCommandeCourant;
+  if (!s) return;
+  const input = document.getElementById('stickQuantite');
+  const affichage = document.getElementById('stickQuantiteAffichage');
+  let max = 99;
+  if (s.mode !== 'precommande' && s.stock > 0) max = Math.min(max, s.stock);
+  if (s.quota_par_membre) max = Math.min(max, s.quota_par_membre);
+  const nouvelle = Math.max(1, Math.min(max, (parseInt(input.value) || 1) + delta));
+  input.value = nouvelle;
+  affichage.textContent = nouvelle;
+}
+
 async function doCommanderStickHelloAsso(stickId, btn) {
+  const quantite = parseInt(document.getElementById('stickQuantite')?.value) || 1;
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     toast('Redirection vers le paiement…', 'success');
-    const { redirectUrl } = await UL.demanderStickHelloAsso(stickId);
+    const { redirectUrl } = await UL.demanderStickHelloAsso(stickId, quantite);
+    closeModal('modalCommanderStick');
     window.location.href = redirectUrl;
     // Pas de réactivation du bouton : la page quitte l'app vers HelloAsso.
   } catch(e) {
     toast(e.message || 'Impossible de lancer le paiement', 'error');
-    if (btn) { btn.disabled = false; btn.textContent = '💳 HelloAsso'; }
+    if (btn) { btn.disabled = false; btn.textContent = '💳 Payer avec HelloAsso'; }
   }
 }
 
@@ -429,7 +522,7 @@ function renderMesSticks(distribs) {
         <span class="badge ${d.statut==='distribue'||d.statut==='disponible'?'badge-vert':d.statut==='precommande_validee'?'badge-bleu':d.statut==='refuse'||d.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[d.statut]||d.statut}</span>
       </div>
       ${d.statut === 'refuse' ? `
-      <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="doCommanderStickHelloAsso('${d.stick_id}', this)">🔄 Relancer le paiement</button>` : ''}
+      <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="ouvrirCommanderStick('${d.stick_id}')">🔄 Relancer le paiement</button>` : ''}
     </div>`).join('');
 }
 
