@@ -1189,15 +1189,23 @@ async function archiverProduit(id) {
   return updateProduit(id, { statut: 'archive' });
 }
 
-async function passerCommande(produitId, taille, modePaiement, quantite = 1) {
+// Commande CASH uniquement — le paiement HelloAsso passe désormais par
+// l'Edge Function helloasso-create-checkout (cf. demanderCommandeHelloAsso
+// ci-dessous), qui crée elle-même la commande côté serveur. Cash n'est
+// autorisé que pour un article en mode 'stock' (règle actée le 05/07/2026 —
+// pour un article en précommande, il faut une preuve de paiement en amont
+// de la réception, donc HelloAsso obligatoire).
+async function passerCommande(produitId, taille, quantite = 1) {
   const produit = await getProduitById(produitId);
   if (!produit) throw new Error('Article introuvable');
-  // Vérif quota par membre (ex: articles à tirage limité)
+  if (produit.mode === 'precommande') {
+    throw new Error('Le paiement Cash n\'est pas disponible pour une précommande — utilise HelloAsso');
+  }
   if (produit.quota_par_membre) {
     const { data: dejaCommande } = await sb.from('commandes')
       .select('commande_items(quantite)')
       .eq('membre_id', currentUser.id)
-      .in('statut', ['en_attente', 'validee', 'prete', 'recuperee']);
+      .in('statut', ['en_attente', 'disponible', 'precommande_validee', 'distribue']);
     const totalDeja = (dejaCommande || [])
       .flatMap(c => c.commande_items || [])
       .reduce((sum, i) => sum + (i.quantite || 0), 0);
@@ -1209,7 +1217,7 @@ async function passerCommande(produitId, taille, modePaiement, quantite = 1) {
     membre_id: currentUser.id,
     total: produit.prix * quantite,
     statut: 'en_attente',
-    mode_paiement: modePaiement,
+    mode_paiement: 'cash',
   }).select().single();
   if (error) throw error;
   await sb.from('commande_items').insert({
@@ -1220,6 +1228,19 @@ async function passerCommande(produitId, taille, modePaiement, quantite = 1) {
     prix_unitaire: produit.prix,
   });
   return commande;
+}
+
+// Commande HelloAsso — délègue entièrement à l'Edge Function (elle crée
+// la commande + commande_item côté serveur, contrairement à passerCommande
+// qui le fait ici). Retourne { redirectUrl } pour que le front redirige.
+async function demanderCommandeHelloAsso(produitId, taille, quantite = 1) {
+  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
+    body: { produitId, taille, quantite },
+  });
+  if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
+  if (data?.error) throw new Error(data.error);
+  if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
+  return data;
 }
 
 async function getMesCommandes() {
@@ -1238,14 +1259,16 @@ async function getAllCommandes() {
 }
 
 async function updateCommandeStatut(commandeId, statut) {
-  // Décrémentation du stock uniquement lors de la transition VERS 'validee'
-  // (paiement confirmé) — jamais à la simple création en 'en_attente', et
-  // jamais répété si déjà 'validee' ou au-delà (prete/recuperee/annulee).
-  if (statut === 'validee') {
+  // Décrémentation du stock à la toute première sortie de 'en_attente'
+  // (paiement confirmé, cash ou HelloAsso) — que la destination soit
+  // 'disponible' (stock) ou 'precommande_validee' (précommande, réservée
+  // au moment du paiement même si pas encore reçue) — jamais répétée
+  // ensuite (annulee/refuse/rembourse compris, cf. condition ci-dessous).
+  if (statut === 'disponible' || statut === 'precommande_validee') {
     const { data: commandeActuelle } = await sb.from('commandes')
       .select('statut, commande_items(produit_id, quantite)')
       .eq('id', commandeId).single();
-    if (commandeActuelle && commandeActuelle.statut !== 'validee') {
+    if (commandeActuelle && commandeActuelle.statut === 'en_attente') {
       for (const item of commandeActuelle.commande_items || []) {
         const { data: produit } = await sb.from('produits')
           .select('stock').eq('id', item.produit_id).single();
@@ -1259,6 +1282,30 @@ async function updateCommandeStatut(commandeId, statut) {
   }
   const { error } = await sb.from('commandes')
     .update({ statut, updated_at: new Date().toISOString() })
+    .eq('id', commandeId);
+  if (error) throw error;
+  return { success: true };
+}
+
+// Confirme le paiement Cash d'une commande 'en_attente' (stock uniquement,
+// cf. passerCommande) — passe directement en 'disponible', pas d'étape
+// 'precommande_validee' possible ici puisque Cash est refusé pour les
+// précommandes en amont.
+async function confirmerPaiementCashCommande(commandeId) {
+  return updateCommandeStatut(commandeId, 'disponible');
+}
+
+// Action admin "réceptionné" — UNIQUEMENT pour une commande en
+// 'precommande_validee' (payée, en attente de réception physique). Passe
+// en 'disponible', prête pour le scan. Ne décrémente rien (déjà fait au
+// passage en 'precommande_validee', cf. updateCommandeStatut ci-dessus).
+async function receptionnerCommande(commandeId) {
+  const { error } = await sb.from('commandes')
+    .update({
+      statut: 'disponible',
+      receptionnee_par: currentUser.id,
+      receptionnee_at: new Date().toISOString(),
+    })
     .eq('id', commandeId);
   if (error) throw error;
   return { success: true };
@@ -1326,21 +1373,20 @@ async function getMonQuotaStick(stickId) {
   return { quota: stick.quota_par_membre, utilise: total, restant: stick.quota_par_membre - total };
 }
 
-async function demanderStick(stickId, modePaiement = 'helloasso', quantite = 1) {
-  const quota = await getMonQuotaStick(stickId);
-  if (quota && quota.restant < quantite) {
-    throw new Error(`Quota dépassé — il te reste ${quota.restant} sur ${quota.quota}`);
-  }
-  const { error } = await sb.from('sticks_distribution').insert({
-    stick_id: stickId,
-    membre_id: currentUser.id,
-    quantite,
-    distribue_par: currentUser.id,
-    mode_paiement: modePaiement,
-    statut: modePaiement === 'helloasso' ? 'en_attente' : 'distribue',
+// Demande HelloAsso — délègue à l'Edge Function (crée la ligne
+// sticks_distribution côté serveur, comme pour Matos). Remplace l'ancienne
+// demanderStick() qui créait la ligne ici mais n'était jamais réellement
+// appelée par le front (le seul chemin HelloAsso actif jusqu'ici était un
+// lien statique, cf. plan_helloasso.md §3 — Sticks HelloAsso confirmé le
+// 05/07/2026).
+async function demanderStickHelloAsso(stickId, quantite = 1) {
+  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
+    body: { stickId, quantite },
   });
-  if (error) throw error;
-  return { success: true };
+  if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
+  if (data?.error) throw new Error(data.error);
+  if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
+  return data;
 }
 
 async function getMesSticks() {
@@ -1352,15 +1398,17 @@ async function getMesSticks() {
 }
 
 async function distribuerStickAdmin(stickId, membreId, quantite, modePaiement = 'cash') {
-  // ⚠️ Avant le 21/06/2026, le mode 'cash' distribuait ET décrémentait le
-  // stock immédiatement en une seule action. Depuis l'introduction du scan
-  // QR membre, TOUTE distribution (cash comme HelloAsso) reste désormais en
-  // 'en_attente' jusqu'à confirmation — par scan (cf. scan.js,
-  // afficherActionsStick) ou par le bouton manuel de filet de secours
-  // (cf. doConfirmerDistributionManuelle, boutique.js). Le mode_paiement
-  // reste stocké pour traçabilité mais ne pilote plus le statut.
+  // Cash réservé aux articles en mode 'stock' (règle du 05/07/2026 — une
+  // précommande exige une preuve de paiement HelloAsso en amont). Le
+  // paiement étant déjà encaissé par l'admin au moment de cette action,
+  // la ligne part directement en 'disponible' (pas de 'en_attente' ici,
+  // contrairement au flux HelloAsso membre) — reste à scanner pour
+  // confirmer la remise physique.
   const { data: stick } = await sb.from('sticks_catalogue')
-    .select('quota_par_membre, stock').eq('id', stickId).single();
+    .select('quota_par_membre, stock, mode').eq('id', stickId).single();
+  if (modePaiement === 'cash' && stick?.mode === 'precommande') {
+    throw new Error('Le paiement Cash n\'est pas disponible pour une précommande — utilise HelloAsso');
+  }
   if (stick?.quota_par_membre) {
     const { data: deja } = await sb.from('sticks_distribution')
       .select('quantite').eq('stick_id', stickId).eq('membre_id', membreId);
@@ -1375,7 +1423,7 @@ async function distribuerStickAdmin(stickId, membreId, quantite, modePaiement = 
     quantite,
     distribue_par: currentUser.id,
     mode_paiement: modePaiement,
-    statut: 'en_attente',
+    statut: 'disponible',
   });
   if (error) throw error;
   return { success: true };
@@ -1409,6 +1457,20 @@ async function getAllDistributions() {
   return data || [];
 }
 
+// Action admin "réceptionné" — UNIQUEMENT pour une distribution en
+// 'precommande_validee'. Équivalent Sticks de receptionnerCommande.
+async function receptionnerStick(distribId) {
+  const { error } = await sb.from('sticks_distribution')
+    .update({
+      statut: 'disponible',
+      receptionnee_par: currentUser.id,
+      receptionnee_at: new Date().toISOString(),
+    })
+    .eq('id', distribId);
+  if (error) throw error;
+  return { success: true };
+}
+
 async function validerPaiementStick(distribId) {
   // ⚠️ Avant le 21/06/2026 cette fonction écrivait toujours
   // statut:'paye_helloasso', incohérent avec le reste de l'UI qui affiche
@@ -1420,6 +1482,15 @@ async function validerPaiementStick(distribId) {
   // statut final commun aux deux flux, confirmé par scan ou bouton manuel.
   const { data: distrib } = await sb.from('sticks_distribution')
     .select('stick_id, quantite, statut').eq('id', distribId).single();
+  if (distrib && distrib.statut !== 'disponible' && distrib.statut !== 'distribue') {
+    // Sécurité : on ne confirme une remise que depuis 'disponible' (payé
+    // et prêt) — un scan sur une ligne encore 'en_attente' ou
+    // 'precommande_validee' serait un état incohérent (ne devrait jamais
+    // arriver via l'UI normale, qui ne propose au scan que les lignes
+    // 'disponible', cf. scan.js). Un statut déjà 'distribue' est en
+    // revanche accepté sans erreur (idempotence en cas de double-clic).
+    throw new Error('Cette remise n\'est pas encore disponible (paiement non confirmé ou précommande non réceptionnée)');
+  }
   const { error } = await sb.from('sticks_distribution')
     .update({ statut: 'distribue' })
     .eq('id', distribId);
@@ -1789,9 +1860,11 @@ window.UL = {
   getStats, getMesStats,
   // Matos
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
-  passerCommande, getMesCommandes, getAllCommandes, updateCommandeStatut,
+  passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande,
+  getMesCommandes, getAllCommandes, updateCommandeStatut,
   // Sticks
-  getSticks, createStick, updateStick, getMonQuotaStick, demanderStick, getMesSticks,
+  getSticks, createStick, updateStick, getMonQuotaStick,
+  demanderStickHelloAsso, receptionnerStick, getMesSticks,
   distribuerStickAdmin, getAllDistributions, validerPaiementStick, confirmerDistributionStick,
   // Cotisations
   getConfigCotisation, updateConfigCotisation, getMaCotisation,
