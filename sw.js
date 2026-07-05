@@ -1,6 +1,22 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v14
+// ULTRAS LUTETIA — Service Worker v15
 // ============================================================
+//
+// v15 (05/07/2026) : CACHE_NAME bumpé (v14 → v15) suite à la restructuration
+// Matos + Sticks — nouveau modèle de statut unifié (en_attente → disponible
+// / precommande_validee → distribue, + refuse/rembourse/annulee) et
+// automatisation du paiement HelloAsso (Checkout API + webhook, sur le
+// même schéma que Déplacements) pour ces deux modules, jusqu'ici manuels
+// (Matos) ou en lien statique (Sticks). Fichiers modifiés : src/boutique.js
+// (UI commande/distribution, nouveaux boutons "Confirmer paiement cash" /
+// "Marquer reçu"), src/scan.js (filtre 'disponible' au lieu de
+// 'prete'/'en_attente' selon le module), src/supabase-client.js (nouvelles
+// fonctions demanderCommandeHelloAsso/demanderStickHelloAsso,
+// receptionnerCommande/receptionnerStick, cash restreint aux articles en
+// mode 'stock') — tous déjà en NETWORK_FIRST. Edge Functions
+// helloasso-create-checkout et helloasso-webhook étendues côté serveur
+// (hors dépôt front, cf. TODO_HELLOASSO.md) pour router matos/stick en
+// plus de deplacement.
 //
 // v14 (05/07/2026) : CACHE_NAME bumpé (v13 → v14) suite à (1) l'agrandissement
 // du bandeau de navigation en bas (styles.css, --nav-h 64px → 80px, icônes et
@@ -135,7 +151,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v14';
+const CACHE_NAME = 'ul-v15';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
