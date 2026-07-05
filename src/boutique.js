@@ -130,10 +130,10 @@ async function openCommander(produitId) {
         <label>Mode de paiement</label>
         <select id="cmdMode" style="background:#1F2937;border:1.5px solid #4B5563;color:white;padding:11px 14px;border-radius:9px;width:100%;font-size:15px;">
           <option value="helloasso">💳 HelloAsso (en ligne)</option>
-          <option value="cash">💵 Cash (en présentiel)</option>
+          ${p.mode !== 'precommande' ? `<option value="cash">💵 Cash (en présentiel)</option>` : ''}
         </select>
       </div>
-      ${p.lien_helloasso ? `<div class="info-box" style="font-size:12px;">💡 Le lien HelloAsso te sera communiqué après validation.</div>` : ''}
+      ${p.mode === 'precommande' ? `<div class="info-box" style="font-size:12px;">📋 Article en précommande — paiement HelloAsso uniquement. Il sera disponible au retrait une fois reçu par la cellule Matos.</div>` : ''}
       <button class="btn btn-primary" onclick="doCommander('${p.id}',${!!p.avec_tailles})">Valider la commande</button>
       <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCommander')">Annuler</button>
     `;
@@ -151,60 +151,95 @@ async function doCommander(produitId, avecTailles = false) {
   const taille = avecTailles ? (document.getElementById('cmdTaille')?.value || null) : null;
   const mode = document.getElementById('cmdMode').value;
   if (avecTailles && !taille) return toast('Sélectionne une taille', 'error');
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    await UL.passerCommande(produitId, taille, mode);
-    toast('Commande enregistrée ✅', 'success');
-    closeModal('modalCommander');
-    loadMatos();
-  } catch(e) { toast(e.message || 'Erreur commande', 'error'); }
+    if (mode === 'helloasso') {
+      toast('Redirection vers le paiement…', 'success');
+      const { redirectUrl } = await UL.demanderCommandeHelloAsso(produitId, taille);
+      closeModal('modalCommander');
+      window.location.href = redirectUrl;
+      // Pas de réactivation du bouton : la page quitte l'app vers HelloAsso.
+    } else {
+      await UL.passerCommande(produitId, taille);
+      toast('Commande enregistrée ✅', 'success');
+      closeModal('modalCommander');
+      loadMatos();
+    }
+  } catch(e) {
+    toast(e.message || 'Erreur commande', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Valider la commande'; }
+  }
 }
 
 function renderMesCommandes(commandes) {
   const el = document.getElementById('mesCommandes');
   if (!commandes.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune commande</p>'; return; }
-  const statuts = { en_attente:'⏳ En attente', validee:'✅ Validée', prete:'📦 Prête', recuperee:'✔️ Récupérée', annulee:'❌ Annulée' };
+  const statuts = {
+    en_attente:'⏳ En attente de paiement', precommande_validee:'📋 Précommande validée — en attente de réception',
+    disponible:'✅ Disponible — à retirer', distribue:'✔️ Récupérée', refuse:'❌ Paiement refusé', annulee:'❌ Annulée',
+  };
+  const badgeClasse = c => {
+    if (c.statut === 'distribue' || c.statut === 'disponible') return 'badge-vert';
+    if (c.statut === 'precommande_validee') return 'badge-bleu';
+    if (c.statut === 'refuse' || c.statut === 'annulee') return 'badge-rouge';
+    return 'badge-orange';
+  };
   el.innerHTML = commandes.map(c => `
     <div class="card" style="margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${(c.commande_items||[]).map(i=>esc(i.produit?.nom||'?')).join(', ')}</div>
-        <span class="badge ${c.statut==='recuperee'?'badge-vert':c.statut==='prete'?'badge-bleu':c.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[c.statut]||c.statut}</span>
+        <span class="badge ${badgeClasse(c)}">${statuts[c.statut]||c.statut}</span>
       </div>
       <div style="font-size:12px;color:var(--gris);">
         ${c.total}€ · ${c.mode_paiement === 'helloasso' ? 'HelloAsso' : 'Cash'} ·
         ${new Date(c.created_at).toLocaleDateString('fr-FR')}
       </div>
+      ${c.statut === 'refuse' ? `
+      <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="doReessayerCommande('${c.commande_items?.[0]?.produit_id||''}')">🔄 Relancer le paiement</button>` : ''}
     </div>`).join('');
+}
+
+// Un membre dont le paiement HelloAsso a été refusé doit pouvoir relancer
+// directement une nouvelle tentative — on rouvre simplement la modal de
+// commande sur le même article plutôt que de le laisser bloqué.
+function doReessayerCommande(produitId) {
+  if (!produitId) return toast('Article introuvable pour relancer le paiement', 'error');
+  openCommander(produitId);
 }
 
 function renderToutesCommandes(commandes) {
   const el = document.getElementById('toutesCommandes');
   if (!commandes.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune commande</p>'; return; }
-  const statuts = { en_attente:'⏳', validee:'✅', prete:'📦', recuperee:'✔️', annulee:'❌' };
+  const statuts = { en_attente:'⏳', precommande_validee:'📋', disponible:'✅', distribue:'✔️', refuse:'❌', annulee:'❌' };
   el.innerHTML = commandes.map(c => `
     <div class="card" style="margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <div>
           <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">@${c.membre?.pseudo_telegram||'?'}</div>
-          <div style="font-size:12px;color:var(--gris);">${(c.commande_items||[]).map(i=>esc(i.produit?.nom||'?')).join(', ')} · ${c.total}€</div>
+          <div style="font-size:12px;color:var(--gris);">${(c.commande_items||[]).map(i=>esc(i.produit?.nom||'?')).join(', ')} · ${c.total}€ · ${c.mode_paiement === 'helloasso' ? 'HelloAsso' : 'Cash'}</div>
         </div>
-        <span class="badge ${c.statut==='recuperee'?'badge-vert':c.statut==='prete'?'badge-bleu':'badge-orange'}">${statuts[c.statut]||''} ${c.statut}</span>
+        <span class="badge ${c.statut==='distribue'||c.statut==='disponible'?'badge-vert':c.statut==='precommande_validee'?'badge-bleu':c.statut==='refuse'||c.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[c.statut]||''} ${c.statut}</span>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        ${c.statut==='en_attente' ? `<button class="btn btn-sm btn-success" onclick="changerStatutCommande('${c.id}','validee')">Valider</button>` : ''}
-        ${c.statut==='validee' ? `<button class="btn btn-sm btn-primary" onclick="changerStatutCommande('${c.id}','prete')">Prête</button>` : ''}
-        ${c.statut==='prete' ? `<button class="btn btn-sm btn-success" onclick="changerStatutCommande('${c.id}','recuperee')">Récupérée</button>` : ''}
-        ${['en_attente','validee'].includes(c.statut) ? `<button class="btn btn-sm btn-danger" onclick="changerStatutCommande('${c.id}','annulee')">Annuler</button>` : ''}
+        ${c.statut==='en_attente' && c.mode_paiement==='cash' ? `<button class="btn btn-sm btn-success" onclick="changerStatutCommande('${c.id}','disponible')">💵 Confirmer paiement cash</button>` : ''}
+        ${c.statut==='precommande_validee' ? `<button class="btn btn-sm btn-primary" onclick="doReceptionnerCommande('${c.id}')">📦 Marquer reçu</button>` : ''}
+        ${['en_attente','precommande_validee'].includes(c.statut) ? `<button class="btn btn-sm btn-danger" onclick="changerStatutCommande('${c.id}','annulee')">Annuler</button>` : ''}
       </div>
     </div>`).join('');
 }
 
 async function changerStatutCommande(id, statut) {
-  // Confirmation demandée uniquement pour l'annulation — les autres
-  // transitions (validée → prête → récupérée) sont des étapes normales du
-  // suivi de commande, pas des actions à risque pour le membre.
+  // Confirmation demandée uniquement pour l'annulation — la confirmation
+  // cash est une étape normale du suivi, pas une action à risque.
   if (statut === 'annulee' && !confirm('Annuler cette commande ?')) return;
   try { await UL.updateCommandeStatut(id, statut); toast('Commande mise à jour ✅', 'success'); loadMatos(); }
   catch(e) { toast('Impossible de modifier le statut de la commande', 'error'); }
+}
+
+async function doReceptionnerCommande(id) {
+  try { await UL.receptionnerCommande(id); toast('Commande marquée reçue — disponible au retrait ✅', 'success'); loadMatos(); }
+  catch(e) { toast('Impossible de marquer cette commande reçue', 'error'); }
 }
 
 async function modifierStock(id, nom, stockActuel) {
@@ -297,12 +332,26 @@ function renderSticks(sticks) {
       ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
       <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">
         ${s.stock > 0 || s.mode === 'precommande' ? `
-        ${s.lien_helloasso ? `<a href="${s.lien_helloasso}" target="_blank"><button class="btn btn-sm btn-primary" style="width:100%;">HelloAsso</button></a>` : ''}
-        ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirCashStick('${s.id}','${esc(s.nom)}')">Cash</button>` : ''}` : ''}
+        ${s.prix > 0 ? `<button class="btn btn-sm btn-primary" style="width:100%;" onclick="doCommanderStickHelloAsso('${s.id}', this)">💳 HelloAsso</button>` : ''}
+        ${peutEncaisser && s.mode !== 'precommande' ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirCashStick('${s.id}','${esc(s.nom)}')">Cash</button>` : ''}` : ''}
         ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirModifierStick('${s.id}')">✏️ Modifier</button>` : ''}
         ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${s.id}','stick')">🖼️</button>` : ''}
       </div>
     </div>`).join('') + `</div>`;
+}
+
+// ── Paiement HelloAsso (membre) ─────────────────────────────────
+async function doCommanderStickHelloAsso(stickId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+  try {
+    toast('Redirection vers le paiement…', 'success');
+    const { redirectUrl } = await UL.demanderStickHelloAsso(stickId);
+    window.location.href = redirectUrl;
+    // Pas de réactivation du bouton : la page quitte l'app vers HelloAsso.
+  } catch(e) {
+    toast(e.message || 'Impossible de lancer le paiement', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '💳 HelloAsso'; }
+  }
 }
 
 // ── Valider un cash (Admin/Bureau/Cellule Sticks) ──────────────
@@ -347,26 +396,29 @@ function renderListeMembresCashStick(membres) {
 }
 
 async function doValiderCashStick(membreId, nomMembre) {
-  // ⚠️ Depuis le 21/06/2026, cette action ne distribue plus immédiatement
-  // (cf. distribuerStickAdmin, supabase-client.js) — elle crée la demande
-  // en 'en_attente', à confirmer ensuite par scan QR du membre (cf.
-  // scan.js, contexte 'stick') ou par le bouton manuel de filet de
+  // Le paiement Cash étant encaissé sur-le-champ par l'admin, la ligne part
+  // directement en 'disponible' (cf. distribuerStickAdmin,
+  // supabase-client.js) — reste à confirmer la remise physique par scan QR
+  // (cf. scan.js, contexte 'stick') ou par le bouton manuel de filet de
   // secours dans la liste "Historique distributions" (renderToutesDistribs).
   const stickId = document.getElementById('cashStickId').value;
   const qte = parseInt(document.getElementById('cashStickQte').value) || 1;
-  if (!confirm(`Enregistrer la demande cash de ${nomMembre} (x${qte}) ?`)) return;
+  if (!confirm(`Enregistrer le paiement cash de ${nomMembre} (x${qte}) ?`)) return;
   try {
     await UL.distribuerStickAdmin(stickId, membreId, qte, 'cash');
-    toast(`Demande enregistrée pour ${nomMembre} — à confirmer au retrait`, 'success');
+    toast(`Paiement enregistré pour ${nomMembre} — à confirmer au retrait`, 'success');
     closeModal('modalCashStick');
     loadSticks();
-  } catch(e) { toast(e.message || 'Impossible d\'enregistrer la demande', 'error'); }
+  } catch(e) { toast(e.message || 'Impossible d\'enregistrer le paiement', 'error'); }
 }
 
 function renderMesSticks(distribs) {
   const el = document.getElementById('mesSticks');
   if (!distribs.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucun stick reçu</p>'; return; }
-  const statuts = { distribue:'✅ Reçu', en_attente:'⏳ En attente', paye_helloasso:'💳 Payé', paye_cash:'💵 Cash', gratuit:'🎁 Gratuit' };
+  const statuts = {
+    en_attente:'⏳ En attente de paiement', precommande_validee:'📋 Précommande validée — en attente de réception',
+    disponible:'✅ Disponible — à retirer', distribue:'✔️ Reçu', refuse:'❌ Paiement refusé', annulee:'❌ Annulée',
+  };
   el.innerHTML = distribs.map(d => `
     <div class="card" style="margin-bottom:6px;padding:12px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -374,8 +426,10 @@ function renderMesSticks(distribs) {
           <div style="font-weight:600;font-size:14px;">${esc(d.stick?.nom||'?')}</div>
           <div style="font-size:12px;color:var(--gris);">Qté: ${d.quantite} · ${new Date(d.created_at).toLocaleDateString('fr-FR')}</div>
         </div>
-        <span class="badge ${d.statut==='distribue'||d.statut==='paye_helloasso'||d.statut==='paye_cash'?'badge-vert':d.statut==='gratuit'?'badge-bleu':'badge-orange'}">${statuts[d.statut]||d.statut}</span>
+        <span class="badge ${d.statut==='distribue'||d.statut==='disponible'?'badge-vert':d.statut==='precommande_validee'?'badge-bleu':d.statut==='refuse'||d.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[d.statut]||d.statut}</span>
       </div>
+      ${d.statut === 'refuse' ? `
+      <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="doCommanderStickHelloAsso('${d.stick_id}', this)">🔄 Relancer le paiement</button>` : ''}
     </div>`).join('');
 }
 
@@ -389,13 +443,18 @@ function renderToutesDistribs(distribs) {
           <div style="font-weight:600;font-size:13px;">@${d.membre?.pseudo_telegram||'?'} — ${esc(d.stick?.nom||'?')}</div>
           <div style="font-size:11px;color:var(--gris);">Qté: ${d.quantite} · ${d.mode_paiement} · ${new Date(d.created_at).toLocaleDateString('fr-FR')}</div>
         </div>
-        <span class="badge ${d.statut==='distribue'?'badge-vert':'badge-orange'}">${d.statut}</span>
+        <span class="badge ${d.statut==='distribue'||d.statut==='disponible'?'badge-vert':d.statut==='precommande_validee'?'badge-bleu':'badge-orange'}">${d.statut}</span>
       </div>
-      ${d.statut === 'en_attente' ? `
-      <div style="margin-top:8px;">
-        <button class="btn btn-sm btn-secondary" style="width:100%;" onclick="doConfirmerDistributionManuelle('${d.id}')">✔️ Confirmer (sans scan)</button>
-      </div>` : ''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+        ${d.statut === 'precommande_validee' ? `<button class="btn btn-sm btn-primary" style="flex:1;" onclick="doReceptionnerStick('${d.id}')">📦 Marquer reçu</button>` : ''}
+        ${d.statut === 'disponible' ? `<button class="btn btn-sm btn-secondary" style="flex:1;" onclick="doConfirmerDistributionManuelle('${d.id}')">✔️ Confirmer (sans scan)</button>` : ''}
+      </div>
     </div>`).join('');
+}
+
+async function doReceptionnerStick(distribId) {
+  try { await UL.receptionnerStick(distribId); toast('Stick marqué reçu — disponible au retrait ✅', 'success'); loadSticks(); }
+  catch(e) { toast('Impossible de marquer ce stick reçu', 'error'); }
 }
 
 // Filet de secours pour confirmer une distribution Stick sans passer par
