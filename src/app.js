@@ -10,7 +10,8 @@ function isBureau(membre) {
 }
 function isCellule(membre) {
   if (!membre) return false;
-  return ['admin_app','bureau_app','cellule_tifo','cellule_depl','cellule_matos','cellule_sticks','cellule_comite']
+  return ['admin_app','bureau_app','cellule_tifo','cellule_depl','cellule_matos','cellule_sticks','cellule_comite',
+          'distributeur_depl','distributeur_matos','distributeur_sticks']
     .some(r => hasRoleApp(membre, r));
 }
 function hasCelluleTifo(membre)   { return isAdmin(membre) || isBureau(membre) || hasRoleApp(membre,'cellule_tifo'); }
@@ -18,6 +19,16 @@ function hasCelluleDepl(membre)   { return isAdmin(membre) || isBureau(membre) |
 function hasCelluleMatos(membre)  { return isAdmin(membre) || isBureau(membre) || hasRoleApp(membre,'cellule_matos'); }
 function hasCelluleSticks(membre) { return isAdmin(membre) || isBureau(membre) || hasRoleApp(membre,'cellule_sticks'); }
 function hasCelluleComite(membre) { return isAdmin(membre) || isBureau(membre) || hasRoleApp(membre,'cellule_comite'); }
+// ─── Distributeurs (scan uniquement, pas d'accès création/édition) ───
+// Rôle "second niveau" : un distributeur peut UNIQUEMENT scanner les QR
+// codes membres (retrait Matos, remise Stick, présence Déplacement) —
+// il n'a jamais accès aux sections admin de création/modification
+// (produits, sticks, déplacements), contrairement à la cellule
+// correspondante. Un membre de la cellule (ou Bureau/Admin) a de toute
+// façon accès au scan, donc hasDistributeurX = hasCelluleX || rôle dédié.
+function hasDistributeurDepl(membre)   { return hasCelluleDepl(membre)   || hasRoleApp(membre,'distributeur_depl'); }
+function hasDistributeurMatos(membre)  { return hasCelluleMatos(membre)  || hasRoleApp(membre,'distributeur_matos'); }
+function hasDistributeurSticks(membre) { return hasCelluleSticks(membre) || hasRoleApp(membre,'distributeur_sticks'); }
 function peutValiderInscriptions(membre) {
   return isAdmin(membre) || isBureau(membre) || hasCelluleComite(membre);
 }
@@ -507,11 +518,11 @@ function applyRights(membre) {
   if (peutValiderInscriptions(membre)) document.getElementById('demandesSection').style.display = 'block';
 
   // Boutons scan QR membre (présence/retrait) — Cellule du périmètre +
-  // Bureau + Admin (déjà inclus dans chaque hasCellule*, aucune logique
-  // supplémentaire nécessaire). Aucune autre cellule n'y a accès.
-  if (hasCelluleDepl(membre))   document.getElementById('btnScanPresenceDepl').style.display = 'block';
-  if (hasCelluleMatos(membre))  document.getElementById('btnScanRetraitMatos').style.display = 'block';
-  if (hasCelluleSticks(membre)) document.getElementById('btnScanRemiseStick').style.display = 'block';
+  // Bureau + Admin + Distributeur dédié (rôle scan-only, cf.
+  // hasDistributeurX ci-dessus). Aucune autre cellule n'y a accès.
+  if (hasDistributeurDepl(membre))   document.getElementById('btnScanPresenceDepl').style.display = 'block';
+  if (hasDistributeurMatos(membre))  document.getElementById('btnScanRetraitMatos').style.display = 'block';
+  if (hasDistributeurSticks(membre)) document.getElementById('btnScanRemiseStick').style.display = 'block';
 
   // Onglet Admin
   if (isCellule(membre)) {
