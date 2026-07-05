@@ -1,6 +1,17 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v15
+// ULTRAS LUTETIA — Service Worker v16
 // ============================================================
+//
+// v16 (05/07/2026) : CACHE_NAME bumpé (v15 → v16) suite à l'ajout d'un
+// sélecteur de quantité avant paiement, pour Matos (dans la modal
+// Commander existante) et Sticks (nouvelle modal modalCommanderStick,
+// qui n'existait pas encore côté membre — le bouton HelloAsso déclenchait
+// jusqu'ici direct un paiement pour 1 unité). Bornée par le stock (si
+// mode 'stock') et le quota_par_membre. Fichiers modifiés : index.html
+// (nouvelle modal modalCommanderStick), src/boutique.js
+// (changerQuantiteCommande/changerQuantiteStick, ouvrirCommanderStick),
+// src/supabase-client.js (nouvelle fonction getStickById, manquante
+// jusqu'ici) — tous déjà en NETWORK_FIRST.
 //
 // v15 (05/07/2026) : CACHE_NAME bumpé (v14 → v15) suite à la restructuration
 // Matos + Sticks — nouveau modèle de statut unifié (en_attente → disponible
@@ -151,7 +162,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v15';
+const CACHE_NAME = 'ul-v16';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
