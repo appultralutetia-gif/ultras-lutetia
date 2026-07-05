@@ -218,25 +218,27 @@ async function afficherActionsMatos(membre) {
   try {
     const toutes = await UL.getAllCommandes();
     const commandesMembre = (toutes || []).filter(c => c.membre_id === membre.id);
-    const pretes = commandesMembre.filter(c => c.statut === 'prete');
-    // Payées mais pas encore physiquement préparées par l'équipe — le scan
-    // doit bloquer explicitement plutôt que de les ignorer silencieusement
-    // (cf. demande explicite : "bloque — affiche pas encore prêt").
-    const pasEncorePretes = commandesMembre.filter(c => c.statut === 'validee');
+    const disponibles = commandesMembre.filter(c => c.statut === 'disponible');
+    // Payées mais pas encore physiquement disponibles (précommande en
+    // attente de réception, ou paiement cash pas encore confirmé) — le
+    // scan doit bloquer explicitement plutôt que de les ignorer
+    // silencieusement (cf. demande explicite : "bloque — affiche pas
+    // encore prêt").
+    const pasEncoreDisponibles = commandesMembre.filter(c => c.statut === 'precommande_validee' || c.statut === 'en_attente');
 
-    if (!pretes.length && !pasEncorePretes.length) {
+    if (!disponibles.length && !pasEncoreDisponibles.length) {
       resultatEl.innerHTML = `<div class="info-box">Aucune commande à récupérer pour ${esc(nomComplet)}</div>`;
       relancerCameraSiPossible();
       return;
     }
 
-    const blocHtml = pasEncorePretes.length ? `
+    const blocHtml = pasEncoreDisponibles.length ? `
       <div class="info-box error" style="margin-bottom:10px;">
-        ⏳ ${pasEncorePretes.length} commande${pasEncorePretes.length > 1 ? 's' : ''} payée${pasEncorePretes.length > 1 ? 's' : ''} mais pas encore prête${pasEncorePretes.length > 1 ? 's' : ''} — retrait impossible pour l'instant
-        ${pasEncorePretes.map(c => `<div style="font-size:12px;margin-top:4px;">${(c.commande_items || []).map(i => esc(i.produit?.nom || '?')).join(', ')}</div>`).join('')}
+        ⏳ ${pasEncoreDisponibles.length} commande${pasEncoreDisponibles.length > 1 ? 's' : ''} pas encore disponible${pasEncoreDisponibles.length > 1 ? 's' : ''} — retrait impossible pour l'instant
+        ${pasEncoreDisponibles.map(c => `<div style="font-size:12px;margin-top:4px;">${(c.commande_items || []).map(i => esc(i.produit?.nom || '?')).join(', ')} ${c.statut === 'precommande_validee' ? '(en attente de réception)' : '(paiement en attente)'}</div>`).join('')}
       </div>` : '';
 
-    if (!pretes.length) {
+    if (!disponibles.length) {
       resultatEl.innerHTML = blocHtml;
       relancerCameraSiPossible();
       return;
@@ -244,8 +246,8 @@ async function afficherActionsMatos(membre) {
 
     resultatEl.innerHTML = `
       ${blocHtml}
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${esc(nomComplet)} — ${pretes.length} commande${pretes.length > 1 ? 's' : ''} prête${pretes.length > 1 ? 's' : ''}</div>
-      ${pretes.map(c => `
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${esc(nomComplet)} — ${disponibles.length} commande${disponibles.length > 1 ? 's' : ''} disponible${disponibles.length > 1 ? 's' : ''}</div>
+      ${disponibles.map(c => `
         <div class="card" style="margin-bottom:8px;padding:10px;">
           <div style="font-size:13px;">${(c.commande_items || []).map(i => esc(i.produit?.nom || '?')).join(', ')}</div>
           <div style="font-size:12px;color:var(--gris);margin-bottom:8px;">${c.total}€</div>
@@ -260,7 +262,7 @@ async function afficherActionsMatos(membre) {
 
 async function doConfirmerRetraitMatos(commandeId) {
   try {
-    await UL.updateCommandeStatut(commandeId, 'recuperee');
+    await UL.updateCommandeStatut(commandeId, 'distribue');
     toast('Retrait confirmé ✅', 'success');
     document.getElementById('scanResultat').innerHTML = '<div class="info-box success">✅ Retrait confirmé</div>';
     relancerCameraSiPossible();
@@ -277,17 +279,36 @@ async function afficherActionsStick(membre) {
 
   try {
     const toutes = await UL.getAllDistributions();
-    const enAttente = (toutes || []).filter(d => d.membre_id === membre.id && d.statut === 'en_attente');
+    // 'disponible' = payé (cash confirmé ou HelloAsso confirmé par
+    // webhook) et physiquement en stock — c'est la seule étape scannable.
+    // Une ligne 'en_attente' (paiement pas confirmé) ou
+    // 'precommande_validee' (payé mais pas encore reçu) doit bloquer,
+    // pas être ignorée silencieusement.
+    const disponibles = (toutes || []).filter(d => d.membre_id === membre.id && d.statut === 'disponible');
+    const pasEncoreDisponibles = (toutes || []).filter(d => d.membre_id === membre.id && (d.statut === 'en_attente' || d.statut === 'precommande_validee'));
 
-    if (!enAttente.length) {
-      resultatEl.innerHTML = `<div class="info-box">Aucune remise en attente pour ${esc(nomComplet)}</div>`;
+    if (!disponibles.length && !pasEncoreDisponibles.length) {
+      resultatEl.innerHTML = `<div class="info-box">Aucune remise disponible pour ${esc(nomComplet)}</div>`;
+      relancerCameraSiPossible();
+      return;
+    }
+
+    const blocHtml = pasEncoreDisponibles.length ? `
+      <div class="info-box error" style="margin-bottom:10px;">
+        ⏳ ${pasEncoreDisponibles.length} remise${pasEncoreDisponibles.length > 1 ? 's' : ''} pas encore disponible${pasEncoreDisponibles.length > 1 ? 's' : ''} — remise impossible pour l'instant
+        ${pasEncoreDisponibles.map(d => `<div style="font-size:12px;margin-top:4px;">${esc(d.stick?.nom || '?')} ${d.statut === 'precommande_validee' ? '(en attente de réception)' : '(paiement en attente)'}</div>`).join('')}
+      </div>` : '';
+
+    if (!disponibles.length) {
+      resultatEl.innerHTML = blocHtml;
       relancerCameraSiPossible();
       return;
     }
 
     resultatEl.innerHTML = `
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${esc(nomComplet)} — ${enAttente.length} remise${enAttente.length > 1 ? 's' : ''} en attente</div>
-      ${enAttente.map(d => `
+      ${blocHtml}
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${esc(nomComplet)} — ${disponibles.length} remise${disponibles.length > 1 ? 's' : ''} disponible${disponibles.length > 1 ? 's' : ''}</div>
+      ${disponibles.map(d => `
         <div class="card" style="margin-bottom:8px;padding:10px;">
           <div style="font-size:13px;">${esc(d.stick?.nom || '?')} × ${d.quantite}</div>
           <div style="font-size:12px;color:var(--gris);margin-bottom:6px;">${d.mode_paiement === 'cash' ? '💵 Cash' : d.mode_paiement === 'helloasso' ? '💳 HelloAsso' : esc(d.mode_paiement || '')}</div>
