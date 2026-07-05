@@ -45,9 +45,12 @@ const ROLES_DEFS = [
   { key:'admin_app',       label:'⚙️ Admin App – Accès total' },
   { key:'bureau_app',      label:'🏆 Bureau – Gestion générale' },
   { key:'cellule_tifo',    label:'🎨 Cellule Tifo' },
-  { key:'cellule_depl',    label:'🚌 Cellule Déplacement' },
-  { key:'cellule_matos',   label:'🎒 Cellule Matos' },
-  { key:'cellule_sticks',  label:'🎟️ Cellule Sticks' },
+  { key:'cellule_depl',    label:'🚌 Cellule Déplacement – création/édition + scan' },
+  { key:'distributeur_depl',   label:'🎫 Distributeur Déplacement – scan uniquement' },
+  { key:'cellule_matos',   label:'🎒 Cellule Matos – création/édition + scan' },
+  { key:'distributeur_matos',  label:'📦 Distributeur Matos – scan uniquement' },
+  { key:'cellule_sticks',  label:'🎟️ Cellule Sticks – création/édition + scan' },
+  { key:'distributeur_sticks', label:'🏷️ Distributeur Sticks – scan uniquement' },
   { key:'cellule_comite',  label:'🔔 Comité de Passage' },
 ];
 let _rolesActifs = new Set();
