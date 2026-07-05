@@ -81,6 +81,7 @@ const KNOWN_DYNAMIC = new Set([
   'qrDepl', 'taillesContainer',
   'photoPreviewImgStick', 'photoPreviewStick',
   'codePresence', 'cmdMode', 'cmdTaille',
+  'cmdQuantite', 'cmdQuantiteAffichage', 'stickQuantite', 'stickQuantiteAffichage',
   'pizzaChoixContainer', 'pinteChoixContainer',
   'evalTifoListe', 'evalTifoSearch',
   'evalComiteSympaListe', 'evalComiteDraftListe',
