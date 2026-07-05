@@ -1,6 +1,16 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v13
+// ULTRAS LUTETIA — Service Worker v14
 // ============================================================
+//
+// v14 (05/07/2026) : CACHE_NAME bumpé (v13 → v14) suite à (1) l'agrandissement
+// du bandeau de navigation en bas (styles.css, --nav-h 64px → 80px, icônes et
+// texte légèrement agrandis) ; (2) l'introduction des rôles "distributeur"
+// (distributeur_depl / distributeur_matos / distributeur_sticks) — un
+// distributeur n'a accès qu'au scan QR (présence/retrait/remise), pas à la
+// création/édition réservée à la cellule correspondante (src/app.js,
+// nouvelles fonctions hasDistributeurDepl/Matos/Sticks + boutons de scan
+// reconditionnés dessus ; src/admin.js, 3 nouvelles entrées dans ROLES_DEFS
+// pour assigner ces rôles depuis la fiche membre).
 //
 // v13 (27/06/2026) : ajout des écouteurs 'push' et 'notificationclick'
 // (infrastructure notifications push — cf. supabase-client.js section
@@ -125,7 +135,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v13';
+const CACHE_NAME = 'ul-v14';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
