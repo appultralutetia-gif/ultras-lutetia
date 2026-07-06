@@ -1,6 +1,15 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v20
+// ULTRAS LUTETIA — Service Worker v21
 // ============================================================
+//
+// v21 (05/07/2026) : CACHE_NAME bumpé (v20 → v21) suite à une demande de
+// Remi — retrait du bouton "✅ Confirmer la date" de renderMatchCard
+// (accueil ET calendrier), même logique que le retrait du bouton
+// "Modifier le match" juste avant (v20) : la confirmation de date n'est
+// désormais possible que depuis Admin → "Gérer le calendrier (matchs)".
+// Le badge informatif "⏳ Date à confirmer" / "✅ Date confirmée" reste
+// affiché (lecture seule). Fichier modifié : src/calendrier.js, déjà en
+// NETWORK_FIRST.
 //
 // v20 (05/07/2026) : CACHE_NAME bumpé (v19 → v20) suite à une demande de
 // Remi — retrait du bouton "✏️ Modifier le match" de renderMatchCard
@@ -206,7 +215,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v20';
+const CACHE_NAME = 'ul-v21';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
