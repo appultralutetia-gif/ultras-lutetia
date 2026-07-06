@@ -441,6 +441,53 @@ function switchAdminBoutiqueTab(tab) {
   document.getElementById('tabAdminSticks').classList.toggle('active', tab === 'sticks');
 }
 
+// ── Sous-onglets Articles / Commandes en cours (05/07/2026, demande Remi)
+// À l'intérieur de chaque onglet Matos/Sticks de la page admin — sépare
+// la gestion du catalogue (Articles) du suivi des commandes/distributions
+// (Commandes en cours), pour ne pas tout mélanger dans un seul long scroll.
+function switchAdminMatosSubTab(tab) {
+  document.getElementById('subSectionMatosArticles').style.display = tab === 'articles' ? 'block' : 'none';
+  document.getElementById('subSectionMatosCommandes').style.display = tab === 'commandes' ? 'block' : 'none';
+  document.getElementById('subTabMatosArticles').classList.toggle('active', tab === 'articles');
+  document.getElementById('subTabMatosCommandes').classList.toggle('active', tab === 'commandes');
+}
+
+function switchAdminSticksSubTab(tab) {
+  document.getElementById('subSectionSticksArticles').style.display = tab === 'articles' ? 'block' : 'none';
+  document.getElementById('subSectionSticksCommandes').style.display = tab === 'commandes' ? 'block' : 'none';
+  document.getElementById('subTabSticksArticles').classList.toggle('active', tab === 'articles');
+  document.getElementById('subTabSticksCommandes').classList.toggle('active', tab === 'commandes');
+}
+
+// Statuts considérés "en cours" = nécessitent encore une action ou une
+// attention (paiement en attente/refusé, payé mais pas encore récupéré) —
+// à l'inverse de 'distribue'/'annulee'/'rembourse', qui sont des états
+// terminaux, du seul intérêt d'un historique.
+const STATUTS_EN_COURS = ['en_attente', 'disponible', 'precommande_validee', 'refuse'];
+
+let allCommandesAdmin = [], allDistribsAdmin = [];
+let currentFiltreCommandesAdmin = 'en_cours', currentFiltreDistribsAdmin = 'en_cours';
+
+function filtrerCommandesAdmin(mode) {
+  document.querySelectorAll('#subSectionMatosCommandes .filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  currentFiltreCommandesAdmin = mode;
+  const filtered = mode === 'en_cours'
+    ? allCommandesAdmin.filter(c => STATUTS_EN_COURS.includes(c.statut))
+    : allCommandesAdmin;
+  renderToutesCommandes(filtered);
+}
+
+function filtrerDistribsAdmin(mode) {
+  document.querySelectorAll('#subSectionSticksCommandes .filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  currentFiltreDistribsAdmin = mode;
+  const filtered = mode === 'en_cours'
+    ? allDistribsAdmin.filter(d => STATUTS_EN_COURS.includes(d.statut))
+    : allDistribsAdmin;
+  renderToutesDistribs(filtered);
+}
+
 async function loadAdminBoutique() {
   try {
     const [produits, sticks, sections] = await Promise.all([
@@ -459,11 +506,44 @@ async function loadAdminBoutique() {
       sel.value = valeurActuelle;
     }
 
-    const toutesCommandes = await UL.getAllCommandes();
-    renderToutesCommandes(toutesCommandes);
-    const toutesDistribs = await UL.getAllDistributions();
-    renderToutesDistribs(toutesDistribs);
+    allCommandesAdmin = await UL.getAllCommandes();
+    filtrerCommandesAdminSansEvent(currentFiltreCommandesAdmin);
+    allDistribsAdmin = await UL.getAllDistributions();
+    filtrerDistribsAdminSansEvent(currentFiltreDistribsAdmin);
+
+    // Badges de compteur sur les onglets "Commandes/Distributions en cours"
+    // — repère visuel rapide (sans avoir à ouvrir l'onglet) du nombre
+    // d'éléments nécessitant encore une action.
+    const nbCommandesEnCours = allCommandesAdmin.filter(c => STATUTS_EN_COURS.includes(c.statut)).length;
+    const badgeCmd = document.getElementById('badgeCommandesEnCours');
+    if (badgeCmd) {
+      badgeCmd.textContent = nbCommandesEnCours;
+      badgeCmd.style.display = nbCommandesEnCours > 0 ? 'inline-block' : 'none';
+    }
+    const nbDistribsEnCours = allDistribsAdmin.filter(d => STATUTS_EN_COURS.includes(d.statut)).length;
+    const badgeDist = document.getElementById('badgeDistribsEnCours');
+    if (badgeDist) {
+      badgeDist.textContent = nbDistribsEnCours;
+      badgeDist.style.display = nbDistribsEnCours > 0 ? 'inline-block' : 'none';
+    }
   } catch(e) { toast('Erreur chargement boutique (admin)', 'error'); }
+}
+
+// Variantes sans `event.target` (utilisées au chargement initial, où il
+// n'y a pas de clic réel) — évitent une erreur si event est undefined à
+// ce moment-là. Les boutons de filtre eux-mêmes continuent d'appeler
+// filtrerCommandesAdmin/filtrerDistribsAdmin (avec la gestion active/inactive).
+function filtrerCommandesAdminSansEvent(mode) {
+  const filtered = mode === 'en_cours'
+    ? allCommandesAdmin.filter(c => STATUTS_EN_COURS.includes(c.statut))
+    : allCommandesAdmin;
+  renderToutesCommandes(filtered);
+}
+function filtrerDistribsAdminSansEvent(mode) {
+  const filtered = mode === 'en_cours'
+    ? allDistribsAdmin.filter(d => STATUTS_EN_COURS.includes(d.statut))
+    : allDistribsAdmin;
+  renderToutesDistribs(filtered);
 }
 
 function filtrerMatosAdmin(cat) {
