@@ -549,6 +549,32 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 
 ---
 
+## 31. Modal Matchs — bouton partagé jamais réactivé après un succès (modification et confirmation bloquées après le premier succès)
+
+**Symptôme** (signalé par Remi le 05/07/2026) : cliquer sur ENREGISTRER (mode "Modifier le match") ou CONFIRMER (mode "Confirmer la date") ne faisait plus rien du tout — aucun toast, aucune erreur, même pas dans la console du navigateur. Le modal restait ouvert, figé.
+
+**Cause** : `#modalMatchsSubmitBtn` est un seul et même bouton HTML, recyclé dynamiquement entre les 3 modes du modal `modalMatchs` (Ajouter / Modifier / Confirmer la date — cf. `ouvrirModifierMatch`/`ouvrirConfirmerDate`/`annulerConfirmerDate`, tous dans `src/admin.js`). Dans `doModifierMatch()` et `doConfirmerDateMatch()`, le bouton était mis en `disabled = true` avant l'appel réseau, mais réactivé (`disabled = false`) **uniquement dans le bloc `catch`** — jamais après un succès. `doAjouterMatch()`, elle, avait toujours utilisé un bloc `finally`, d'où l'absence de bug sur ce mode précis. Résultat : la toute première modification ou confirmation réussie laissait le bouton bloqué `disabled=true` pour de bon — et un bouton HTML `disabled` ne déclenche même pas l'événement `click` du navigateur, d'où le silence total (y compris console) au clic suivant, quel que soit le mode.
+
+**Correction** : ajout d'un bloc `finally { if (btn) btn.disabled = false; }` dans les deux fonctions, qui réactive le bouton systématiquement (succès ou erreur) — le texte du bouton, lui, reste géré séparément (restauré uniquement en cas d'erreur dans `catch`, car un succès le fait déjà repasser dans un autre mode via `annulerConfirmerDate()`, qui fixe elle-même le nouveau texte).
+
+**Effet de bord retiré au passage** : un écouteur `document.getElementById('modalMatchs')?.addEventListener('ul:show', loadMatchsList)` en fin de fichier ne servait à rien — l'événement personnalisé `ul:show` n'est déclenché nulle part dans le code (`showModal()` ne l'émet jamais). Le rechargement de la liste à l'ouverture est en réalité déjà géré explicitement par le bouton d'entrée (`index.html` : `onclick="showModal('modalMatchs');loadMatchsList()"`). Ligne morte supprimée.
+
+**Fichiers concernés** : `src/admin.js` (`doModifierMatch`, `doConfirmerDateMatch`, suppression de l'écouteur mort).
+
+---
+
+## 32. `ouvrirConfirmerDate` — champs date/horaire/stade vidés au lieu d'être pré-remplis
+
+**Symptôme** (signalé par Remi le 05/07/2026, juste après la correction du bug #31) : la modification d'un match fonctionnait de nouveau, mais passer un match en statut confirmé ne fonctionnait toujours pas.
+
+**Cause** : `ouvrirConfirmerDate(matchId)` réinitialisait les champs `mDate`/`mHeure`/`mStade` à une chaîne vide au lieu de les pré-remplir avec les valeurs actuelles du match (contrairement à `ouvrirModifierMatch`, qui reçoit l'objet `match` complet et pré-remplit correctement tous les champs). Un admin cliquant directement sur "✅ Confirmer" sans ressaisir une date — en pensant confirmer celle déjà affichée dans la liste juste au-dessus — se heurtait au garde-fou `if (!date) return toast('Date requise', 'error')` de `doConfirmerDateMatch()` : la confirmation refusait silencieusement de partir tant que le champ Date restait vide, ce qui donnait l'impression que "confirmer ne marche pas".
+
+**Correction** : `ouvrirConfirmerDate` retrouve désormais le match dans `allMatchsAdmin` (même cache déjà utilisé par `ouvrirModifierMatchParId`, peuplé par `loadMatchsList`) et pré-remplit les 3 champs avec ses valeurs actuelles — l'admin n'a plus qu'à ajuster ce qui a réellement changé (souvent rien pour la date, parfois seulement l'horaire ou le stade), au lieu de tout ressaisir. `mCompGroup` est aussi explicitement masqué dans cette fonction (il pouvait rester visible si un "Modifier" avait été ouvert juste avant).
+
+**Fichiers concernés** : `src/admin.js` (`ouvrirConfirmerDate`).
+
+---
+
 - **Reproduire un bug exige parfois un état précis** (ex: un tifo où l'on n'est *pas encore* inscrit) — un test sur le mauvais état peut masquer le vrai bug derrière un comportement différent mais correct (ex: doublon d'inscription qui ressemble au bug recherché mais n'en est pas la cause).
 - **Un renommage en masse de fichiers (GitHub web, script) peut introduire un caractère invisible (espace en tête) sans qu'aucun affichage standard ne le révèle** — si toutes les requêtes vers un dossier entier renvoient 404 alors que le déploiement est confirmé réussi et le chemin visuellement correct, vérifier l'URL "Raw" d'un seul fichier individuel avant de chercher plus loin.
 - **Un fallback de Service Worker ou de routeur qui retombe sur la page d'accueil en cas d'échec réseau peut maquiller une vraie 404 en "redirection"** — si une ressource semble "rediriger vers l'app" au lieu d'afficher une erreur claire, soupçonner un `catch()`/fallback générique avant de chercher un bug applicatif.
@@ -562,3 +588,5 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 - **Ajouter un nouveau fichier JS au projet est une opération à deux endroits minimum, pas un** (`index.html` pour le `<script src>`, ET `sw.js` pour `NETWORK_FIRST`) — oublier le second produit un bug à retardement qui n'apparaît que sur un navigateur ayant déjà une version mise en cache, jamais sur le premier test en local/incognito (bug #27). Avant de considérer un nouveau fichier comme "déployé", vérifier les deux.
 - **Quand un symptôme semble correspondre exactement à un bug déjà documenté et corrigé dans une session antérieure (ici : cache Service Worker, déjà vu en #4), commencer par vérifier les causes les plus simples et antérieures (le fichier existe-t-il au bon endroit ?) avant de réappliquer le correctif déjà connu** — la vraie cause du bug #27 était une erreur d'emplacement de fichier, pas (uniquement) une lacune du Service Worker ; corriger uniquement `sw.js` aurait laissé le symptôme intact.
 - **Une erreur synchrone levée par une librairie tierce n'est jamais interceptée par un simple `.catch()` sur la valeur de retour** — seul un vrai rejet de Promise l'est. Si une fonction tierce peut échouer de façon synchrone selon l'état interne (`Html5Qrcode.stop()` si le scanner n'a jamais démarré, bug #28), l'appel doit être enveloppé dans un `try/catch` classique, le `.catch()` de la promesse ne suffisant qu'au cas où l'échec survient bien après le démarrage de l'opération asynchrone.
+- **Un bouton `disabled` pendant un appel réseau doit être réactivé dans un bloc `finally`, jamais seulement dans le `catch`** — sinon le chemin de succès laisse le bouton bloqué. Ce risque est démultiplié quand un même élément DOM est recyclé entre plusieurs modes d'un même formulaire (ex: `modalMatchsSubmitBtn` partagé entre Ajouter/Modifier/Confirmer, bug #31) : un bouton HTML disabled ne déclenche même pas l'événement `click`, donc le symptôme est un silence total, sans la moindre erreur console — le signal le plus trompeur qui soit pour diagnostiquer.
+- **Un formulaire réutilisé en mode "confirmer/valider une valeur existante" doit pré-remplir les champs avec les valeurs actuelles, jamais les vider** — sinon un garde-fou de validation légitime (`if (!champ) return`) se déclenche silencieusement dès que l'utilisateur ne ressaisit pas une valeur qu'il pensait déjà présente (bug #32). Avant d'écrire un mode "confirmation" qui réutilise un formulaire d'ajout, vérifier explicitement ce que chaque champ affiche à l'ouverture, pas seulement ce qu'il fait à la soumission.
