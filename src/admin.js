@@ -319,14 +319,27 @@ let _matchEnConfirmation = null;
 let _matchEnModification = null;
 
 function ouvrirConfirmerDate(matchId) {
+  // ⚠️ BUG CORRIGÉ (05/07/2026) : cette fonction VIDAIT les champs
+  // date/horaire/stade au lieu de les pré-remplir avec les valeurs
+  // actuelles du match. Résultat pour Remi : en cliquant directement sur
+  // "Confirmer" sans ressaisir une date (pensant confirmer celle déjà
+  // affichée dans la liste), doConfirmerDateMatch() refusait silencieusement
+  // ("Date requise") — perçu comme "la confirmation ne marche pas". On
+  // récupère maintenant le match en cache (allMatchsAdmin, déjà peuplé par
+  // loadMatchsList — même source que ouvrirModifierMatchParId) pour
+  // pré-remplir les 3 champs ; l'admin n'a plus qu'à ajuster ce qui a
+  // réellement changé (souvent rien pour la date, parfois juste l'horaire).
+  const match = allMatchsAdmin.find(m => m.id === matchId);
   _matchEnConfirmation = matchId;
+  _matchEnModification = null;
   document.getElementById('modalMatchsTitre').textContent = 'Confirmer la date du match';
   document.getElementById('modalMatchsFormLabel').textContent = 'Date / horaire / stade définitifs';
   document.getElementById('mExtGroup').style.display = 'none';
   document.getElementById('mTypeGroup').style.display = 'none';
-  document.getElementById('mDate').value = '';
-  document.getElementById('mHeure').value = '';
-  document.getElementById('mStade').value = '';
+  document.getElementById('mCompGroup').style.display = 'none'; // peut être resté visible si un "Modifier" a précédé
+  document.getElementById('mDate').value = match?.date || '';
+  document.getElementById('mHeure').value = match?.horaire ? match.horaire.slice(0,5) : '';
+  document.getElementById('mStade').value = match?.stade || '';
   const btn = document.getElementById('modalMatchsSubmitBtn');
   btn.textContent = '✅ Confirmer';
   btn.setAttribute('onclick', 'doConfirmerDateMatch()');
