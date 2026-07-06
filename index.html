@@ -454,6 +454,7 @@
     <div class="boutique-tabs-wrap">
       <button class="btn-tab active" id="tabAdminMatos" onclick="switchAdminBoutiqueTab('matos')">🛍️ Matos</button>
       <button class="btn-tab" id="tabAdminSticks" onclick="switchAdminBoutiqueTab('sticks')">🎟️ Sticks</button>
+      <button class="btn-tab" id="tabAdminGestion" onclick="switchAdminBoutiqueTab('gestion')">📋 Gestion</button>
     </div>
 
     <!-- ─ MATOS (admin) ─ -->
@@ -506,6 +507,30 @@
         </div>
         <div id="adminToutesDistribs"></div>
       </div>
+    </div>
+
+    <!-- ─ GESTION DES COMMANDES (admin, Matos + Sticks réunis) ─ -->
+    <div id="sectionAdminGestion" style="display:none;">
+      <div id="gestionFiltreType" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:8px;scrollbar-width:none;">
+        <button class="filter-btn active" onclick="filtrerTypeGestion('tous')">Tous</button>
+        <button class="filter-btn" onclick="filtrerTypeGestion('matos')">🛍️ Matos</button>
+        <button class="filter-btn" onclick="filtrerTypeGestion('stick')">🎟️ Sticks</button>
+        <button class="filter-btn" onclick="filtrerTypeGestion('precommande')">📋 Précommandes</button>
+      </div>
+      <div id="gestionFiltreStatut" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:8px;scrollbar-width:none;">
+        <button class="filter-btn active" onclick="filtrerStatutGestion('en_cours')">🧾 En cours</button>
+        <button class="filter-btn" onclick="filtrerStatutGestion('toutes')">📜 Toutes</button>
+      </div>
+      <div id="gestionVueToggle" style="display:flex;gap:6px;margin-bottom:12px;">
+        <button class="filter-btn active" onclick="toggleVueGestion('membre')">👤 Par membre</button>
+        <button class="filter-btn" onclick="toggleVueGestion('article')">📦 Par article</button>
+      </div>
+      <div id="gestionRecap" style="font-size:13px;color:var(--gris);margin-bottom:12px;"></div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button class="btn btn-secondary" style="flex:1;" onclick="exporterTelegramCommandes()">📋 Copier pour Telegram</button>
+        <button class="btn btn-secondary" style="flex:1;" onclick="exporterCsvCommandes()">📥 Exporter CSV</button>
+      </div>
+      <div id="gestionCommandesListe"></div>
     </div>
   </div>
 
