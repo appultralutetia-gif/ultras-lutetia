@@ -391,11 +391,24 @@ async function doModifierMatch() {
     if (document.getElementById('pageCalendrier')?.classList.contains('active')) loadCalendrier();
   } catch(e) {
     toast(e.message, 'error');
-    // Ce bouton change de libellé/onclick selon le mode actif (ajout,
-    // modification, confirmation de date — cf. annulerConfirmerDate) : en
-    // cas d'échec on le réactive avec le texte qu'il avait avant l'appel,
-    // pas un texte générique, car le mode courant n'a pas changé.
-    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+    // Le texte doit revenir à ce qu'il était avant l'appel (le mode actif
+    // n'a pas changé en cas d'échec) — `disabled`, lui, est désormais géré
+    // uniformément dans le `finally` ci-dessous, succès compris.
+    if (btn) btn.textContent = texteOriginal;
+  } finally {
+    // ⚠️ BUG CORRIGÉ (05/07/2026) : ce bouton n'était réactivé que dans le
+    // bloc catch (erreur) — après un succès, il restait disabled=true pour
+    // de bon. Comme modalMatchsSubmitBtn est le MÊME bouton réutilisé pour
+    // les 3 modes (ajouter/modifier/confirmer, cf. annulerConfirmerDate),
+    // la première modification ou confirmation réussie bloquait tout le
+    // modal Matchs ensuite — un bouton disabled ne déclenche même pas
+    // l'événement 'click', d'où un silence total (aucune erreur console)
+    // signalé par Remi. Sur succès, annulerConfirmerDate() remet bien le
+    // texte du bouton à '+ Ajouter' mais ne touchait jamais `disabled` —
+    // ce `finally` corrige les deux causes en une fois (comme
+    // doAjouterMatch, qui n'avait jamais eu ce bug grâce à son propre
+    // finally déjà présent).
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -433,7 +446,11 @@ async function doConfirmerDateMatch() {
     if (document.getElementById('pageCalendrier')?.classList.contains('active')) loadCalendrier();
   } catch(e) {
     toast(e.message || 'Impossible de confirmer la date', 'error');
-    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+    if (btn) btn.textContent = texteOriginal;
+  } finally {
+    // Même bug/correctif que doModifierMatch ci-dessus — bouton partagé,
+    // jamais réactivé sur succès avant le 05/07/2026.
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -452,7 +469,12 @@ async function doSupprimerMatch(id) {
   try { await UL.deleteMatch(id); toast('Match supprimé', 'success'); loadMatchsList(); }
   catch(e) { toast(e.message || 'Impossible de supprimer ce match', 'error'); }
 }
-document.getElementById('modalMatchs')?.addEventListener('ul:show', loadMatchsList);
+// Note : le rechargement de la liste à l'ouverture du modal est déjà géré
+// explicitement par le bouton d'entrée ("⚽ Gérer le calendrier", index.html
+// : onclick="showModal('modalMatchs');loadMatchsList()") — un ancien
+// écouteur sur un événement personnalisé 'ul:show' vivait ici mais n'était
+// déclenché nulle part dans le code (showModal() ne l'émet jamais),
+// c'était donc du code mort, retiré le 05/07/2026.
 
 // ─── DEMANDES ADMIN (page dédiée) ────────────────────────────
 async function loadDemandesAdmin() {
