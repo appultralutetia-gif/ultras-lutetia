@@ -1230,6 +1230,48 @@ async function passerCommande(produitId, taille, quantite = 1) {
   return commande;
 }
 
+// Achat Cash enregistré par un admin AU NOM d'un membre (nouveau, 05/07/2026
+// — bouton "💵 Cash" de la page Admin "Gérer la boutique matos"), même
+// principe que distribuerStickAdmin pour les Sticks : le paiement étant
+// déjà encaissé sur-le-champ par l'admin, la commande part directement en
+// 'disponible' (pas de 'en_attente') — reste à confirmer le retrait par
+// scan QR (cf. scan.js, contexte 'matos') ou par le bouton manuel de
+// filet de secours. Cash réservé aux articles en mode 'stock' (même règle
+// que passerCommande).
+async function distribuerProduitAdmin(produitId, membreId, taille, quantite = 1) {
+  const produit = await getProduitById(produitId);
+  if (!produit) throw new Error('Article introuvable');
+  if (produit.mode === 'precommande') {
+    throw new Error('Le paiement Cash n\'est pas disponible pour une précommande — utilise HelloAsso');
+  }
+  if (produit.quota_par_membre) {
+    const { data: dejaCommande } = await sb.from('commandes')
+      .select('commande_items(quantite)')
+      .eq('membre_id', membreId)
+      .in('statut', ['en_attente', 'disponible', 'precommande_validee', 'distribue']);
+    const totalDeja = (dejaCommande || [])
+      .flatMap(c => c.commande_items || [])
+      .reduce((sum, i) => sum + (i.quantite || 0), 0);
+    if (totalDeja + quantite > produit.quota_par_membre) {
+      throw new Error(`Quota dépassé pour ce membre (max ${produit.quota_par_membre})`);
+    }
+  }
+  const { data: commande, error } = await sb.from('commandes').insert({
+    membre_id: membreId,
+    total: produit.prix * quantite,
+    statut: 'disponible',
+    mode_paiement: 'cash',
+  }).select().single();
+  if (error) throw error;
+  await sb.from('commande_items').insert({
+    commande_id: commande.id,
+    produit_id: produitId,
+    quantite,
+    taille: taille || null,
+    prix_unitaire: produit.prix,
+  });
+  return commande;
+}
 // Commande HelloAsso — délègue entièrement à l'Edge Function (elle crée
 // la commande + commande_item côté serveur, contrairement à passerCommande
 // qui le fait ici). Retourne { redirectUrl } pour que le front redirige.
@@ -1259,16 +1301,24 @@ async function getAllCommandes() {
 }
 
 async function updateCommandeStatut(commandeId, statut) {
-  // Décrémentation du stock à la toute première sortie de 'en_attente'
-  // (paiement confirmé, cash ou HelloAsso) — que la destination soit
-  // 'disponible' (stock) ou 'precommande_validee' (précommande, réservée
-  // au moment du paiement même si pas encore reçue) — jamais répétée
-  // ensuite (annulee/refuse/rembourse compris, cf. condition ci-dessous).
-  if (statut === 'disponible' || statut === 'precommande_validee') {
+  // ⚠️ BUG CORRIGÉ (05/07/2026) : la décrémentation se faisait ici à la
+  // transition en_attente→disponible/precommande_validee — ce qui
+  // fonctionnait pour le Cash (confirmé côté client via
+  // confirmerPaiementCashCommande, qui appelle bien cette fonction JS),
+  // mais JAMAIS pour HelloAsso : la confirmation de paiement HelloAsso
+  // passe par l'Edge Function helloasso-webhook, du code Deno serveur
+  // totalement séparé qui ne peut pas appeler cette fonction JS — un
+  // achat Matos payé en HelloAsso ne décrémentait donc jamais le stock.
+  // Déplacé sur la transition vers 'distribue' (déclenchée uniquement par
+  // le scan ou la confirmation manuelle admin, toujours côté client quel
+  // que soit le mode de paiement d'origine) — unifié avec le
+  // comportement déjà correct de Sticks (validerPaiementStick décrémente
+  // au même moment, cf. supabase-client.js).
+  if (statut === 'distribue') {
     const { data: commandeActuelle } = await sb.from('commandes')
       .select('statut, commande_items(produit_id, quantite)')
       .eq('id', commandeId).single();
-    if (commandeActuelle && commandeActuelle.statut === 'en_attente') {
+    if (commandeActuelle && commandeActuelle.statut !== 'distribue') {
       for (const item of commandeActuelle.commande_items || []) {
         const { data: produit } = await sb.from('produits')
           .select('stock').eq('id', item.produit_id).single();
@@ -1867,7 +1917,7 @@ window.UL = {
   getStats, getMesStats,
   // Matos
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
-  passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande,
+  passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande, distribuerProduitAdmin,
   getMesCommandes, getAllCommandes, updateCommandeStatut,
   // Sticks
   getSticks, getStickById, createStick, updateStick, getMonQuotaStick,
