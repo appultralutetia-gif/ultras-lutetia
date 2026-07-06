@@ -575,6 +575,22 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 
 ---
 
+## 33. Décrémentation du stock Matos jamais déclenchée pour un paiement HelloAsso
+
+**Contexte** : trouvé le 05/07/2026 en modifiant `updateCommandeStatut()` (supabase-client.js) pour ajouter le bouton Cash admin sur Matos — pas un bug signalé par un test utilisateur, mais une relecture qui a révélé un trou resté invisible depuis la restructuration Matos/Sticks du même jour.
+
+**Cause** : la décrémentation du stock se faisait dans `updateCommandeStatut()` (fonction JS, `supabase-client.js`), déclenchée à la transition `en_attente` → `disponible`/`precommande_validee`. Pour un paiement **Cash**, cette transition est bien déclenchée côté client (`confirmerPaiementCashCommande`, qui appelle `updateCommandeStatut`) — la décrémentation fonctionnait donc pour ce mode. Mais pour un paiement **HelloAsso**, cette même transition est déclenchée par l'Edge Function `helloasso-webhook` — du code Deno qui tourne côté serveur, entièrement séparé du bundle JS front, et qui ne peut évidemment pas appeler une fonction JS du navigateur. Le webhook écrivait directement le nouveau statut en base sans jamais passer par `updateCommandeStatut()` — la décrémentation ne se déclenchait donc **jamais** pour un achat Matos payé en HelloAsso.
+
+**Pourquoi Sticks n'avait pas ce bug** : `validerPaiementStick()` (la fonction qui décrémente le stock des sticks) est appelée à la confirmation de remise (scan ou bouton manuel) — un moment qui est **toujours** côté client, quel que soit le mode de paiement d'origine. Matos, lui, décrémentait plus tôt dans le cycle (au paiement, pas à la remise), un moment qui n'est côté client que pour le Cash.
+
+**Correction** : décrémentation déplacée sur la transition vers `'distribue'` (confirmation de retrait, scan ou bouton manuel — cf. `doConfirmerRetraitMatos`, scan.js) — unifié avec le comportement de Sticks, correct quel que soit le mode de paiement.
+
+**Point de vigilance pour la suite** : toute logique métier qui doit se déclencher "au paiement confirmé" doit être vérifiée pour les DEUX chemins de confirmation (webhook serveur ET action admin cliente) dès qu'un module a un flux de paiement HelloAsso automatisé — une fonction JS seule ne peut jamais couvrir le chemin webhook.
+
+**Fichiers concernés** : `src/supabase-client.js` (`updateCommandeStatut`).
+
+---
+
 - **Reproduire un bug exige parfois un état précis** (ex: un tifo où l'on n'est *pas encore* inscrit) — un test sur le mauvais état peut masquer le vrai bug derrière un comportement différent mais correct (ex: doublon d'inscription qui ressemble au bug recherché mais n'en est pas la cause).
 - **Un renommage en masse de fichiers (GitHub web, script) peut introduire un caractère invisible (espace en tête) sans qu'aucun affichage standard ne le révèle** — si toutes les requêtes vers un dossier entier renvoient 404 alors que le déploiement est confirmé réussi et le chemin visuellement correct, vérifier l'URL "Raw" d'un seul fichier individuel avant de chercher plus loin.
 - **Un fallback de Service Worker ou de routeur qui retombe sur la page d'accueil en cas d'échec réseau peut maquiller une vraie 404 en "redirection"** — si une ressource semble "rediriger vers l'app" au lieu d'afficher une erreur claire, soupçonner un `catch()`/fallback générique avant de chercher un bug applicatif.
