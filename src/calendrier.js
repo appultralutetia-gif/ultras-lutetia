@@ -100,7 +100,8 @@ function renderMatchCard(match, membre) {
   const saisieScore = isPasse && isBureau(membre) && !score
     ? `<button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="saisirScore('${match.id}')">⚽ Saisir le score</button>` : '';
   const statutDateBadge = match.statut_date === 'a_confirmer'
-    ? '<span class="badge badge-orange" style="font-size:10px;">⏳ Date à confirmer</span>' : '';
+    ? '<span class="badge badge-orange" style="font-size:10px;">⏳ Date à confirmer</span>'
+    : '<span class="badge badge-vert" style="font-size:10px;">✅ Date confirmée</span>';
   const confirmerBtn = isBureau(membre) && match.statut_date === 'a_confirmer'
     ? `<button class="btn btn-sm btn-success" style="margin-top:8px;" onclick="ouvrirConfirmerDate('${match.id}')">✅ Confirmer la date</button>` : '';
   // Accès direct au déplacement organisé pour ce match, s'il existe — rien
@@ -122,7 +123,7 @@ function renderMatchCard(match, membre) {
     ? `<img src="${esc(url)}" style="width:44px;height:44px;object-fit:contain;" onerror="this.outerHTML='<div style=&quot;width:44px;height:44px;background:var(--surface);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;&quot;>⚽</div>'">`
     : '<div style="width:44px;height:44px;background:var(--surface);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">⚽</div>';
 
-  return `<div class="card" style="margin-bottom:10px;${match.statut_date==='a_confirmer'?'border-left:3px solid #F59E0B;':''}">
+  return `<div class="card" style="margin-bottom:10px;border-left:3px solid ${match.statut_date==='a_confirmer'?'#F59E0B':'#10B981'};">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
       <span style="font-size:11px;color:var(--gris);">${match.journee ? 'J'+match.journee+' · ' : ''}${date}${heure ? ' · '+heure : ''}</span>
       ${typeLabel}
