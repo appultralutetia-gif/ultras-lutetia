@@ -102,8 +102,9 @@ function renderMatchCard(match, membre) {
   const statutDateBadge = match.statut_date === 'a_confirmer'
     ? '<span class="badge badge-orange" style="font-size:10px;">⏳ Date à confirmer</span>'
     : '<span class="badge badge-vert" style="font-size:10px;">✅ Date confirmée</span>';
-  const confirmerBtn = isBureau(membre) && match.statut_date === 'a_confirmer'
-    ? `<button class="btn btn-sm btn-success" style="margin-top:8px;" onclick="ouvrirConfirmerDate('${match.id}')">✅ Confirmer la date</button>` : '';
+  // Note : le bouton "Confirmer la date" a été retiré d'ici le 05/07/2026
+  // (cf. commentaire plus haut) — plus de variable confirmerBtn, la
+  // confirmation ne se fait plus que depuis Admin → "Gérer le calendrier".
   // Accès direct au déplacement organisé pour ce match, s'il existe — rien
   // n'est affiché si aucun déplacement n'a encore été créé (cf. décision
   // produit : pas de bruit visuel pour signaler l'absence de déplacement).
@@ -147,7 +148,6 @@ function renderMatchCard(match, membre) {
       ${statutDateBadge}
     </div>
     ${saisieScore}
-    ${confirmerBtn}
     ${deplBtn}
   </div>`;
 }
