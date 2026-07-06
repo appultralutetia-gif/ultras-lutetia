@@ -1,6 +1,38 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v21
+// ULTRAS LUTETIA — Service Worker v22
 // ============================================================
+//
+// v22 (05/07/2026) : CACHE_NAME bumpé (v21 → v22) suite à une demande de
+// Remi — séparation complète de la Boutique membre et de sa gestion admin :
+// (1) nouvelle page indépendante pageAdminBoutique (Admin → "Gérer la
+// boutique matos/sticks"), avec ses propres onglets Matos/Sticks, listant
+// les articles SANS bouton d'achat mais AVEC tous les boutons de gestion
+// (Modifier, Stock, Photo, Archiver, 💵 Cash) + les sections "Toutes les
+// commandes"/"Historique distributions" (déménagées depuis pageBoutique) ;
+// (2) la page Boutique du bottom nav (renderMatos/renderSticks) ne montre
+// plus JAMAIS ces boutons de gestion, quel que soit le rôle du membre —
+// uniquement Commander/HelloAsso ; (3) nouveau bouton "💵 Cash" pour Matos
+// (n'existait pas avant, seul Sticks l'avait) — distribuerProduitAdmin,
+// même principe que distribuerStickAdmin ; (4) sélecteur de taille
+// (modal Commander membre) : boutons cliquables remplacés par un <select>
+// natif ; (5) le bouton HelloAsso Sticks n'ouvre plus la modal Cash côté
+// membre — Cash retiré de la boutique Sticks (déjà fait pour Matos qui ne
+// l'avait jamais eu côté membre).
+//
+// ⚠️ Bug corrigé au passage (sans rapport direct avec la demande, trouvé
+// en modifiant updateCommandeStatut) : la décrémentation de stock Matos ne
+// se déclenchait que via cette fonction JS (updateCommandeStatut), jamais
+// appelée par le webhook HelloAsso (code Deno serveur séparé) — un achat
+// Matos payé en HelloAsso ne décrémentait donc jamais le stock. Déplacé
+// sur la transition vers 'distribue' (scan/confirmation manuelle,
+// toujours côté client) pour unifier avec le comportement déjà correct de
+// Sticks. Cf. BUGS.md #33.
+//
+// Fichiers modifiés : index.html (nouvelle page + modal modalCashMatos),
+// src/app.js (routage lazy-load pageAdminBoutique), src/boutique.js
+// (fonctions admin séparées, décrémentation stock, select taille),
+// src/supabase-client.js (distribuerProduitAdmin, updateCommandeStatut) —
+// tous déjà en NETWORK_FIRST.
 //
 // v21 (05/07/2026) : CACHE_NAME bumpé (v20 → v21) suite à une demande de
 // Remi — retrait du bouton "✅ Confirmer la date" de renderMatchCard
@@ -215,7 +247,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v21';
+const CACHE_NAME = 'ul-v22';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
