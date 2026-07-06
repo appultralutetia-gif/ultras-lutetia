@@ -1,6 +1,24 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v24
+// ULTRAS LUTETIA — Service Worker v25
 // ============================================================
+//
+// v25 (05/07/2026) : CACHE_NAME bumpé (v24 → v25) suite à une demande de
+// Remi — nouvel onglet top-level "📋 Gestion" dans pageAdminBoutique, qui
+// réunit Matos ET Sticks (contrairement aux onglets "Commandes en cours"
+// propres à chaque catalogue) pour préparer une session de distribution :
+// - 2 vues : "👤 Par membre" (composer les colis) et "📦 Par article"
+//   (liste de picking, quantités totales à sortir du stock)
+// - Filtre "📋 Précommandes" dédié (basé sur le `mode` de l'article, pas
+//   seulement le statut — reste identifiable même après réception)
+// - Export "📋 Copier pour Telegram" (texte prêt à coller, format suivant
+//   la vue active) et "📥 Exporter CSV" (détail complet, colonne Mode
+//   incluse pour filtrer les précommandes dans un tableur)
+// Nécessite le champ `mode` du produit/stick dans getAllCommandes/
+// getAllDistributions (ajouté au select) et le prix du stick (absent
+// jusqu'ici de getAllDistributions). Fichiers modifiés : index.html
+// (onglet + section Gestion), src/boutique.js (construireCommandesUnifiees
+// et toute la logique de filtre/vue/export), src/supabase-client.js
+// (selects étendus) — tous déjà en NETWORK_FIRST.
 //
 // v24 (05/07/2026) : CACHE_NAME bumpé (v23 → v24) — complément à la v23 :
 // les badges de compteur sur les onglets "🧾 Commandes en cours" existaient
@@ -268,7 +286,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v24';
+const CACHE_NAME = 'ul-v25';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
