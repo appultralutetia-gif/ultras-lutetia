@@ -1,6 +1,13 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v18
+// ULTRAS LUTETIA — Service Worker v19
 // ============================================================
+//
+// v19 (05/07/2026) : CACHE_NAME bumpé (v18 → v19) suite à une demande de
+// Remi — badge "✅ Date confirmée" (vert) ajouté à côté du badge existant
+// "⏳ Date à confirmer" (orange) sur la carte match du calendrier, et
+// liseret gauche vert (au lieu de transparent) pour les matchs confirmés,
+// symétrique au liseret orange déjà existant pour "à confirmer". Fichier
+// modifié : src/calendrier.js (renderMatchCard), déjà en NETWORK_FIRST.
 //
 // v18 (05/07/2026) : CACHE_NAME bumpé (v17 → v18) suite à un second bug
 // signalé par Remi juste après le correctif v17 — la modification d'un
@@ -189,7 +196,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v18';
+const CACHE_NAME = 'ul-v19';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
