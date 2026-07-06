@@ -1,6 +1,22 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v16
+// ULTRAS LUTETIA — Service Worker v17
 // ============================================================
+//
+// v17 (05/07/2026) : CACHE_NAME bumpé (v16 → v17) suite à un bug bloquant
+// signalé par Remi — modification et confirmation de date d'un match ne
+// faisaient plus rien du tout (aucun toast, silence total, y compris en
+// console). Cause : dans doModifierMatch() et doConfirmerDateMatch()
+// (src/admin.js), le bouton #modalMatchsSubmitBtn n'était réactivé
+// (disabled=false) que dans le bloc catch (erreur) — jamais après un
+// succès. Comme ce bouton est partagé entre les 3 modes du modal
+// (ajouter/modifier/confirmer, cf. annulerConfirmerDate), la première
+// modification ou confirmation réussie le bloquait disabled=true pour de
+// bon ; un bouton disabled ne déclenche même pas l'événement 'click',
+// d'où le silence total au clic. Corrigé avec un bloc finally (même
+// principe que doAjouterMatch, qui n'avait jamais eu ce bug). Retiré au
+// passage un écouteur mort sur un événement 'ul:show' jamais déclenché
+// nulle part dans le code. Fichier modifié : src/admin.js, déjà en
+// NETWORK_FIRST.
 //
 // v16 (05/07/2026) : CACHE_NAME bumpé (v15 → v16) suite à l'ajout d'un
 // sélecteur de quantité avant paiement, pour Matos (dans la modal
@@ -162,7 +178,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v16';
+const CACHE_NAME = 'ul-v17';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
