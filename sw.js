@@ -1,6 +1,17 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v17
+// ULTRAS LUTETIA — Service Worker v18
 // ============================================================
+//
+// v18 (05/07/2026) : CACHE_NAME bumpé (v17 → v18) suite à un second bug
+// signalé par Remi juste après le correctif v17 — la modification d'un
+// match remarchait, mais toujours pas la confirmation de date. Cause :
+// ouvrirConfirmerDate() (src/admin.js) vidait les champs date/horaire/
+// stade au lieu de les pré-remplir avec les valeurs actuelles du match —
+// cliquer directement sur "Confirmer" sans ressaisir une date se heurtait
+// silencieusement au garde-fou "Date requise" de doConfirmerDateMatch().
+// Corrigé en pré-remplissant les 3 champs depuis allMatchsAdmin (même
+// cache que ouvrirModifierMatchParId). Bugs #31 et #32 consignés dans
+// BUGS.md. Fichier modifié : src/admin.js, déjà en NETWORK_FIRST.
 //
 // v17 (05/07/2026) : CACHE_NAME bumpé (v16 → v17) suite à un bug bloquant
 // signalé par Remi — modification et confirmation de date d'un match ne
@@ -178,7 +189,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v17';
+const CACHE_NAME = 'ul-v18';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
