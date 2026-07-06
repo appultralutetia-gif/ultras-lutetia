@@ -458,28 +458,54 @@
 
     <!-- ─ MATOS (admin) ─ -->
     <div id="sectionAdminMatos">
-      <button class="btn btn-primary" style="width:100%;margin-bottom:12px;" onclick="reinitialiserFormulaireProduit();showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
-      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;scrollbar-width:none;">
-        <button class="filter-btn active" onclick="filtrerMatosAdmin('tous')">Tous</button>
-        <button class="filter-btn" onclick="filtrerMatosAdmin('textile')">Textile</button>
-        <button class="filter-btn" onclick="filtrerMatosAdmin('accessoire')">Accessoire</button>
+      <div class="boutique-tabs-wrap" style="margin-bottom:12px;">
+        <button class="btn-tab active" id="subTabMatosArticles" onclick="switchAdminMatosSubTab('articles')">📦 Articles</button>
+        <button class="btn-tab" id="subTabMatosCommandes" onclick="switchAdminMatosSubTab('commandes')">🧾 Commandes en cours <span id="badgeCommandesEnCours" class="badge badge-orange" style="display:none;"></span></button>
       </div>
-      <div id="adminMatosCatalogue"></div>
-      <div class="section-title" style="margin-top:20px;">⚙️ Toutes les commandes</div>
-      <div id="adminToutesCommandes"></div>
+
+      <div id="subSectionMatosArticles">
+        <button class="btn btn-primary" style="width:100%;margin-bottom:12px;" onclick="reinitialiserFormulaireProduit();showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
+        <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;scrollbar-width:none;">
+          <button class="filter-btn active" onclick="filtrerMatosAdmin('tous')">Tous</button>
+          <button class="filter-btn" onclick="filtrerMatosAdmin('textile')">Textile</button>
+          <button class="filter-btn" onclick="filtrerMatosAdmin('accessoire')">Accessoire</button>
+        </div>
+        <div id="adminMatosCatalogue"></div>
+      </div>
+
+      <div id="subSectionMatosCommandes" style="display:none;">
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          <button class="filter-btn active" onclick="filtrerCommandesAdmin('en_cours')">🧾 En cours</button>
+          <button class="filter-btn" onclick="filtrerCommandesAdmin('toutes')">📜 Toutes</button>
+        </div>
+        <div id="adminToutesCommandes"></div>
+      </div>
     </div>
 
     <!-- ─ STICKS (admin) ─ -->
     <div id="sectionAdminSticks" style="display:none;">
-      <button class="btn btn-primary" style="width:100%;margin-bottom:12px;" onclick="reinitialiserFormulaireStick();showModal('modalCreerStick');loadSectionsForModalStick()">+ Ajouter un stick</button>
-      <div style="margin-bottom:12px;">
-        <select id="filtreAdminSticksSection" onchange="filtrerSticksAdminSection(this.value)" style="background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;">
-          <option value="">Toutes sections</option>
-        </select>
+      <div class="boutique-tabs-wrap" style="margin-bottom:12px;">
+        <button class="btn-tab active" id="subTabSticksArticles" onclick="switchAdminSticksSubTab('articles')">🎟️ Articles</button>
+        <button class="btn-tab" id="subTabSticksCommandes" onclick="switchAdminSticksSubTab('commandes')">🧾 Commandes en cours <span id="badgeDistribsEnCours" class="badge badge-orange" style="display:none;"></span></button>
       </div>
-      <div id="adminSticksCatalogue"></div>
-      <div class="section-title" style="margin-top:20px;">⚙️ Historique distributions</div>
-      <div id="adminToutesDistribs"></div>
+
+      <div id="subSectionSticksArticles">
+        <button class="btn btn-primary" style="width:100%;margin-bottom:12px;" onclick="reinitialiserFormulaireStick();showModal('modalCreerStick');loadSectionsForModalStick()">+ Ajouter un stick</button>
+        <div style="margin-bottom:12px;">
+          <select id="filtreAdminSticksSection" onchange="filtrerSticksAdminSection(this.value)" style="background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;">
+            <option value="">Toutes sections</option>
+          </select>
+        </div>
+        <div id="adminSticksCatalogue"></div>
+      </div>
+
+      <div id="subSectionSticksCommandes" style="display:none;">
+        <div style="display:flex;gap:6px;margin-bottom:12px;">
+          <button class="filter-btn active" onclick="filtrerDistribsAdmin('en_cours')">🧾 En cours</button>
+          <button class="filter-btn" onclick="filtrerDistribsAdmin('toutes')">📜 Toutes</button>
+        </div>
+        <div id="adminToutesDistribs"></div>
+      </div>
     </div>
   </div>
 
