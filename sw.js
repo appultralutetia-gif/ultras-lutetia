@@ -1,6 +1,27 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v22
+// ULTRAS LUTETIA — Service Worker v24
 // ============================================================
+//
+// v24 (05/07/2026) : CACHE_NAME bumpé (v23 → v24) — complément à la v23 :
+// les badges de compteur sur les onglets "🧾 Commandes en cours" existaient
+// dans l'intention mais n'étaient ni présents dans le HTML ni alimentés
+// côté JS. Ajout des <span> badgeCommandesEnCours/badgeDistribsEnCours
+// (index.html) + calcul et affichage du nombre d'éléments "en cours" dans
+// loadAdminBoutique (src/boutique.js), masqué si 0. Fichiers modifiés :
+// index.html, src/boutique.js, déjà en NETWORK_FIRST.
+//
+// v23 (05/07/2026) : CACHE_NAME bumpé (v22 → v23) suite à une demande de
+// Remi — ajout d'un sous-onglet "🧾 Commandes en cours" dans la page
+// pageAdminBoutique, pour Matos ET Sticks (jusqu'ici tout était mélangé
+// dans un seul long scroll : catalogue + historique complet). Chaque
+// onglet Matos/Sticks admin a désormais 2 sous-onglets : "📦/🎟️ Articles"
+// (gestion catalogue, inchangé) et "🧾 Commandes en cours" — celui-ci
+// filtre par défaut sur les statuts nécessitant encore une action
+// (en_attente, disponible, precommande_validee, refuse), avec un bouton
+// "📜 Toutes" pour voir aussi l'historique complet (distribue/annulee/
+// rembourse compris). Fichiers modifiés : index.html (sous-onglets),
+// src/boutique.js (switchAdminMatosSubTab/switchAdminSticksSubTab,
+// filtrerCommandesAdmin/filtrerDistribsAdmin) — déjà en NETWORK_FIRST.
 //
 // v22 (05/07/2026) : CACHE_NAME bumpé (v21 → v22) suite à une demande de
 // Remi — séparation complète de la Boutique membre et de sa gestion admin :
@@ -247,7 +268,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v22';
+const CACHE_NAME = 'ul-v24';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
