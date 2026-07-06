@@ -5,14 +5,13 @@ let currentFiltresMatos = 'tous', currentFiltresSticks = 'tous', currentFiltresC
 
 async function loadBoutique() {
   const m = UL.getCurrentMembre();
-  // Afficher boutons admin
-  if (hasCelluleMatos(m)) {
-    document.getElementById('btnAddProduit').style.display = 'block';
-    document.getElementById('toutesCommandesSection').style.display = 'block';
-  }
-  if (hasCelluleSticks(m)) {
-    document.getElementById('toutesDistribsSection').style.display = 'block';
-  }
+  // Note (05/07/2026) : les actions d'admin (Ajouter un article/stick,
+  // Modifier, Stock, Photo, Archiver, Cash, Toutes les commandes,
+  // Historique distributions) ont été retirées de cette page — elles
+  // vivent désormais uniquement dans la page dédiée pageAdminBoutique
+  // (cf. loadAdminBoutique), accessible via Admin → "Gérer la boutique
+  // matos/sticks". Cette page (bottom nav "Boutique") reste 100% côté
+  // membre : parcourir le catalogue et acheter, rien d'autre.
   if (isBureau(m)) {
     document.getElementById('adminCotisationSection').style.display = 'block';
   }
@@ -38,10 +37,6 @@ async function loadMatos() {
     renderMatos(allProduits);
     const commandes = await UL.getMesCommandes();
     renderMesCommandes(commandes);
-    if (isCellule(UL.getCurrentMembre())) {
-      const toutes = await UL.getAllCommandes();
-      renderToutesCommandes(toutes);
-    }
   } catch(e) { toast('Erreur chargement matos', 'error'); }
 }
 
@@ -80,13 +75,6 @@ function renderMatos(produits) {
         <button class="btn btn-sm btn-primary" style="margin-top:10px;" onclick="openCommander('${p.id}')">
           ${p.mode === 'precommande' ? '📋 Précommander' : '🛒 Commander'}
         </button>` : ''}
-        ${hasCelluleMatos(UL.getCurrentMembre()) ? `
-        <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;">
-          <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierProduit('${p.id}')">✏️ Modifier</button>
-          <button class="btn btn-sm btn-secondary" onclick="modifierStock('${p.id}','${esc(p.nom)}',${p.stock})">📦 Stock</button>
-          <button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${p.id}','matos')">🖼️ Photo</button>
-          <button class="btn btn-sm btn-danger" onclick="doArchiverProduit('${p.id}')">Archiver</button>
-        </div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -103,20 +91,15 @@ async function openCommander(produitId) {
     _produitCommandeCourant = p;
     const icones = { textile:'👕', accessoire:'🎒' };
 
-    // Section tailles — boutons cliquables
+    // Section tailles — menu déroulant (05/07/2026, demande Remi ; boutons
+    // cliquables remplacés par un <select>, plus rapide sur mobile et plus
+    // cohérent avec le reste des formulaires de l'app).
     const taillesHtml = p.avec_tailles ? `
       <div class="form-group">
         <label>Taille</label>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;" id="taillesContainer">
-          ${['XS','S','M','L','XL','XXL'].map((t,i) => `
-            <button type="button"
-              class="taille-btn ${i===2?'active':''}"
-              onclick="selectTaille('${t}')"
-              data-taille="${t}">
-              ${t}
-            </button>`).join('')}
-        </div>
-        <input type="hidden" id="cmdTaille" value="M">
+        <select id="cmdTaille">
+          ${['XS','S','M','L','XL','XXL'].map(t => `<option value="${t}" ${t==='M'?'selected':''}>${t}</option>`).join('')}
+        </select>
       </div>` : '';
 
     document.getElementById('modalCommanderContent').innerHTML = `
@@ -175,11 +158,9 @@ function changerQuantiteCommande(delta) {
   affichage.textContent = nouvelle;
 }
 
-function selectTaille(taille) {
-  document.querySelectorAll('.taille-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll(`.taille-btn[data-taille="${taille}"]`).forEach(b => b.classList.add('active'));
-  document.getElementById('cmdTaille').value = taille;
-}
+// Note : selectTaille() a été retirée le 05/07/2026 — le sélecteur de
+// taille est désormais un <select> natif (cf. taillesHtml, openCommander),
+// qui n'a besoin d'aucun gestionnaire de clic dédié.
 
 async function doCommander(produitId, avecTailles = false) {
   const taille = avecTailles ? (document.getElementById('cmdTaille')?.value || null) : null;
@@ -244,7 +225,7 @@ function doReessayerCommande(produitId) {
 }
 
 function renderToutesCommandes(commandes) {
-  const el = document.getElementById('toutesCommandes');
+  const el = document.getElementById('adminToutesCommandes');
   if (!commandes.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune commande</p>'; return; }
   const statuts = { en_attente:'⏳', precommande_validee:'📋', disponible:'✅', distribue:'✔️', refuse:'❌', annulee:'❌' };
   el.innerHTML = commandes.map(c => `
@@ -268,12 +249,12 @@ async function changerStatutCommande(id, statut) {
   // Confirmation demandée uniquement pour l'annulation — la confirmation
   // cash est une étape normale du suivi, pas une action à risque.
   if (statut === 'annulee' && !confirm('Annuler cette commande ?')) return;
-  try { await UL.updateCommandeStatut(id, statut); toast('Commande mise à jour ✅', 'success'); loadMatos(); }
+  try { await UL.updateCommandeStatut(id, statut); toast('Commande mise à jour ✅', 'success'); loadAdminBoutique(); }
   catch(e) { toast('Impossible de modifier le statut de la commande', 'error'); }
 }
 
 async function doReceptionnerCommande(id) {
-  try { await UL.receptionnerCommande(id); toast('Commande marquée reçue — disponible au retrait ✅', 'success'); loadMatos(); }
+  try { await UL.receptionnerCommande(id); toast('Commande marquée reçue — disponible au retrait ✅', 'success'); loadAdminBoutique(); }
   catch(e) { toast('Impossible de marquer cette commande reçue', 'error'); }
 }
 
@@ -285,13 +266,13 @@ Nouveau stock pour "${nom}" :`, stockActuel);
   try {
     await UL.updateProduit(id, { stock: parseInt(nouveau) });
     toast('Stock mis à jour ✅', 'success');
-    loadMatos();
+    loadAdminBoutique();
   } catch(e) { toast(e.message || 'Une erreur est survenue', 'error'); }
 }
 
 async function doArchiverProduit(id) {
   if (!confirm('Archiver cet article ?')) return;
-  try { await UL.archiverProduit(id); toast('Article archivé', 'success'); loadMatos(); }
+  try { await UL.archiverProduit(id); toast('Article archivé', 'success'); loadAdminBoutique(); }
   catch(e) { toast('Impossible d\'archiver cet article', 'error'); }
 }
 
@@ -305,11 +286,6 @@ async function loadSticks() {
     appliquerFiltresSticks();
     const mesSticks = await UL.getMesSticks();
     renderMesSticks(mesSticks);
-    if (hasCelluleSticks(UL.getCurrentMembre())) {
-      const distribs = await UL.getAllDistributions();
-      renderToutesDistribs(distribs);
-      await loadDistribuerModal();
-    }
   } catch(e) { toast('Erreur chargement sticks', 'error'); }
 }
 
@@ -349,8 +325,6 @@ function appliquerFiltresSticks() {
 
 function renderSticks(sticks) {
   const el = document.getElementById('sticksCatalogue');
-  const m = UL.getCurrentMembre();
-  const peutEncaisser = hasCelluleSticks(m);
   if (!sticks.length) { el.innerHTML = '<div class="empty-state"><div>🎟️</div>Aucun stick disponible</div>'; return; }
   el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">` +
   sticks.map(s => `
@@ -366,11 +340,7 @@ function renderSticks(sticks) {
       </div>
       ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
       <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">
-        ${s.stock > 0 || s.mode === 'precommande' ? `
-        ${s.prix > 0 ? `<button class="btn btn-sm btn-primary" style="width:100%;" onclick="ouvrirCommanderStick('${s.id}')">💳 HelloAsso</button>` : ''}
-        ${peutEncaisser && s.mode !== 'precommande' ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirCashStick('${s.id}','${esc(s.nom)}')">Cash</button>` : ''}` : ''}
-        ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="ouvrirModifierStick('${s.id}')">✏️ Modifier</button>` : ''}
-        ${peutEncaisser ? `<button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${s.id}','stick')">🖼️</button>` : ''}
+        ${(s.stock > 0 || s.mode === 'precommande') && s.prix > 0 ? `<button class="btn btn-sm btn-primary" style="width:100%;" onclick="ouvrirCommanderStick('${s.id}')">💳 HelloAsso</button>` : ''}
       </div>
     </div>`).join('') + `</div>`;
 }
@@ -450,6 +420,184 @@ async function doCommanderStickHelloAsso(stickId, btn) {
 // ── Valider un cash (Admin/Bureau/Cellule Sticks) ──────────────
 let _allMembresCashStick = [];
 
+// ═══════════════════════════════════════════════════════════════
+// PAGE ADMIN BOUTIQUE (05/07/2026) — indépendante de la page membre
+// ─────────────────────────────────────────────────────────────────
+// Toutes les actions de gestion (Modifier, Stock, Photo, Archiver, Cash,
+// Toutes les commandes, Historique distributions) vivent désormais
+// exclusivement ici — la page Boutique du bottom nav (renderMatos/
+// renderSticks ci-dessus) ne montre plus jamais ces boutons, quel que
+// soit le rôle du membre. Auto-suffisante : recharge ses propres données
+// (ne dépend pas d'un passage préalable par pageBoutique).
+// ═══════════════════════════════════════════════════════════════
+
+let allProduitsAdmin = [], allSticksAdmin = [];
+let currentFiltreMatosAdmin = 'tous', currentFiltreSticksAdminSection = '';
+
+function switchAdminBoutiqueTab(tab) {
+  document.getElementById('sectionAdminMatos').style.display = tab === 'matos' ? 'block' : 'none';
+  document.getElementById('sectionAdminSticks').style.display = tab === 'sticks' ? 'block' : 'none';
+  document.getElementById('tabAdminMatos').classList.toggle('active', tab === 'matos');
+  document.getElementById('tabAdminSticks').classList.toggle('active', tab === 'sticks');
+}
+
+async function loadAdminBoutique() {
+  try {
+    const [produits, sticks, sections] = await Promise.all([
+      UL.getProduits(), UL.getSticks(), UL.getSections(),
+    ]);
+    allProduitsAdmin = produits;
+    allSticksAdmin = sticks;
+    renderMatosAdmin(allProduitsAdmin);
+    renderSticksAdmin(allSticksAdmin);
+
+    const sel = document.getElementById('filtreAdminSticksSection');
+    if (sel) {
+      const valeurActuelle = sel.value;
+      sel.innerHTML = '<option value="">Toutes sections</option>' +
+        sections.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
+      sel.value = valeurActuelle;
+    }
+
+    const toutesCommandes = await UL.getAllCommandes();
+    renderToutesCommandes(toutesCommandes);
+    const toutesDistribs = await UL.getAllDistributions();
+    renderToutesDistribs(toutesDistribs);
+  } catch(e) { toast('Erreur chargement boutique (admin)', 'error'); }
+}
+
+function filtrerMatosAdmin(cat) {
+  document.querySelectorAll('#sectionAdminMatos .filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  currentFiltreMatosAdmin = cat;
+  const filtered = cat === 'tous' ? allProduitsAdmin : allProduitsAdmin.filter(p => p.categorie === cat);
+  renderMatosAdmin(filtered);
+}
+
+function filtrerSticksAdminSection(sectionId) {
+  currentFiltreSticksAdminSection = sectionId;
+  const filtered = sectionId ? allSticksAdmin.filter(s => s.section_id === sectionId) : allSticksAdmin;
+  renderSticksAdmin(filtered);
+}
+
+function renderMatosAdmin(produits) {
+  const el = document.getElementById('adminMatosCatalogue');
+  if (!el) return;
+  if (!produits.length) { el.innerHTML = '<div class="empty-state"><div>🛍️</div>Aucun article</div>'; return; }
+  el.innerHTML = produits.map(p => {
+    const icones = { textile:'👕', accessoire:'🎒' };
+    const stockBadge = p.stock <= 3 && p.stock > 0
+      ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
+      : p.stock === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
+    const sectionBadge = p.section
+      ? `<span class="badge badge-bleu" style="font-size:10px;">Section ${esc(p.section.nom)}</span>` : '';
+    const archiveBadge = p.statut === 'archive'
+      ? `<span class="badge badge-rouge" style="font-size:10px;">Archivé</span>` : '';
+    return `<div class="produit-card">
+      <div class="produit-img">${p.photo_url ? `<img src="${p.photo_url}" alt="${esc(p.nom)}">` : icones[p.categorie] || '📦'}</div>
+      <div class="produit-info">
+        <div class="produit-nom">${esc(p.nom)}</div>
+        <div class="produit-prix">${p.prix}€ · Stock: ${p.stock} · Lot de 1</div>
+        <div class="produit-meta">
+          ${p.avec_tailles ? '• Tailles dispo' : ''}
+          ${p.quota_par_membre ? `• Quota: ${p.quota_par_membre} max` : ''}
+          ${p.mode === 'precommande' ? '• Précommande' : ''}
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${stockBadge}${sectionBadge}${archiveBadge}</div>
+        <div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;">
+          ${p.mode !== 'precommande' ? `<button class="btn btn-sm btn-success" onclick="ouvrirCashMatos('${p.id}','${esc(p.nom)}',${!!p.avec_tailles})">💵 Cash</button>` : ''}
+          <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierProduit('${p.id}')">✏️ Modifier</button>
+          <button class="btn btn-sm btn-secondary" onclick="modifierStock('${p.id}','${esc(p.nom)}',${p.stock})">📦 Stock</button>
+          <button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${p.id}','matos')">🖼️ Photo</button>
+          <button class="btn btn-sm btn-danger" onclick="doArchiverProduit('${p.id}')">Archiver</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderSticksAdmin(sticks) {
+  const el = document.getElementById('adminSticksCatalogue');
+  if (!el) return;
+  if (!sticks.length) { el.innerHTML = '<div class="empty-state"><div>🎟️</div>Aucun stick</div>'; return; }
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">` +
+  sticks.map(s => `
+    <div class="card" style="padding:10px;">
+      <div style="width:100%;height:150px;border-radius:8px;overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
+        ${s.visuel_url ? `<img src="${s.visuel_url}" style="width:100%;height:100%;object-fit:cover;">` : `<span style="font-size:48px;">🎟️</span>`}
+      </div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(s.nom)}</div>
+      <div style="font-size:12px;color:var(--gris);margin-top:2px;">
+        ${s.prix ? `${s.prix}€ · ` : 'Gratuit · '}
+        ${s.mode === 'precommande' ? 'Précommande' : 'Stock: ' + s.stock}
+        ${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}
+      </div>
+      ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
+      <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">
+        ${s.mode !== 'precommande' ? `<button class="btn btn-sm btn-success" onclick="ouvrirCashStick('${s.id}','${esc(s.nom)}')">💵 Cash</button>` : ''}
+        <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierStick('${s.id}')">✏️ Modifier</button>
+        <button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${s.id}','stick')">🖼️ Photo</button>
+      </div>
+    </div>`).join('') + `</div>`;
+}
+
+// ── Cash Matos (nouveau, 05/07/2026 — même principe que Cash Stick) ──
+let _allMembresCashMatos = [];
+
+async function ouvrirCashMatos(produitId, nom, avecTailles) {
+  document.getElementById('cashMatosId').value = produitId;
+  document.getElementById('cashMatosTitre').textContent = `Valider un cash — ${nom}`;
+  document.getElementById('cashMatosQte').value = '1';
+  document.getElementById('cashMatosSearch').value = '';
+  document.getElementById('cashMatosTailleGroup').style.display = avecTailles ? 'block' : 'none';
+  document.getElementById('cashMatosListeMembres').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  showModal('modalCashMatos');
+  try {
+    _allMembresCashMatos = await UL.getAllMembres();
+    renderListeMembresCashMatos(_allMembresCashMatos);
+  } catch(e) { toast('Erreur chargement membres', 'error'); }
+}
+
+function filtrerMembresCashMatos() {
+  const recherche = document.getElementById('cashMatosSearch').value.trim().toLowerCase();
+  if (!recherche) return renderListeMembresCashMatos(_allMembresCashMatos);
+  const filtres = _allMembresCashMatos.filter(m => {
+    const champs = [m.nom, m.prenom, m.pseudo_telegram].filter(Boolean).join(' ').toLowerCase();
+    return champs.includes(recherche);
+  });
+  renderListeMembresCashMatos(filtres);
+}
+
+function renderListeMembresCashMatos(membres) {
+  const el = document.getElementById('cashMatosListeMembres');
+  if (!membres.length) { el.innerHTML = '<div class="empty-state"><div>👥</div>Aucun membre trouvé</div>'; return; }
+  el.innerHTML = membres.map(m => `
+    <div class="card" style="margin-bottom:6px;padding:10px;cursor:pointer;" onclick="doValiderCashMatos('${m.id}','${esc(m.prenom)} ${esc(m.nom)}')">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="avatar" style="width:30px;height:30px;font-size:12px;flex-shrink:0;">${((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase()}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;">${esc(m.prenom)} ${esc(m.nom)}</div>
+          <div style="font-size:11px;color:var(--gris);">@${esc(m.pseudo_telegram)}</div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+async function doValiderCashMatos(membreId, nomMembre) {
+  const produitId = document.getElementById('cashMatosId').value;
+  const qte = parseInt(document.getElementById('cashMatosQte').value) || 1;
+  const tailleGroupVisible = document.getElementById('cashMatosTailleGroup').style.display !== 'none';
+  const taille = tailleGroupVisible ? document.getElementById('cashMatosTaille').value : null;
+  if (!confirm(`Enregistrer le paiement cash de ${nomMembre} (x${qte}) ?`)) return;
+  try {
+    await UL.distribuerProduitAdmin(produitId, membreId, taille, qte);
+    toast(`Paiement enregistré pour ${nomMembre} — à confirmer au retrait`, 'success');
+    closeModal('modalCashMatos');
+    loadAdminBoutique();
+  } catch(e) { toast(e.message || 'Impossible d\'enregistrer le paiement', 'error'); }
+}
+
+
 async function ouvrirCashStick(stickId, nom) {
   document.getElementById('cashStickId').value = stickId;
   document.getElementById('cashStickTitre').textContent = `Valider un cash — ${nom}`;
@@ -501,7 +649,7 @@ async function doValiderCashStick(membreId, nomMembre) {
     await UL.distribuerStickAdmin(stickId, membreId, qte, 'cash');
     toast(`Paiement enregistré pour ${nomMembre} — à confirmer au retrait`, 'success');
     closeModal('modalCashStick');
-    loadSticks();
+    loadAdminBoutique();
   } catch(e) { toast(e.message || 'Impossible d\'enregistrer le paiement', 'error'); }
 }
 
@@ -527,7 +675,7 @@ function renderMesSticks(distribs) {
 }
 
 function renderToutesDistribs(distribs) {
-  const el = document.getElementById('toutesDistribs');
+  const el = document.getElementById('adminToutesDistribs');
   if (!distribs.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune distribution</p>'; return; }
   el.innerHTML = distribs.slice(0,30).map(d => `
     <div class="card" style="margin-bottom:6px;padding:12px;">
@@ -546,7 +694,7 @@ function renderToutesDistribs(distribs) {
 }
 
 async function doReceptionnerStick(distribId) {
-  try { await UL.receptionnerStick(distribId); toast('Stick marqué reçu — disponible au retrait ✅', 'success'); loadSticks(); }
+  try { await UL.receptionnerStick(distribId); toast('Stick marqué reçu — disponible au retrait ✅', 'success'); loadAdminBoutique(); }
   catch(e) { toast('Impossible de marquer ce stick reçu', 'error'); }
 }
 
@@ -559,7 +707,7 @@ async function doConfirmerDistributionManuelle(distribId) {
   try {
     await UL.confirmerDistributionStick(distribId);
     toast('Distribution confirmée ✅', 'success');
-    loadSticks();
+    loadAdminBoutique();
   } catch(e) { toast(e.message || 'Impossible de confirmer la distribution', 'error'); }
 }
 
@@ -724,7 +872,7 @@ async function uploadPhotoExistant(produitId, type) {
       }
       hideLoading();
       toast('Photo mise à jour ✅', 'success');
-      type === 'matos' ? loadMatos() : loadSticks();
+      loadAdminBoutique();
     } catch(e) { hideLoading(); toast(e.message || 'Erreur upload', 'error'); }
   };
   input.click();
@@ -805,7 +953,7 @@ async function doCreerProduit() {
     document.getElementById('pAcces').value = 'tous';
     document.getElementById('pTailles').checked = false;
     document.getElementById('sectionSelectGroup').style.display = 'none';
-    loadMatos();
+    loadAdminBoutique();
   } catch(e) {
     hideLoading();
     toast(e.message || 'Erreur création article', 'error');
@@ -893,7 +1041,7 @@ async function doModifierProduit() {
     toast('Article modifié ✅', 'success');
     closeModal('modalCreerProduit');
     reinitialiserFormulaireProduit();
-    loadMatos();
+    loadAdminBoutique();
   } catch(e) {
     hideLoading();
     toast(e.message || 'Erreur modification article', 'error');
@@ -979,7 +1127,7 @@ async function doCreerStick() {
     document.getElementById('stPhoto').value = '';
     document.getElementById('photoPreviewStick').style.display = 'none';
     document.getElementById('stCat').value = 'tous';
-    loadSticks();
+    loadAdminBoutique();
     // Notification réservée à ceux qui ont le droit de voir ce stick —
     // cible:'sticks' reproduit côté serveur la même règle que getSticks
     // (supabase-client.js) : 'tous' = tout le monde, 'draft_confirme'/
@@ -1074,7 +1222,7 @@ async function doModifierStick() {
     toast('Stick modifié ✅', 'success');
     closeModal('modalCreerStick');
     reinitialiserFormulaireStick();
-    loadSticks();
+    loadAdminBoutique();
   } catch(e) {
     hideLoading();
     toast(e.message || 'Erreur modification stick', 'error');
