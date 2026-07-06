@@ -437,8 +437,10 @@ let currentFiltreMatosAdmin = 'tous', currentFiltreSticksAdminSection = '';
 function switchAdminBoutiqueTab(tab) {
   document.getElementById('sectionAdminMatos').style.display = tab === 'matos' ? 'block' : 'none';
   document.getElementById('sectionAdminSticks').style.display = tab === 'sticks' ? 'block' : 'none';
+  document.getElementById('sectionAdminGestion').style.display = tab === 'gestion' ? 'block' : 'none';
   document.getElementById('tabAdminMatos').classList.toggle('active', tab === 'matos');
   document.getElementById('tabAdminSticks').classList.toggle('active', tab === 'sticks');
+  document.getElementById('tabAdminGestion').classList.toggle('active', tab === 'gestion');
 }
 
 // ── Sous-onglets Articles / Commandes en cours (05/07/2026, demande Remi)
@@ -526,6 +528,8 @@ async function loadAdminBoutique() {
       badgeDist.textContent = nbDistribsEnCours;
       badgeDist.style.display = nbDistribsEnCours > 0 ? 'inline-block' : 'none';
     }
+
+    renderGestionCommandes();
   } catch(e) { toast('Erreur chargement boutique (admin)', 'error'); }
 }
 
@@ -544,6 +548,222 @@ function filtrerDistribsAdminSansEvent(mode) {
     ? allDistribsAdmin.filter(d => STATUTS_EN_COURS.includes(d.statut))
     : allDistribsAdmin;
   renderToutesDistribs(filtered);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GESTION DES COMMANDES (05/07/2026, demande Remi) — 3e onglet de
+// pageAdminBoutique, réunit Matos ET Sticks (contrairement aux onglets
+// "Commandes en cours" propres à chaque catalogue) — pensé pour préparer
+// une session de distribution : qui a commandé quoi, en 2 vues (par
+// membre pour composer les colis, par article pour savoir combien sortir
+// du stock), avec export Telegram (texte à coller) et CSV (tableur).
+// ═══════════════════════════════════════════════════════════════
+
+let filtreTypeGestion = 'tous', filtreStatutGestion = 'en_cours', vueGestionCommandes = 'membre';
+
+const STATUT_LABEL_GESTION = {
+  en_attente: '⏳ Attente paiement', disponible: '✅ Disponible', precommande_validee: '📋 Précommande validée',
+  distribue: '✔️ Remis', refuse: '❌ Refusé', annulee: '❌ Annulée', rembourse: '↩️ Remboursé',
+};
+
+// Aplati les commandes Matos (potentiellement plusieurs commande_items par
+// commande) et les distributions Sticks en une seule liste de lignes au
+// même format — c'est ce qui permet de les traiter ensemble dans cet
+// onglet. Réutilise allCommandesAdmin/allDistribsAdmin, déjà chargées par
+// loadAdminBoutique — aucun appel réseau supplémentaire ici.
+function construireCommandesUnifiees() {
+  const rows = [];
+  for (const c of allCommandesAdmin) {
+    for (const item of c.commande_items || []) {
+      rows.push({
+        type: 'matos',
+        mode: item.produit?.mode || 'stock',
+        membre: c.membre,
+        article: item.produit?.nom || '?',
+        taille: item.taille || null,
+        quantite: item.quantite,
+        statut: c.statut,
+        mode_paiement: c.mode_paiement,
+        prix: (item.prix_unitaire || 0) * item.quantite,
+        created_at: c.created_at,
+      });
+    }
+  }
+  for (const d of allDistribsAdmin) {
+    rows.push({
+      type: 'stick',
+      mode: d.stick?.mode || 'stock',
+      membre: d.membre,
+      article: d.stick?.nom || '?',
+      taille: null,
+      quantite: d.quantite,
+      statut: d.statut,
+      mode_paiement: d.mode_paiement,
+      prix: d.stick?.prix ? d.stick.prix * d.quantite : null,
+      created_at: d.created_at,
+    });
+  }
+  return rows;
+}
+
+function getRowsGestionFiltrees() {
+  let rows = construireCommandesUnifiees();
+  if (filtreTypeGestion === 'matos' || filtreTypeGestion === 'stick') rows = rows.filter(r => r.type === filtreTypeGestion);
+  else if (filtreTypeGestion === 'precommande') rows = rows.filter(r => r.mode === 'precommande');
+  if (filtreStatutGestion === 'en_cours') rows = rows.filter(r => STATUTS_EN_COURS.includes(r.statut));
+  return rows;
+}
+
+function grouperParMembre(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const key = r.membre?.pseudo_telegram || '—';
+    if (!map.has(key)) map.set(key, { membre: r.membre, items: [] });
+    map.get(key).items.push(r);
+  }
+  return [...map.values()].sort((a, b) => (a.membre?.pseudo_telegram || '').localeCompare(b.membre?.pseudo_telegram || ''));
+}
+
+function grouperParArticle(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const key = `${r.type}|${r.article}|${r.taille || ''}`;
+    if (!map.has(key)) map.set(key, { type: r.type, article: r.article, taille: r.taille, mode: r.mode, quantite: 0, membres: new Set() });
+    const g = map.get(key);
+    g.quantite += r.quantite;
+    g.membres.add(r.membre?.pseudo_telegram || '—');
+  }
+  return [...map.values()].sort((a, b) => a.article.localeCompare(b.article));
+}
+
+function filtrerTypeGestion(type) {
+  document.querySelectorAll('#gestionFiltreType .filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  filtreTypeGestion = type;
+  renderGestionCommandes();
+}
+
+function filtrerStatutGestion(statut) {
+  document.querySelectorAll('#gestionFiltreStatut .filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  filtreStatutGestion = statut;
+  renderGestionCommandes();
+}
+
+function toggleVueGestion(vue) {
+  document.querySelectorAll('#gestionVueToggle .filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  vueGestionCommandes = vue;
+  renderGestionCommandes();
+}
+
+function renderGestionCommandes() {
+  const el = document.getElementById('gestionCommandesListe');
+  const recapEl = document.getElementById('gestionRecap');
+  if (!el) return; // onglet pas encore dans le DOM au tout premier chargement
+  const rows = getRowsGestionFiltrees();
+
+  const nbPrecommandes = rows.filter(r => r.mode === 'precommande').length;
+  recapEl.textContent = `${rows.length} ligne${rows.length > 1 ? 's' : ''}` +
+    (nbPrecommandes ? ` · dont ${nbPrecommandes} précommande${nbPrecommandes > 1 ? 's' : ''}` : '');
+
+  if (!rows.length) { el.innerHTML = '<div class="empty-state"><div>📋</div>Rien à préparer</div>'; return; }
+
+  if (vueGestionCommandes === 'article') {
+    const groupes = grouperParArticle(rows);
+    el.innerHTML = groupes.map(g => `
+      <div class="card" style="margin-bottom:8px;padding:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:700;">${g.type === 'matos' ? '🛍️' : '🎟️'} ${esc(g.article)}${g.taille ? ' (' + g.taille + ')' : ''}</div>
+            <div style="font-size:12px;color:var(--gris);">${g.membres.size} membre${g.membres.size > 1 ? 's' : ''}${g.mode === 'precommande' ? ' · 📋 Précommande' : ''}</div>
+          </div>
+          <div style="font-size:20px;font-family:'Bebas Neue',sans-serif;color:var(--bleu-clair);">×${g.quantite}</div>
+        </div>
+      </div>`).join('');
+  } else {
+    const groupes = grouperParMembre(rows);
+    el.innerHTML = groupes.map(g => {
+      const nom = g.membre ? `${esc(g.membre.prenom)} ${esc(g.membre.nom)} (@${esc(g.membre.pseudo_telegram)})` : 'Membre inconnu';
+      return `
+      <div class="card" style="margin-bottom:8px;padding:12px;">
+        <div style="font-weight:700;margin-bottom:6px;">👤 ${nom}</div>
+        ${g.items.map(it => `
+          <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">
+            <span>${it.type === 'matos' ? '🛍️' : '🎟️'} ${esc(it.article)}${it.taille ? ' (' + it.taille + ')' : ''}${it.mode === 'precommande' ? ' · 📋' : ''} ×${it.quantite}</span>
+            <span class="badge ${it.statut === 'distribue' || it.statut === 'disponible' ? 'badge-vert' : it.statut === 'precommande_validee' ? 'badge-bleu' : it.statut === 'refuse' || it.statut === 'annulee' ? 'badge-rouge' : 'badge-orange'}" style="font-size:10px;">${STATUT_LABEL_GESTION[it.statut] || it.statut}</span>
+          </div>`).join('')}
+      </div>`;
+    }).join('');
+  }
+}
+
+// ── Export Telegram ──────────────────────────────────────────
+// Copie un texte prêt à coller tel quel dans le groupe Telegram — le
+// format suit la vue active (par membre ou récap par article), pour
+// rester cohérent avec ce que l'admin est justement en train de regarder.
+function exporterTelegramCommandes() {
+  const rows = getRowsGestionFiltrees();
+  if (!rows.length) return toast('Aucune commande à exporter', 'error');
+  const dateStr = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  let texte = `📦 COMMANDES À PRÉPARER — ${dateStr}\n\n`;
+
+  if (vueGestionCommandes === 'article') {
+    for (const g of grouperParArticle(rows)) {
+      texte += `• ${g.type === 'matos' ? '🛍️' : '🎟️'} ${g.article}${g.taille ? ' (' + g.taille + ')' : ''}${g.mode === 'precommande' ? ' [PRÉCOMMANDE]' : ''} — ×${g.quantite} (${g.membres.size} membre${g.membres.size > 1 ? 's' : ''})\n`;
+    }
+  } else {
+    for (const g of grouperParMembre(rows)) {
+      const nom = g.membre ? `${g.membre.prenom} ${g.membre.nom} (@${g.membre.pseudo_telegram})` : 'Membre inconnu';
+      texte += `👤 ${nom}\n`;
+      for (const it of g.items) {
+        texte += `   • ${it.type === 'matos' ? '🛍️' : '🎟️'} ${it.article}${it.taille ? ' (' + it.taille + ')' : ''}${it.mode === 'precommande' ? ' [PRÉCOMMANDE]' : ''} ×${it.quantite}\n`;
+      }
+      texte += `\n`;
+    }
+  }
+  texte += `Total : ${rows.length} ligne${rows.length > 1 ? 's' : ''} de commande`;
+
+  navigator.clipboard.writeText(texte)
+    .then(() => toast('Liste copiée — colle-la dans Telegram ✅', 'success'))
+    .catch(() => toast('Impossible de copier (clipboard non disponible)', 'error'));
+}
+
+// ── Export CSV ────────────────────────────────────────────────
+// Toujours le détail complet ligne par ligne, indépendamment de la vue
+// active à l'écran (un tableur fait mieux le tri/regroupement lui-même) —
+// colonne Mode ('stock'/'precommande') incluse explicitement pour pouvoir
+// filtrer/trier les précommandes facilement une fois dans Excel/Sheets.
+function exporterCsvCommandes() {
+  const rows = getRowsGestionFiltrees();
+  if (!rows.length) return toast('Aucune commande à exporter', 'error');
+  const header = ['Type', 'Mode', 'Prenom', 'Nom', 'Pseudo', 'Article', 'Taille', 'Quantite', 'Statut', 'ModePaiement', 'Prix', 'Date'];
+  const lignes = rows.map(r => [
+    r.type === 'matos' ? 'Matos' : 'Stick',
+    r.mode === 'precommande' ? 'Précommande' : 'Stock',
+    r.membre?.prenom || '',
+    r.membre?.nom || '',
+    r.membre?.pseudo_telegram || '',
+    r.article,
+    r.taille || '',
+    r.quantite,
+    STATUT_LABEL_GESTION[r.statut] || r.statut,
+    r.mode_paiement || '',
+    r.prix != null ? r.prix : '',
+    new Date(r.created_at).toLocaleDateString('fr-FR'),
+  ]);
+  const csvEscape = v => `"${String(v).replace(/"/g, '""')}"`;
+  const csv = [header, ...lignes].map(l => l.map(csvEscape).join(';')).join('\n');
+  // BOM UTF-8 en tête : sans lui, Excel (version FR notamment) affiche les
+  // accents/emoji corrompus à l'ouverture d'un CSV UTF-8 sans BOM.
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `commandes_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Export CSV téléchargé ✅', 'success');
 }
 
 function filtrerMatosAdmin(cat) {
