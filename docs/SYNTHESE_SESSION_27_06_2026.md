@@ -1,110 +1,128 @@
 # SYNTHÈSE DE FIN DE SESSION — Ultras Lutetia PWA
-*27/06/2026 — Audit ergonomique complet + mise en place des notifications push (validation de compte + nouveau contenu). Session longue, plusieurs allers-retours de debug en conditions réelles avec Remi.*
+*05/07/2026 — Session longue : rôles distributeur, restructuration complète Matos/Sticks (HelloAsso automatisé + stock/précommande), page Admin Boutique dédiée avec onglet Gestion des commandes (export Telegram/CSV), plusieurs bugs corrigés en cours de route.*
 
 ---
 
-## Contenu de cette archive
+## ⚠️ À FAIRE EN PREMIER À LA REPRISE
+
+1. **Vérifier le bug signalé en tout dernier** : "dans Matos il n'y a pas d'option précommande". J'ai vérifié `index.html` avant de m'arrêter — le `<select id="pMode">` contient bien les deux `<option>` (`stock` / `precommande`), donc le HTML semble correct. Pistes à vérifier en priorité :
+   - Cache navigateur / Service Worker pas à jour (Ctrl+F5, vérifier que `sw.js` est bien en v25 dans l'onglet Application du navigateur)
+   - Le fichier `index.html` réellement déployé sur GitHub Pages correspond-il bien à celui livré en fin de session précédente ?
+   - Si le HTML est bon et à jour : regarder si un JS quelconque filtre/vide ce `<select>` dynamiquement (`ouvrirModifierProduit`, `reinitialiserFormulaireProduit` dans `src/boutique.js`)
+   - Demander à Remi une capture précise de l'écran où l'option manque (modal Créer un article ? Modal Modifier ? Les deux ?)
+
+2. **Uploader l'ensemble des fichiers à jour** (liste ci-dessous) — la session s'est arrêtée sur un incident où mon environnement de travail avait été réinitialisé en cours de route (cf. point technique plus bas), donc **tous** les fichiers listés doivent être réuploadés pour repartir sur une base saine, même ceux qui semblent inchangés depuis longtemps.
+
+---
+
+## Fichiers à uploader la prochaine fois
 
 ```
-index.html                                  ← mis à jour
-validate.js                                 ← mis à jour (liste KNOWN_DYNAMIC)
+index.html                                  ← très modifié cette session
+sw.js                                       ← v25
 src/
-  app.js                                    ← mis à jour (le plus modifié)
-  admin.js                                  ← mis à jour
-  boutique.js                               ← mis à jour
-  deplacements.js                           ← mis à jour
-  tifos.js                                  ← mis à jour
-  profil.js                                 ← mis à jour
-  supabase-client.js                        ← mis à jour
-  config.js                                 ← mis à jour (clé VAPID publique intégrée)
-  sw.js                                     ← mis à jour (v13, écouteurs push)
-  styles.css                                ← mis à jour
-  calendrier.js                             ← mis à jour (session précédente, inchangé depuis)
-  scan.js, testable.js, tests.js            ← inchangés, fournis pour référence complète
-notifications_push/
-  GUIDE_NOTIFICATIONS_PUSH.md               ← guide infra de base (déjà suivi et terminé par Remi)
-  GUIDE_NOTIFICATIONS_CONTENU.md            ← guide notifications de contenu (déjà suivi et terminé par Remi)
-  migration_notifications_push.sql          ← déjà exécutée par Remi
-  generateur_cles_vapid.html                ← outil ponctuel, gardé pour référence/regénération future
-  supabase_functions/
-    send-push-notification.ts               ← déjà déployée (version CORRIGÉE — bug preflight résolu)
-    send-push-notification-groupe.ts        ← déjà déployée (version CORRIGÉE — bug preflight résolu)
+  app.js                                    ← modifié (rôles distributeur, routage pageAdminBoutique)
+  admin.js                                  ← modifié (rôles distributeur, bugs modal Matchs)
+  boutique.js                               ← TRÈS modifié (quasi réécrit sur la partie Matos/Sticks)
+  supabase-client.js                        ← modifié (Matos/Sticks HelloAsso, Cash admin, exports)
+  calendrier.js                             ← modifié (badges statut date, boutons retirés)
+  scan.js                                   ← modifié (nouveaux statuts disponible/precommande_validee)
+  styles.css                                ← modifié (bandeau nav agrandi)
+  validate.js                               ← modifié (nouveaux IDs dynamiques)
+  config.js, profil.js, deplacements.js,
+  tifos.js, testable.js, tests.js           ← inchangés cette session, à fournir quand même pour repartir complet
+docs/
+  BUGS.md                                   ← entrées #31 à #33 ajoutées cette session
+  migration_matos_sticks_helloasso.sql      ← à exécuter si pas encore fait
+  fix_bucket_matos.sql                      ← à exécuter si pas encore fait
+  fix_schema_produits.sql                   ← à exécuter si pas encore fait
+  fix_constraint_produits_statut.sql        ← à exécuter si pas encore fait
+supabase_functions/
+  helloasso-create-checkout.ts              ← étendue (matos + stick, en plus de deplacement)
+  helloasso-webhook.ts                      ← étendue (matos + stick, en plus de deplacement)
 ```
 
-⚠️ **Important** : les deux fichiers `.ts` dans `supabase_functions/` sont la version finale **après correction** du bug CORS/preflight découvert en fin de session. Si une version antérieure de ces fichiers traîne encore quelque part, ne pas la redéployer — utiliser uniquement celles-ci.
+## Phrase de démarrage suggérée
+
+> "Voici tous les fichiers à jour. On avait un bug en cours d'investigation : pas d'option précommande visible dans Matos malgré un HTML qui semble correct — on regarde ça en premier ?"
 
 ---
 
-## Ce qui a été fait cette session (chronologie)
+## ⚠️ POINT TECHNIQUE IMPORTANT — incident de session détecté et corrigé
 
-### 1. Audit ergonomique complet (toute l'app)
-Revue exhaustive de toutes les modales, formulaires, boutons destructifs, accessibilité clavier, navigation. Livré en 6 "sessions" successives :
-- **Session 1** : bouton ✕ universel sur toutes les modales (injecté dynamiquement par `showModal()`), `font-size: 16px` sur les inputs (anti-zoom iOS), petits fixes (`modifierStock`, `setTimeout` fragile sur Cartage).
-- **Session 2** : anti-double-clic (désactivation de bouton + spinner) sur tous les boutons d'action sensibles — paiement HelloAsso, créations/modifications admin.
-- **Session 3** : états de chargement et d'erreur explicites sur les 5 blocs de l'accueil (avant : silencieusement vides en cas d'échec réseau).
-- **Session 4** : labels textuels sur les boutons de suppression (au lieu d'icônes seules), confirmation ajoutée sur l'annulation de commande Matos.
-- **Session 5** : accessibilité clavier (Tab + Espace/Entrée, `role="checkbox"`, `aria-checked`) sur les cases "rôles fonctionnels" de la fiche membre.
-- **Session 6** : touche Échap pour fermer les popups, gestion de l'historique navigateur pour que le bouton retour (notamment Android) navigue dans l'app au lieu de la quitter.
+En plein milieu de la session (au moment de construire l'onglet "Gestion des commandes"), j'ai découvert que mon environnement de travail (bac à sable de fichiers) avait été **réinitialisé silencieusement** à un état antérieur — probablement un redémarrage du conteneur en cours de conversation. Je travaillais donc sans le savoir sur une version de `boutique.js`/`sw.js` antérieure de plusieurs versions (v22 au lieu de v24), risquant d'écraser du travail déjà livré.
 
-### 2. Infrastructure de notifications push (de zéro)
-- Génération de clés VAPID via une page HTML autonome (créée parce que Remi n'avait pas Node.js) — vérifiée pour produire des clés strictement identiques à `npx web-push generate-vapid-keys`.
-- Table `push_subscriptions` (Supabase), RLS activé.
-- Edge Function `send-push-notification` : envoie à un membre précis.
-- Bouton "Activer les notifications" dans Profil, avec détection du cas iOS (nécessite l'installation sur l'écran d'accueil — vérifié par recherche web, contrainte Apple non contournable).
-- Popup automatique proposant l'activation une seule fois par appareil, juste après la première connexion (mémorisée via `localStorage`).
-- Câblé sur la validation de compte (email + push), sur les **deux** chemins de validation existants dans le code (page Admin **et** raccourci sur l'accueil — un des deux avait été oublié au premier passage, corrigé).
+**Détecté à temps** en comparant les sommes de contrôle de mes fichiers de travail avec les derniers fichiers réellement livrés (`/mnt/user-data/outputs/`), avant qu'aucune régression ne soit livrée à Remi. Resynchronisé depuis les fichiers livrés, puis les 2 modifications du tour en cours ont été ré-appliquées par-dessus.
 
-### 3. Notifications de nouveau contenu (déplacement, tifo, matos, sticks)
-- Case "🔔 Notifier les membres" cochée par défaut sur les 4 formulaires de création concernés.
-- Edge Function `send-push-notification-groupe` : calcule la liste des destinataires **côté serveur** (pas dans le navigateur de l'admin, par sécurité et fiabilité), en reproduisant exactement les règles de droits déjà utilisées côté front pour l'affichage (`peutVoirTifos`, `getProduits`, `getSticks`).
-- Règles reproduites : Déplacement = tout le monde ; Tifo = Confirmé + Draft validé (`valide_tifo=true`) + cellule Tifo/Bureau/Admin ; Matos/Sticks = selon `niveau_acces` + section choisis à la création.
-
-### 4. Renommage
-- Onglet Boutique "💶 Cotisation" → "🗂️ Cartage" (libellé visible uniquement — aucune colonne, fonction ou variable technique renommée, pour ne rien casser).
-
-### 5. Bug critique trouvé et corrigé en conditions réelles
-Diagnostic en direct avec Remi (réglage iOS désactivé d'abord, puis l'investigation a continué) : les deux Edge Functions de notification plantaient sur la requête `OPTIONS` (preflight CORS) que tout navigateur envoie avant un vrai `POST` — le code tentait de lire un JSON sur cette requête qui n'a jamais de corps, ce qui provoquait une erreur 500 côté serveur, perçue côté navigateur comme un blocage CORS. **Corrigé dans les deux fonctions** (court-circuit explicite sur `req.method === 'OPTIONS'`, en-têtes CORS ajoutés à toutes les réponses). Confirmé fonctionnel sur iPhone après correction.
+**Leçon pour la suite** (à intégrer dans les réflexes de démarrage de session) : en cas de session longue avec beaucoup d'aller-retours d'édition, vérifier périodiquement (ou au minimum avant toute étape qui s'appuie sur "l'état supposé" d'un fichier déjà modifié plus tôt dans la même session) que le fichier de travail correspond bien au dernier livré — un simple `diff`/`md5sum` contre `/mnt/user-data/outputs/` suffit. Ne jamais supposer que l'environnement de travail persiste garanti sur toute la durée d'une session longue.
 
 ---
 
-## ⚠️ CE QU'IL RESTE À FAIRE AVANT LE LANCEMENT DÉFINITIF
+## Contexte — ce qui a été fait dans cette session (par ordre chronologique)
 
-### 🔴 À corriger avant tout test sérieux
+### 1. Bandeau de navigation agrandi
+`--nav-h` 64px → 80px (`styles.css`), icônes et texte légèrement agrandis. `sw.js` v14.
 
-1. **Icônes manquantes (404)** — `icons/icon-192.png` et `icons/icon-512.png` (référencées dans `manifest.webmanifest` et dans `sw.js` pour l'icône des notifications push) renvoient un 404 sur le déploiement de Remi, vu directement dans sa console DevTools pendant la session. Affecte l'icône de l'app sur l'écran d'accueil **et** l'icône affichée dans toutes les notifications push. À vérifier : le dossier `icons/` existe-t-il vraiment dans le dépôt déployé ? Sous ces noms exacts ?
+### 2. Rôles "distributeur" (scan uniquement, dissociés des cellules admin)
+Nouveaux rôles `distributeur_matos`/`distributeur_sticks`/`distributeur_depl`, séparés des rôles `cellule_matos`/`cellule_sticks`/`cellule_depl` existants (qui gardent leur comportement complet : création/édition + scan). Un distributeur ne voit que le bouton de scan correspondant, jamais les sections de création/modification. Gérable depuis la fiche membre (nouvelles entrées dans `ROLES_DEFS`, `admin.js`). `hasDistributeurDepl/Matos/Sticks()` ajoutées dans `app.js`, `isCellule()` étendue pour que ces rôles voient bien l'onglet Admin (nécessaire pour atteindre le scan). `sw.js` v14.
 
-2. **Les annonces de l'accueil ne se chargent jamais** — erreur 400 vue dans la console de Remi sur la requête `annonces?select=*,publie_par:membres(nom,prenom)&actif=eq.true&order=created_at...` (fonction `getAnnonces()`, `supabase-client.js`). Probablement une jointure PostgREST mal formée ou une colonne manquante côté table `annonces`. Cette erreur était **silencieuse avant cette session** (catch vide) — depuis l'ajout des messages "⚠️ Impossible de charger" (session ergonomie #3), elle devrait maintenant être visible à l'écran sur l'accueil. À diagnostiquer en priorité : aller dans Supabase → SQL Editor et tester la requête équivalente pour voir le message d'erreur PostgREST exact.
+### 3. Restructuration complète Matos/Sticks — HelloAsso automatisé + stock/précommande
+Décidé avec Remi : automatisation du paiement HelloAsso pour Matos ET Sticks (comme Déplacements déjà en place), avec un nouveau cycle de statut unifié :
+```
+en_attente → disponible (stock) OU precommande_validee → disponible (précommande, réception admin) → distribue (scan)
+```
+Cash réservé aux articles en mode `stock` uniquement (règle actée avec Remi).
 
-### 🟠 Hérité de sessions antérieures à notre travail (non traité ensemble, toujours ouvert)
+- **SQL** (`migration_matos_sticks_helloasso.sql`) : nouvelles colonnes `checkout_intent_id`/`receptionnee_par`/`receptionnee_at` sur `commandes` et `sticks_distribution`, nouvelle contrainte CHECK sur les 2 tables, migration des anciennes valeurs de statut (`validee`→`precommande_validee`, `prete`→`disponible`, `recuperee`→`distribue`).
+- **Edge Functions** étendues (`helloasso-create-checkout.ts`, `helloasso-webhook.ts`) : routage par `metadata.type` (`deplacement` inchangé, `matos`/`stick` ajoutés), branchement stock/précommande décidé au moment du webhook selon le `mode` de l'article.
+- **`supabase-client.js`** : `passerCommande` restreinte au cash-stock uniquement, `demanderCommandeHelloAsso`/`demanderStickHelloAsso` (délèguent à l'Edge Function), `receptionnerCommande`/`receptionnerStick` (action admin précommande→disponible), `distribuerProduitAdmin` (nouveau, Cash Matos administré — n'existait pas avant), `distribuerStickAdmin` corrigée (part directement en `disponible`, plus en `en_attente`).
+- **`scan.js`** : filtres adaptés aux nouveaux statuts (`disponible` scannable, `precommande_validee`/`en_attente` bloquent avec message explicite).
+- `sw.js` v15.
 
-3. **Scan QR Déplacement et Matos jamais testés en conditions réelles** — uniquement vérifiés par lecture de code d'après les notes de Remi (`BUGS.md`). À tester avant un vrai usage (ex: devant un bus, retrait de commande).
+### 4. Sélecteur de quantité (Matos + Sticks)
+Ajouté un stepper +/- dans la modal Commander Matos (existante) et une toute nouvelle modal `modalCommanderStick` (n'existait pas — le bouton HelloAsso Stick déclenchait avant direct 1 unité). Bornage par stock et quota. `getStickById` ajoutée (manquait). `sw.js` v16.
 
-4. **Bug Stick "Tous les membres" sans lien HelloAsso renseigné** (`BUGS.md` #30) — un membre normal n'a alors aucun moyen de l'acquérir (ni HelloAsso car pas de lien, ni Cash car réservé à la cellule Sticks). 3 pistes de solution évoquées avec Remi avant cette session, aucune tranchée.
+### 5. Bugs modal Matchs (signalés par Remi, corrigés)
+- **Bug #31** : bouton `#modalMatchsSubmitBtn` (partagé entre 3 modes Ajouter/Modifier/Confirmer) jamais réactivé après un succès (seulement en cas d'erreur) → silence total au clic après la première réussite. Corrigé avec un `finally`.
+- **Bug #32** : `ouvrirConfirmerDate` vidait les champs date/horaire/stade au lieu de les pré-remplir → confirmation refusée silencieusement si l'admin ne ressaisissait rien. Corrigé (pré-remplissage depuis `allMatchsAdmin`).
+- `sw.js` v17, v18.
 
-5. **Bouton manuel de filet de secours Sticks** — jamais testé d'après les notes de Remi.
+### 6. Badge + liseret "Date confirmée" sur le calendrier
+Symétrique au badge orange "à confirmer" déjà existant. `sw.js` v19.
 
-6. **Statut de vérification HelloAsso sandbox** — non confirmé à la fin de la dernière session avant celle-ci (24/06). À vérifier si le flux de paiement complet (inscription → carte test → webhook → `paye_ha`) a depuis été testé de bout en bout.
+### 7. Retrait des boutons Modifier/Confirmer du calendrier et de l'accueil
+Ces actions ne sont plus possibles que depuis Admin → Gérer le calendrier (évite les fausses manipulations). Le badge de statut reste affiché en lecture seule. `sw.js` v20, v21.
 
-### 🟡 À tester avant d'annoncer le lancement aux membres (créé cette session, jamais vérifié en conditions réelles)
+### 8. Bugs Supabase découverts en marge (bucket Storage, schéma, contrainte)
+Lors de la création d'un premier article Matos réel par Remi : bucket `matos` jamais créé (`fix_bucket_matos.sql`), colonnes manquantes sur `produits` (`fix_schema_produits.sql`), contrainte CHECK `produits_statut_check` bloquant la valeur `'disponible'` (`fix_constraint_produits_statut.sql`). Les 3 scripts ont été exécutés par Remi avec succès à chaque fois (confirmé par capture).
 
-7. **Cas de droits restrictifs pour les notifications de contenu** — testé seulement le cas "tout le monde" (déplacement). Restent à vérifier avec deux comptes de profils différents :
-   - Un Draft **non validé** ne doit rien recevoir pour une notification de session tifo (seul Confirmé + Draft validé doivent recevoir)
-   - Un Draft d'une **section différente** ne doit rien recevoir pour un article Matos/Stick réservé à une autre section
+### 9. Séparation complète Boutique membre / Admin (grosse restructuration)
+Demande Remi : plus aucun bouton d'admin (Modifier/Stock/Photo/Archiver/Cash) sur la page Boutique membre, quel que soit le rôle. Nouvelle page indépendante `pageAdminBoutique` (Admin → "Gérer la boutique matos/sticks") avec :
+- Onglets **Matos** / **Sticks** / **Gestion**
+- Dans Matos et Sticks : sous-onglets **📦 Articles** (catalogue + gestion) / **🧾 Commandes en cours** (avec badge de compteur, bascule En cours/Toutes)
+- Nouveau bouton **💵 Cash** pour Matos (n'existait pas avant, seul Sticks l'avait) — `distribuerProduitAdmin`, modal `modalCashMatos`
+- Sélecteur de taille : boutons cliquables → `<select>` natif
 
-8. **Popup de proposition de notifications post-connexion** (`afficherModalePropositionNotifs` dans `app.js`) — jamais testée par Remi à notre connaissance. À vérifier : apparaît bien une fois, ne réapparaît jamais après, fonctionne pour "Activer" et pour "Plus tard".
+**Bug trouvé et corrigé au passage (#33)** : la décrémentation du stock Matos ne se déclenchait que via `updateCommandeStatut()` (JS), jamais appelée par le webhook HelloAsso (code serveur séparé) → un achat Matos payé en HelloAsso ne décrémentait jamais le stock. Déplacé sur la confirmation de `'distribue'` (scan), unifié avec le comportement déjà correct de Sticks. `sw.js` v22.
 
-9. **Bouton retour Android** (gestion `history.pushState`/`popstate`, session ergonomie #6) — modification structurelle profonde de la navigation, jamais confirmée testée sur un vrai téléphone Android par Remi.
-
-### 🟢 Avant le tout premier lancement public (checklist finale)
-
-10. **Exécuter `sql_nettoyage_avant_lancement.sql`** (déjà existant, fourni par Remi avant cette session) — repart d'une base propre sans les données de test (tifos, déplacements, boutique, sticks, cotisations, charte signée, évaluations, annonces, événements). Conserve `membres`, `sections`, `cellules`, `chartes`, `config_asso`, `matchs`. **Irréversible** — faire un export Supabase avant.
-
-11. **Module Calendrier** — n'a jamais reçu d'audit ergonomique dédié comme Tifos/Déplacements/Boutique/Admin (six sessions de cette conversation l'ont traversé en lecture mais pas en profondeur ciblée).
-
-12. **Régénérer une nouvelle paire de clés VAPID si besoin** — Remi a collé sa clé privée en clair dans le chat à un moment de la session ; risque jugé faible (au pire, usurpation de fausses notifications, jamais d'accès aux comptes), mais signalé sur le moment. À lui de juger si une rotation des clés est utile par precaution avant un lancement public à plus grande échelle.
+### 10. Onglet "📋 Gestion des commandes" (dernier chantier de la session)
+Réunit Matos ET Sticks (contrairement aux onglets "Commandes en cours" propres à chaque catalogue) :
+- 2 vues : **👤 Par membre** (composer les colis) / **📦 Par article** (picking list, quantités totales)
+- Filtre **📋 Précommandes** dédié, basé sur le `mode` de l'article (reste identifiable même après réception, contrairement au statut qui change)
+- Export **📋 Copier pour Telegram** (texte prêt à coller, formaté selon la vue active) et **📥 Exporter CSV** (détail complet, colonne Mode incluse, BOM UTF-8 pour Excel FR)
+- Nécessite le champ `mode` du produit/stick dans `getAllCommandes`/`getAllDistributions` (ajouté au select) + le prix du stick (absent jusqu'ici)
+- `sw.js` v23 (structure sous-onglets), v24 (badges compteur), v25 (onglet Gestion)
 
 ---
 
-## Repère pour la prochaine session
+## État réel à la reprise — NON CONFIRMÉ
 
-Si Claude reprend ce projet plus tard : commencer par demander à Remi l'état des points 1 et 2 (icônes 404 et annonces qui ne chargent pas) — ce sont les deux régressions les plus visibles et les plus rapides à corriger. Le reste de la liste peut être traité dans l'ordre indiqué ou selon ce qui bloque concrètement l'usage.
+1. **Bug "pas d'option précommande dans Matos"** — signalé par Remi en tout dernier, pas encore diagnostiqué en profondeur (cf. section "À FAIRE EN PREMIER" ci-dessus). Le HTML semblait correct au moment où je me suis arrêté.
+2. **Aucun test de bout en bout n'a été fait sur le nouvel onglet Gestion des commandes** (export Telegram/CSV) — code validé syntaxiquement (`validate.js` propre) mais jamais cliqué en conditions réelles par Remi.
+3. **Le bouton "Cash Matos" (nouveau, `distribuerProduitAdmin`) n'a jamais été testé en conditions réelles.**
+4. **Suggestion faite à Remi, sans réponse à ce stade** : ajouter un statut/bouton "✔️ Marquer préparé" dans la vue "Par membre" de l'onglet Gestion (entre disponible et distribué) — pas implémenté, en attente de décision.
+5. **Un modal mort repéré mais non traité** (hors scope, signalé à Remi) : `modalDistribuer`/`doDistribuerStick` dans `boutique.js`/`index.html`, jamais ouvert par aucun bouton — code legacy à nettoyer un jour.
+6. **Aucune régression attendue sur le reste de l'app** — tout le travail de cette session est resté circonscrit à Matos/Sticks/Calendrier/Matchs/rôles, sans toucher Tifos/Déplacements/Charte/Notifications.
+
+## Service Worker — version actuelle
+`ul-v25` — si une prochaine modification est nécessaire avant même de traiter le bug précommande, penser à bumper en v26.
