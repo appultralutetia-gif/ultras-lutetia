@@ -392,10 +392,6 @@
         <button class="filter-btn" onclick="filtrerMatos('textile')">Textile</button>
         <button class="filter-btn" onclick="filtrerMatos('accessoire')">Accessoire</button>
       </div>
-      <!-- Bouton admin -->
-      <div id="btnAddProduit" style="display:none;margin-bottom:12px;">
-        <button class="btn btn-primary" onclick="reinitialiserFormulaireProduit();showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
-      </div>
       <!-- Bouton scan retrait (Cellule Matos + Bureau + Admin uniquement) -->
       <div id="btnScanRetraitMatos" style="display:none;margin-bottom:12px;">
         <button class="btn btn-secondary" onclick="ouvrirScanMembre('matos')">📷 Scanner retrait</button>
@@ -404,11 +400,6 @@
       <!-- Mes commandes -->
       <div class="section-title" style="margin-top:20px;">Mes commandes</div>
       <div id="mesCommandes"></div>
-      <!-- Admin : toutes commandes -->
-      <div id="toutesCommandesSection" style="display:none;">
-        <div class="section-title" style="margin-top:20px;">⚙️ Toutes les commandes</div>
-        <div id="toutesCommandes"></div>
-      </div>
     </div>
 
     <!-- ─ STICKS ─ -->
@@ -430,11 +421,6 @@
       <div id="sticksCatalogue"></div>
       <div class="section-title" style="margin-top:20px;">Mes sticks reçus</div>
       <div id="mesSticks"></div>
-      <!-- Admin : toutes distributions -->
-      <div id="toutesDistribsSection" style="display:none;">
-        <div class="section-title" style="margin-top:20px;">⚙️ Historique distributions</div>
-        <div id="toutesDistribs"></div>
-      </div>
     </div>
 
     <!-- ─ COTISATION ─ -->
@@ -459,6 +445,42 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- ── PAGE ADMIN BOUTIQUE (indépendante du catalogue membre) ── -->
+  <div id="pageAdminBoutique" class="page">
+    <button class="btn btn-sm btn-secondary" style="margin-bottom:16px;" onclick="showPage('pageAdmin')">← Retour</button>
+
+    <div class="boutique-tabs-wrap">
+      <button class="btn-tab active" id="tabAdminMatos" onclick="switchAdminBoutiqueTab('matos')">🛍️ Matos</button>
+      <button class="btn-tab" id="tabAdminSticks" onclick="switchAdminBoutiqueTab('sticks')">🎟️ Sticks</button>
+    </div>
+
+    <!-- ─ MATOS (admin) ─ -->
+    <div id="sectionAdminMatos">
+      <button class="btn btn-primary" style="width:100%;margin-bottom:12px;" onclick="reinitialiserFormulaireProduit();showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
+      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;scrollbar-width:none;">
+        <button class="filter-btn active" onclick="filtrerMatosAdmin('tous')">Tous</button>
+        <button class="filter-btn" onclick="filtrerMatosAdmin('textile')">Textile</button>
+        <button class="filter-btn" onclick="filtrerMatosAdmin('accessoire')">Accessoire</button>
+      </div>
+      <div id="adminMatosCatalogue"></div>
+      <div class="section-title" style="margin-top:20px;">⚙️ Toutes les commandes</div>
+      <div id="adminToutesCommandes"></div>
+    </div>
+
+    <!-- ─ STICKS (admin) ─ -->
+    <div id="sectionAdminSticks" style="display:none;">
+      <button class="btn btn-primary" style="width:100%;margin-bottom:12px;" onclick="reinitialiserFormulaireStick();showModal('modalCreerStick');loadSectionsForModalStick()">+ Ajouter un stick</button>
+      <div style="margin-bottom:12px;">
+        <select id="filtreAdminSticksSection" onchange="filtrerSticksAdminSection(this.value)" style="background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;">
+          <option value="">Toutes sections</option>
+        </select>
+      </div>
+      <div id="adminSticksCatalogue"></div>
+      <div class="section-title" style="margin-top:20px;">⚙️ Historique distributions</div>
+      <div id="adminToutesDistribs"></div>
+    </div>
   </div>
 
   <!-- ── PAGE CALENDRIER ───────────────────────────────────── -->
@@ -537,8 +559,7 @@
       <div class="section-title">🛍️ Matos</div>
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="reinitialiserFormulaireProduit();showModal('modalCreerProduit');loadSectionsForModal()">+ Ajouter un article</button>
-          <button class="btn btn-secondary" onclick="showPage('pageBoutique')">📋 Gérer la boutique matos</button>
+          <button class="btn btn-secondary" onclick="showPage('pageAdminBoutique');switchAdminBoutiqueTab('matos')">📋 Gérer la boutique matos</button>
         </div>
       </div>
     </div>
@@ -548,8 +569,7 @@
       <div class="section-title">🎟️ Sticks</div>
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="reinitialiserFormulaireStick();showModal('modalCreerStick');loadSectionsForModalStick()">+ Ajouter un stick</button>
-          <button class="btn btn-secondary" onclick="showPage('pageBoutique');setTimeout(()=>switchBoutiqueTab('sticks'),100)">📋 Gérer la boutique sticks</button>
+          <button class="btn btn-secondary" onclick="showPage('pageAdminBoutique');switchAdminBoutiqueTab('sticks')">📋 Gérer la boutique sticks</button>
         </div>
       </div>
     </div>
@@ -1220,6 +1240,36 @@
     </div>
     <div id="cashStickListeMembres" style="max-height:280px;overflow-y:auto;margin-bottom:10px;"></div>
     <button class="btn btn-secondary" onclick="closeModal('modalCashStick')">Annuler</button>
+  </div>
+</div>
+
+<!-- Modal Valider Cash Matos (Admin/Bureau/Cellule Matos) -->
+<div class="modal-overlay" id="modalCashMatos" style="display:none;" onclick="closeModalOutside(event,'modalCashMatos')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title" id="cashMatosTitre">Valider un cash</h3>
+    <input type="hidden" id="cashMatosId">
+    <div class="form-group" id="cashMatosTailleGroup" style="display:none;">
+      <label>Taille</label>
+      <select id="cashMatosTaille">
+        <option value="XS">XS</option>
+        <option value="S">S</option>
+        <option value="M" selected>M</option>
+        <option value="L">L</option>
+        <option value="XL">XL</option>
+        <option value="XXL">XXL</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Quantité</label>
+      <input type="number" id="cashMatosQte" value="1" min="1">
+    </div>
+    <div class="form-group">
+      <label>Rechercher un membre</label>
+      <input type="text" id="cashMatosSearch" placeholder="🔎 Nom, prénom, pseudo…" oninput="filtrerMembresCashMatos()">
+    </div>
+    <div id="cashMatosListeMembres" style="max-height:280px;overflow-y:auto;margin-bottom:10px;"></div>
+    <button class="btn btn-secondary" onclick="closeModal('modalCashMatos')">Annuler</button>
   </div>
 </div>
 
