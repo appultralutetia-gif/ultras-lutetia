@@ -247,8 +247,8 @@ function renderMesCommandes(commandes) {
         ${new Date(c.created_at).toLocaleDateString('fr-FR')}
       </div>
       ${livraisonEstimee ? `<div style="font-size:12px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(livraisonEstimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
-      ${c.statut === 'refuse' ? `
-      <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="doReessayerCommande('${c.commande_items?.[0]?.produit_id||''}')">🔄 Relancer le paiement</button>` : ''}
+      ${c.mode_paiement === 'helloasso' && (c.statut === 'refuse' || c.statut === 'en_attente') ? `
+      <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="doReessayerCommande('${c.commande_items?.[0]?.produit_id||''}')">${c.statut === 'refuse' ? '🔄 Relancer le paiement' : '💳 Reprendre le paiement'}</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -261,16 +261,47 @@ function doReessayerCommande(produitId) {
   openCommander(produitId);
 }
 
+// Sélection courante pour la validation groupée de réception (Matos) —
+// uniquement des commandes en 'precommande_validee', réinitialisée à
+// chaque rechargement/changement de filtre pour éviter de garder une
+// sélection sur des commandes qui ne sont plus affichées.
+let commandesSelectionneesReception = new Set();
+
 function renderToutesCommandes(commandes) {
   const el = document.getElementById('adminToutesCommandes');
-  if (!commandes.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune commande</p>'; return; }
+  if (!commandes.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune commande</p>'; commandesSelectionneesReception.clear(); return; }
   const statuts = { en_attente:'⏳', precommande_validee:'📋', disponible:'✅', distribue:'✔️', refuse:'❌', annulee:'❌' };
-  el.innerHTML = commandes.map(c => `
+
+  // Ne garder en sélection que des commandes toujours affichées et
+  // toujours en precommande_validee (évite de valider par erreur une
+  // commande déjà traitée entretemps par quelqu'un d'autre).
+  const idsPrecommandeValidee = commandes.filter(c => c.statut === 'precommande_validee').map(c => c.id);
+  const idsPrecommandeValideeSet = new Set(idsPrecommandeValidee);
+  [...commandesSelectionneesReception].forEach(id => { if (!idsPrecommandeValideeSet.has(id)) commandesSelectionneesReception.delete(id); });
+
+  // Barre de sélection groupée — n'apparaît que s'il y a au moins une
+  // précommande validée à réceptionner dans la vue actuelle (05/07/2026
+  // demande Remi : pouvoir valider la réception de tout un lot de
+  // précommande d'un coup, plutôt qu'article par article).
+  const barreSelection = idsPrecommandeValidee.length ? `
+    <div class="card" style="margin-bottom:8px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:var(--surface-2);">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:0;">
+        <input type="checkbox" ${commandesSelectionneesReception.size === idsPrecommandeValidee.length ? 'checked' : ''}
+          onclick='toggleToutesSelectionCommandes(${JSON.stringify(idsPrecommandeValidee)})'>
+        Tout sélectionner (${idsPrecommandeValidee.length} précommande${idsPrecommandeValidee.length>1?'s':''} validée${idsPrecommandeValidee.length>1?'s':''})
+      </label>
+      ${commandesSelectionneesReception.size ? `<button class="btn btn-sm btn-primary" onclick="doReceptionnerCommandesEnMasse()">✅ Valider la réception (${commandesSelectionneesReception.size})</button>` : ''}
+    </div>` : '';
+
+  el.innerHTML = barreSelection + commandes.map(c => `
     <div class="card" style="margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <div>
-          <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">@${c.membre?.pseudo_telegram||'?'}</div>
-          <div style="font-size:12px;color:var(--gris);">${(c.commande_items||[]).map(i=>esc(i.produit?.nom||'?')).join(', ')} · ${c.total}€ · ${c.mode_paiement === 'helloasso' ? 'HelloAsso' : 'Cash'}</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${c.statut === 'precommande_validee' ? `<input type="checkbox" ${commandesSelectionneesReception.has(c.id)?'checked':''} onclick="toggleSelectionCommande('${c.id}')">` : ''}
+          <div>
+            <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">@${c.membre?.pseudo_telegram||'?'}</div>
+            <div style="font-size:12px;color:var(--gris);">${(c.commande_items||[]).map(i=>`${esc(i.produit?.nom||'?')}${i.taille?` (${esc(i.taille)})`:''}${i.quantite>1?` ×${i.quantite}`:''}`).join(', ')} · ${c.total}€ · ${c.mode_paiement === 'helloasso' ? 'HelloAsso' : 'Cash'}</div>
+          </div>
         </div>
         <span class="badge ${c.statut==='distribue'||c.statut==='disponible'?'badge-vert':c.statut==='precommande_validee'?'badge-bleu':c.statut==='refuse'||c.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[c.statut]||''} ${c.statut}</span>
       </div>
@@ -280,6 +311,42 @@ function renderToutesCommandes(commandes) {
         ${['en_attente','precommande_validee'].includes(c.statut) ? `<button class="btn btn-sm btn-danger" onclick="changerStatutCommande('${c.id}','annulee')">Annuler</button>` : ''}
       </div>
     </div>`).join('');
+}
+
+function toggleSelectionCommande(id) {
+  if (commandesSelectionneesReception.has(id)) commandesSelectionneesReception.delete(id);
+  else commandesSelectionneesReception.add(id);
+  filtrerCommandesAdminSansEvent(currentFiltreCommandesAdmin);
+}
+
+function toggleToutesSelectionCommandes(ids) {
+  if (commandesSelectionneesReception.size === ids.length) commandesSelectionneesReception.clear();
+  else ids.forEach(id => commandesSelectionneesReception.add(id));
+  filtrerCommandesAdminSansEvent(currentFiltreCommandesAdmin);
+}
+
+// Validation groupée — avec pop-up de confirmation rappelant de bien
+// vérifier les articles/tailles reçus avant de tout basculer en
+// 'disponible' d'un coup (demande Remi 07/07/2026 : chaque précommande
+// correspond à une vente groupée, donc un seul geste pour réceptionner
+// tout le lot une fois le colis reçu et contrôlé).
+async function doReceptionnerCommandesEnMasse() {
+  const ids = [...commandesSelectionneesReception];
+  if (!ids.length) return;
+  const confirme = confirm(
+    `Tu es sur le point de marquer ${ids.length} commande${ids.length>1?'s':''} comme reçue${ids.length>1?'s':''} (disponible${ids.length>1?'s':''} au retrait).\n\n` +
+    `As-tu bien vérifié que les articles et les tailles reçus correspondent exactement à ce qui a été commandé pour chacune ?\n\n` +
+    `Cette action ne peut pas être annulée en masse ensuite.`
+  );
+  if (!confirme) return;
+  let ok = 0, echecs = 0;
+  for (const id of ids) {
+    try { await UL.receptionnerCommande(id); ok++; }
+    catch(e) { echecs++; }
+  }
+  commandesSelectionneesReception.clear();
+  toast(echecs ? `${ok} validée(s), ${echecs} échec(s)` : `${ok} commande(s) marquée(s) reçue(s) ✅`, echecs ? 'error' : 'success');
+  loadAdminBoutique();
 }
 
 async function changerStatutCommande(id, statut) {
@@ -1042,20 +1109,40 @@ function renderMesSticks(distribs) {
         <span class="badge ${d.statut==='distribue'||d.statut==='disponible'?'badge-vert':d.statut==='precommande_validee'?'badge-bleu':d.statut==='refuse'||d.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[d.statut]||d.statut}</span>
       </div>
       ${d.stick?.mode === 'precommande' && d.stick?.precommande_livraison_estimee ? `<div style="font-size:12px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(d.stick.precommande_livraison_estimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
-      ${d.statut === 'refuse' ? `
-      <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="ouvrirCommanderStick('${d.stick_id}')">🔄 Relancer le paiement</button>` : ''}
+      ${d.mode_paiement === 'helloasso' && (d.statut === 'refuse' || d.statut === 'en_attente') ? `
+      <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="ouvrirCommanderStick('${d.stick_id}')">${d.statut === 'refuse' ? '🔄 Relancer le paiement' : '💳 Reprendre le paiement'}</button>` : ''}
     </div>`).join('');
 }
 
+let distribsSelectionneesReception = new Set();
+
 function renderToutesDistribs(distribs) {
   const el = document.getElementById('adminToutesDistribs');
-  if (!distribs.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune distribution</p>'; return; }
-  el.innerHTML = distribs.slice(0,30).map(d => `
+  if (!distribs.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune distribution</p>'; distribsSelectionneesReception.clear(); return; }
+
+  const idsPrecommandeValidee = distribs.filter(d => d.statut === 'precommande_validee').map(d => d.id);
+  const idsPrecommandeValideeSet = new Set(idsPrecommandeValidee);
+  [...distribsSelectionneesReception].forEach(id => { if (!idsPrecommandeValideeSet.has(id)) distribsSelectionneesReception.delete(id); });
+
+  const barreSelection = idsPrecommandeValidee.length ? `
+    <div class="card" style="margin-bottom:8px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:var(--surface-2);">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin:0;">
+        <input type="checkbox" ${distribsSelectionneesReception.size === idsPrecommandeValidee.length ? 'checked' : ''}
+          onclick='toggleToutesSelectionDistribs(${JSON.stringify(idsPrecommandeValidee)})'>
+        Tout sélectionner (${idsPrecommandeValidee.length} précommande${idsPrecommandeValidee.length>1?'s':''} validée${idsPrecommandeValidee.length>1?'s':''})
+      </label>
+      ${distribsSelectionneesReception.size ? `<button class="btn btn-sm btn-primary" onclick="doReceptionnerStickEnMasse()">✅ Valider la réception (${distribsSelectionneesReception.size})</button>` : ''}
+    </div>` : '';
+
+  el.innerHTML = barreSelection + distribs.slice(0,30).map(d => `
     <div class="card" style="margin-bottom:6px;padding:12px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="font-weight:600;font-size:13px;">@${d.membre?.pseudo_telegram||'?'} — ${esc(d.stick?.nom||'?')}</div>
-          <div style="font-size:11px;color:var(--gris);">Qté: ${d.quantite} · ${d.mode_paiement} · ${new Date(d.created_at).toLocaleDateString('fr-FR')}</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${d.statut === 'precommande_validee' ? `<input type="checkbox" ${distribsSelectionneesReception.has(d.id)?'checked':''} onclick="toggleSelectionDistrib('${d.id}')">` : ''}
+          <div>
+            <div style="font-weight:600;font-size:13px;">@${d.membre?.pseudo_telegram||'?'} — ${esc(d.stick?.nom||'?')}</div>
+            <div style="font-size:11px;color:var(--gris);">Qté: ${d.quantite} · ${d.mode_paiement} · ${new Date(d.created_at).toLocaleDateString('fr-FR')}</div>
+          </div>
         </div>
         <span class="badge ${d.statut==='distribue'||d.statut==='disponible'?'badge-vert':d.statut==='precommande_validee'?'badge-bleu':'badge-orange'}">${d.statut}</span>
       </div>
@@ -1064,6 +1151,37 @@ function renderToutesDistribs(distribs) {
         ${d.statut === 'disponible' ? `<button class="btn btn-sm btn-secondary" style="flex:1;" onclick="doConfirmerDistributionManuelle('${d.id}')">✔️ Confirmer (sans scan)</button>` : ''}
       </div>
     </div>`).join('');
+}
+
+function toggleSelectionDistrib(id) {
+  if (distribsSelectionneesReception.has(id)) distribsSelectionneesReception.delete(id);
+  else distribsSelectionneesReception.add(id);
+  filtrerDistribsAdminSansEvent(currentFiltreDistribsAdmin);
+}
+
+function toggleToutesSelectionDistribs(ids) {
+  if (distribsSelectionneesReception.size === ids.length) distribsSelectionneesReception.clear();
+  else ids.forEach(id => distribsSelectionneesReception.add(id));
+  filtrerDistribsAdminSansEvent(currentFiltreDistribsAdmin);
+}
+
+async function doReceptionnerStickEnMasse() {
+  const ids = [...distribsSelectionneesReception];
+  if (!ids.length) return;
+  const confirme = confirm(
+    `Tu es sur le point de marquer ${ids.length} stick${ids.length>1?'s':''} comme reçu${ids.length>1?'s':''} (disponible${ids.length>1?'s':''} au retrait).\n\n` +
+    `As-tu bien vérifié que les quantités reçues correspondent à ce qui a été commandé pour chacun ?\n\n` +
+    `Cette action ne peut pas être annulée en masse ensuite.`
+  );
+  if (!confirme) return;
+  let ok = 0, echecs = 0;
+  for (const id of ids) {
+    try { await UL.receptionnerStick(id); ok++; }
+    catch(e) { echecs++; }
+  }
+  distribsSelectionneesReception.clear();
+  toast(echecs ? `${ok} validé(s), ${echecs} échec(s)` : `${ok} stick(s) marqué(s) reçu(s) ✅`, echecs ? 'error' : 'success');
+  loadAdminBoutique();
 }
 
 async function doReceptionnerStick(distribId) {
@@ -1203,7 +1321,7 @@ async function doSauvegarderConfigCotisation() {
 
 function toggleSectionSelect() {
   const val = document.getElementById('pAcces').value;
-  document.getElementById('sectionSelectGroup').style.display = val === 'section' ? 'block' : 'none';
+  document.getElementById('sectionSelectGroup').style.display = val !== 'tous' ? 'block' : 'none';
 }
 
 // Affiche/masque la plage de dates de précommande selon le mode choisi —
@@ -1359,11 +1477,11 @@ async function doCreerProduit() {
   const nom = document.getElementById('pNom').value.trim();
   const prix = parseFloat(document.getElementById('pPrix').value);
   const acces = document.getElementById('pAcces').value;
-  const sectionId = acces === 'section' ? document.getElementById('pSection').value : null;
+  const sectionId = acces !== 'tous' ? document.getElementById('pSection').value : null;
 
   if (!nom) return toast('Nom requis', 'error');
   if (!prix || isNaN(prix)) return toast('Prix requis', 'error');
-  if (acces === 'section' && !sectionId) return toast('Sélectionne une section', 'error');
+  if (acces !== 'tous' && !sectionId) return toast('Sélectionne une section', 'error');
 
   const notifier = document.getElementById('pNotifier')?.checked;
 
@@ -1397,7 +1515,7 @@ async function doCreerProduit() {
     });
 
     hideLoading();
-    const sectionNom = acces === 'section'
+    const sectionNom = acces !== 'tous'
       ? document.getElementById('pSection').options[document.getElementById('pSection').selectedIndex].text
       : null;
 
@@ -1491,11 +1609,11 @@ async function doModifierProduit() {
   const nom = document.getElementById('pNom').value.trim();
   const prix = parseFloat(document.getElementById('pPrix').value);
   const acces = document.getElementById('pAcces').value;
-  const sectionId = acces === 'section' ? document.getElementById('pSection').value : null;
+  const sectionId = acces !== 'tous' ? document.getElementById('pSection').value : null;
 
   if (!nom) return toast('Nom requis', 'error');
   if (!prix || isNaN(prix)) return toast('Prix requis', 'error');
-  if (acces === 'section' && !sectionId) return toast('Sélectionne une section', 'error');
+  if (acces !== 'tous' && !sectionId) return toast('Sélectionne une section', 'error');
 
   try {
     showLoading();
