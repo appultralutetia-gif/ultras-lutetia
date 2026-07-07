@@ -218,7 +218,7 @@ async function afficherActionsMatos(membre) {
   try {
     const toutes = await UL.getAllCommandes();
     const commandesMembre = (toutes || []).filter(c => c.membre_id === membre.id);
-    const disponibles = commandesMembre.filter(c => c.statut === 'disponible');
+    const disponibles = commandesMembre.filter(c => c.statut === 'disponible' || c.statut === 'prepare');
     // Payées mais pas encore physiquement disponibles (précommande en
     // attente de réception, ou paiement cash pas encore confirmé) — le
     // scan doit bloquer explicitement plutôt que de les ignorer
@@ -279,12 +279,12 @@ async function afficherActionsStick(membre) {
 
   try {
     const toutes = await UL.getAllDistributions();
-    // 'disponible' = payé (cash confirmé ou HelloAsso confirmé par
-    // webhook) et physiquement en stock — c'est la seule étape scannable.
-    // Une ligne 'en_attente' (paiement pas confirmé) ou
-    // 'precommande_validee' (payé mais pas encore reçu) doit bloquer,
-    // pas être ignorée silencieusement.
-    const disponibles = (toutes || []).filter(d => d.membre_id === membre.id && d.statut === 'disponible');
+    // 'disponible'/'prepare' = payé (cash confirmé ou HelloAsso confirmé
+    // par webhook) et physiquement en stock — préparé ou non à l'avance,
+    // les deux sont scannables. Une ligne 'en_attente' (paiement pas
+    // confirmé) ou 'precommande_validee' (payé mais pas encore reçu) doit
+    // bloquer, pas être ignorée silencieusement.
+    const disponibles = (toutes || []).filter(d => d.membre_id === membre.id && (d.statut === 'disponible' || d.statut === 'prepare'));
     const pasEncoreDisponibles = (toutes || []).filter(d => d.membre_id === membre.id && (d.statut === 'en_attente' || d.statut === 'precommande_validee'));
 
     if (!disponibles.length && !pasEncoreDisponibles.length) {
