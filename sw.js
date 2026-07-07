@@ -1,6 +1,16 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v29
+// ULTRAS LUTETIA — Service Worker v30
 // ============================================================
+//
+// v30 (07/07/2026) : CACHE_NAME bumpé (v29 → v30) — demande Remi : (1)
+// date de livraison estimée optionnelle pour un article en précommande
+// (Matos + Sticks), affichée au membre dans le catalogue et dans "Mes
+// commandes"/"Mes stickers". (2) "Mes commandes" détaille maintenant
+// chaque article (nom, quantité, taille) au lieu du titre vide constaté
+// par Remi — cause probable : commande_items sans policy RLS de lecture
+// pour le membre (cf. migration_livraison_estimee_et_rls.sql), avec un
+// repli défensif affiché si jamais les lignes restent vides malgré la
+// migration.
 //
 // v29 (07/07/2026) : CACHE_NAME bumpé (v28 → v29) — 2 bugs corrigés :
 // (1) getAllCommandes() (supabase-client.js) retournait [] en silence à
@@ -323,7 +333,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v29';
+const CACHE_NAME = 'ul-v30';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
