@@ -225,13 +225,14 @@ function renderGererCartageArticles() {
   if (!allCartageCatalogueAdmin.length) { el.innerHTML = '<div class="empty-state"><div>🗂️</div>Aucun cartage créé</div>'; return; }
   el.innerHTML = allCartageCatalogueAdmin.map(c => `
     <div class="card" style="margin-bottom:8px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        ${c.image_url ? `<img src="${c.image_url}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;flex-shrink:0;">` : ''}
+        <div style="flex:1;min-width:0;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(c.nom)}</div>
           <div style="font-size:12px;color:var(--gris);">${c.prix}€ · Saison ${esc(c.saison)}</div>
           ${c.description ? `<div style="font-size:12px;color:var(--gris);margin-top:2px;">${esc(c.description)}</div>` : ''}
         </div>
-        <span class="badge ${c.statut === 'archive' ? 'badge-rouge' : 'badge-vert'}">${c.statut === 'archive' ? 'Archivé' : 'Disponible'}</span>
+        <span class="badge ${c.statut === 'archive' ? 'badge-rouge' : 'badge-vert'}" style="flex-shrink:0;">${c.statut === 'archive' ? 'Archivé' : 'Disponible'}</span>
       </div>
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
         <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierCartage('${c.id}')">✏️ Modifier</button>
@@ -247,6 +248,8 @@ function ouvrirCreerCartage() {
   document.getElementById('cartageDesc').value = '';
   document.getElementById('cartagePrix').value = '';
   document.getElementById('cartageSaison').value = allCartageCatalogueAdmin[0]?.saison || '2026-2027';
+  document.getElementById('cartagePhoto').value = '';
+  document.getElementById('photoPreviewCartage').style.display = 'none';
   showModal('modalCreerCartage');
 }
 
@@ -259,6 +262,13 @@ function ouvrirModifierCartage(id) {
   document.getElementById('cartageDesc').value = c.description || '';
   document.getElementById('cartagePrix').value = c.prix;
   document.getElementById('cartageSaison').value = c.saison;
+  document.getElementById('cartagePhoto').value = '';
+  if (c.image_url) {
+    document.getElementById('photoPreviewImgCartage').src = c.image_url;
+    document.getElementById('photoPreviewCartage').style.display = 'block';
+  } else {
+    document.getElementById('photoPreviewCartage').style.display = 'none';
+  }
   showModal('modalCreerCartage');
 }
 
@@ -277,12 +287,18 @@ async function doSauvegarderCartage() {
     saison,
   };
   try {
+    showLoading();
+    const photoFile = document.getElementById('cartagePhoto').files[0];
+    if (photoFile) {
+      payload.image_url = await UL.uploadPhotoCartage(photoFile, nom);
+    }
     if (id) await UL.updateCartage(id, payload);
     else await UL.createCartage({ ...payload, statut: 'disponible' });
+    hideLoading();
     toast('Cartage enregistré ✅', 'success');
     closeModal('modalCreerCartage');
     loadGererCartageArticles();
-  } catch(e) { toast(e.message || 'Impossible d\'enregistrer le cartage', 'error'); }
+  } catch(e) { hideLoading(); toast(e.message || 'Impossible d\'enregistrer le cartage', 'error'); }
 }
 
 async function doArchiverCartage(id) {
