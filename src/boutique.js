@@ -56,11 +56,28 @@ function renderMatos(produits) {
   }
   el.innerHTML = produits.map(p => {
     const icones = { textile:'👕', accessoire:'🎒' };
-    const stockBadge = p.stock <= 3 && p.stock > 0
-      ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
-      : p.stock === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
+    // En mode précommande, le badge "stock" n'a pas de sens (stock=0 par
+    // défaut tant que rien n'est reçu) — on affiche plutôt l'état de la
+    // fenêtre de précommande (05/07/2026, corrige le badge "Épuisé"
+    // trompeur signalé par Remi). En mode stock, comportement inchangé.
+    const precommandeOuverte = precommandeEstOuverte(p);
+    let stockBadge;
+    if (p.mode === 'precommande') {
+      if (precommandePasEncoreOuverte(p)) {
+        stockBadge = `<span class="badge badge-orange" style="font-size:10px;">Précommande dès le ${new Date(p.precommande_debut).toLocaleDateString('fr-FR')}</span>`;
+      } else if (!precommandeOuverte) {
+        stockBadge = `<span class="badge badge-rouge" style="font-size:10px;">Précommande terminée</span>`;
+      } else {
+        stockBadge = '';
+      }
+    } else {
+      stockBadge = p.stock <= 3 && p.stock > 0
+        ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
+        : p.stock === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
+    }
     const sectionBadge = p.section
       ? `<span class="badge badge-bleu" style="font-size:10px;">Section ${p.section.nom}</span>` : '';
+    const peutCommander = (p.stock > 0 || p.mode === 'precommande') && precommandeOuverte;
     return `<div class="produit-card">
       <div class="produit-img">${p.photo_url ? `<img src="${p.photo_url}" alt="${esc(p.nom)}">` : icones[p.categorie] || '📦'}</div>
       <div class="produit-info">
@@ -71,7 +88,7 @@ function renderMatos(produits) {
           ${p.quota_par_membre ? `• Quota: ${p.quota_par_membre} max` : ''}
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${stockBadge}${sectionBadge}</div>
-        ${p.stock > 0 || p.mode === 'precommande' ? `
+        ${peutCommander ? `
         <button class="btn btn-sm btn-primary" style="margin-top:10px;" onclick="openCommander('${p.id}')">
           ${p.mode === 'precommande' ? '📋 Précommander' : '🛒 Commander'}
         </button>` : ''}
@@ -88,6 +105,7 @@ let _produitCommandeCourant = null;
 async function openCommander(produitId) {
   try {
     const p = await UL.getProduitById(produitId);
+    if (!precommandeEstOuverte(p)) return toast('Précommande terminée', 'error');
     _produitCommandeCourant = p;
     const icones = { textile:'👕', accessoire:'🎒' };
 
@@ -327,7 +345,18 @@ function renderSticks(sticks) {
   const el = document.getElementById('sticksCatalogue');
   if (!sticks.length) { el.innerHTML = '<div class="empty-state"><div>🎟️</div>Aucun stick disponible</div>'; return; }
   el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">` +
-  sticks.map(s => `
+  sticks.map(s => {
+    const precommandeOuverte = precommandeEstOuverte(s);
+    let statutBadge = '';
+    if (s.mode === 'precommande') {
+      if (precommandePasEncoreOuverte(s)) {
+        statutBadge = `<span class="badge badge-orange" style="font-size:10px;margin-top:6px;display:inline-block;">Dès le ${new Date(s.precommande_debut).toLocaleDateString('fr-FR')}</span>`;
+      } else if (!precommandeOuverte) {
+        statutBadge = `<span class="badge badge-rouge" style="font-size:10px;margin-top:6px;display:inline-block;">Précommande terminée</span>`;
+      }
+    }
+    const peutCommander = (s.stock > 0 || s.mode === 'precommande') && s.prix > 0 && precommandeOuverte;
+    return `
     <div class="card" style="padding:10px;">
       <div style="width:100%;height:150px;border-radius:8px;overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
         ${s.visuel_url ? `<img src="${s.visuel_url}" style="width:100%;height:100%;object-fit:cover;">` : `<span style="font-size:48px;">🎟️</span>`}
@@ -339,10 +368,12 @@ function renderSticks(sticks) {
         ${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}
       </div>
       ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
+      ${statutBadge}
       <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">
-        ${(s.stock > 0 || s.mode === 'precommande') && s.prix > 0 ? `<button class="btn btn-sm btn-primary" style="width:100%;" onclick="ouvrirCommanderStick('${s.id}')">💳 HelloAsso</button>` : ''}
+        ${peutCommander ? `<button class="btn btn-sm btn-primary" style="width:100%;" onclick="ouvrirCommanderStick('${s.id}')">💳 HelloAsso</button>` : ''}
       </div>
-    </div>`).join('') + `</div>`;
+    </div>`;
+  }).join('') + `</div>`;
 }
 
 // ── Paiement HelloAsso (membre) ─────────────────────────────────
@@ -354,6 +385,7 @@ async function ouvrirCommanderStick(stickId) {
   try {
     const s = await UL.getStickById(stickId);
     if (!s) return toast('Article introuvable', 'error');
+    if (!precommandeEstOuverte(s)) return toast('Précommande terminée', 'error');
     _stickCommandeCourant = s;
 
     let quotaHtml = '';
@@ -801,7 +833,7 @@ function renderMatosAdmin(produits) {
         <div class="produit-meta">
           ${p.avec_tailles ? '• Tailles dispo' : ''}
           ${p.quota_par_membre ? `• Quota: ${p.quota_par_membre} max` : ''}
-          ${p.mode === 'precommande' ? '• Précommande' : ''}
+          ${p.mode === 'precommande' ? `• Précommande${formatPlagePrecommande(p)}` : ''}
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${stockBadge}${sectionBadge}${archiveBadge}</div>
         <div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;">
@@ -829,7 +861,7 @@ function renderSticksAdmin(sticks) {
       <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(s.nom)}</div>
       <div style="font-size:12px;color:var(--gris);margin-top:2px;">
         ${s.prix ? `${s.prix}€ · ` : 'Gratuit · '}
-        ${s.mode === 'precommande' ? 'Précommande' : 'Stock: ' + s.stock}
+        ${s.mode === 'precommande' ? 'Précommande' + formatPlagePrecommande(s) : 'Stock: ' + s.stock}
         ${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}
       </div>
       ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
@@ -1133,6 +1165,67 @@ function toggleSectionSelect() {
   document.getElementById('sectionSelectGroup').style.display = val === 'section' ? 'block' : 'none';
 }
 
+// Affiche/masque la plage de dates de précommande selon le mode choisi —
+// même principe que toggleSectionSelect (05/07/2026, demande Remi : plages
+// de précommande optionnelles pour Matos/Sticks, auto-fermeture à la date
+// de fin, cf. synthèse du 07/07/2026).
+function toggleModePrecommandeMatos() {
+  const val = document.getElementById('pMode').value;
+  document.getElementById('pPrecommandeDatesGroup').style.display = val === 'precommande' ? 'block' : 'none';
+}
+function toggleModePrecommandeStick() {
+  const val = document.getElementById('stMode').value;
+  document.getElementById('stPrecommandeDatesGroup').style.display = val === 'precommande' ? 'block' : 'none';
+}
+
+// Convertit la valeur d'un <input type="datetime-local"> (heure locale du
+// navigateur, sans timezone) en ISO string UTC pour la base, ou null si
+// vide. Symétrique de isoVersDateLocal ci-dessous.
+function dateLocalVersISO(id) {
+  const v = document.getElementById(id).value;
+  return v ? new Date(v).toISOString() : null;
+}
+// Convertit une valeur ISO (venant de la base) vers le format attendu par
+// un <input type="datetime-local"> ("YYYY-MM-DDTHH:mm", heure locale) —
+// nécessaire pour pré-remplir le champ en mode édition.
+function isoVersDateLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Détermine si un article/stick en mode 'precommande' est actuellement
+// commandable, selon sa plage de dates optionnelle. Un article en mode
+// 'stock' n'est jamais concerné (retourne toujours true — la logique de
+// disponibilité pour le stock reste basée sur p.stock, gérée séparément).
+// Les deux bornes sont optionnelles et indépendantes (on peut n'avoir
+// qu'une fin, qu'un début, les deux, ou aucun des deux).
+function precommandeEstOuverte(item) {
+  if (item.mode !== 'precommande') return true;
+  const maintenant = new Date();
+  if (item.precommande_debut && maintenant < new Date(item.precommande_debut)) return false;
+  if (item.precommande_fin && maintenant > new Date(item.precommande_fin)) return false;
+  return true;
+}
+// true si la précommande n'a pas encore commencé (date de début future) —
+// distingue ce cas de "terminée" pour afficher le bon badge.
+function precommandePasEncoreOuverte(item) {
+  return item.mode === 'precommande' && item.precommande_debut && new Date() < new Date(item.precommande_debut);
+}
+
+// Petit texte " (du .. au ..)" pour les vues admin — vide si aucune des
+// deux dates n'est renseignée.
+function formatPlagePrecommande(item) {
+  if (!item.precommande_debut && !item.precommande_fin) return '';
+  const fmt = iso => new Date(iso).toLocaleDateString('fr-FR', { day:'numeric', month:'short' });
+  const debut = item.precommande_debut ? fmt(item.precommande_debut) : null;
+  const fin = item.precommande_fin ? fmt(item.precommande_fin) : null;
+  if (debut && fin) return ` (du ${debut} au ${fin})`;
+  if (fin) return ` (jusqu'au ${fin})`;
+  return ` (dès le ${debut})`;
+}
+
 function previewPhoto(input, type) {
   const file = input.files[0];
   if (!file) return;
@@ -1221,6 +1314,8 @@ async function doCreerProduit() {
       niveau_acces: acces,
       section_id: sectionId,
       mode: document.getElementById('pMode').value,
+      precommande_debut: dateLocalVersISO('pPrecommandeDebut'),
+      precommande_fin: dateLocalVersISO('pPrecommandeFin'),
       statut: 'disponible',
       photo_url: photoUrl,
     });
@@ -1233,9 +1328,11 @@ async function doCreerProduit() {
     toast(`Article créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Généraliste'}`, 'success');
     closeModal('modalCreerProduit');
     reinitialiserFormulaireProduit();
-    ['pNom','pDesc','pPrix','pStock','pQuota'].forEach(id => document.getElementById(id).value = '');
+    ['pNom','pDesc','pPrix','pStock','pQuota','pPrecommandeDebut','pPrecommandeFin'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('pPhoto').value = '';
     document.getElementById('photoPreviewMatos').style.display = 'none';
+    document.getElementById('pMode').value = 'stock';
+    document.getElementById('pPrecommandeDatesGroup').style.display = 'none';
     // Notification réservée à ceux qui ont le droit de voir cet article —
     // cible:'matos' reproduit côté serveur la même règle que getProduits
     // (supabase-client.js) : 'tous' = tout le monde, 'section' = Confirmés
@@ -1283,6 +1380,9 @@ async function ouvrirModifierProduit(produitId) {
   document.getElementById('pTailles').checked = !!p.avec_tailles;
   document.getElementById('pAcces').value = p.niveau_acces || 'tous';
   document.getElementById('pMode').value = p.mode || 'stock';
+  document.getElementById('pPrecommandeDebut').value = isoVersDateLocal(p.precommande_debut);
+  document.getElementById('pPrecommandeFin').value = isoVersDateLocal(p.precommande_fin);
+  toggleModePrecommandeMatos();
   document.getElementById('pPhoto').value = '';
   if (p.photo_url) {
     document.getElementById('photoPreviewImgMatos').src = p.photo_url;
@@ -1330,6 +1430,8 @@ async function doModifierProduit() {
       niveau_acces: acces,
       section_id: sectionId,
       mode: document.getElementById('pMode').value,
+      precommande_debut: dateLocalVersISO('pPrecommandeDebut'),
+      precommande_fin: dateLocalVersISO('pPrecommandeFin'),
     };
     if (photoFile) {
       updates.photo_url = await UL.uploadPhotoMatos(photoFile, nom);
@@ -1363,6 +1465,7 @@ function reinitialiserFormulaireProduit() {
 }
 
 // ── STICKS — création (Admin/Cellule Sticks) ───────────────────
+
 async function loadSectionsForModalStick() {
   try {
     const sections = await UL.getSections();
@@ -1408,6 +1511,8 @@ async function doCreerStick() {
       quota_par_membre: parseInt(document.getElementById('stQuota').value) || null,
       stock: parseInt(document.getElementById('stStock').value) || 0,
       mode: document.getElementById('stMode').value,
+      precommande_debut: dateLocalVersISO('stPrecommandeDebut'),
+      precommande_fin: dateLocalVersISO('stPrecommandeFin'),
       lien_helloasso: lienHelloasso,
       statut: 'disponible',
       visuel_url: visuelUrl,
@@ -1421,9 +1526,10 @@ async function doCreerStick() {
     toast(`Stick créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Tous les membres'}`, 'success');
     closeModal('modalCreerStick');
     reinitialiserFormulaireStick();
-    ['stNom','stPrix','stLot','stQuota','stStock','stHelloasso'].forEach(id => document.getElementById(id).value = '');
+    ['stNom','stPrix','stLot','stQuota','stStock','stHelloasso','stPrecommandeDebut','stPrecommandeFin'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('stLot').value = '1';
     document.getElementById('stMode').value = 'stock';
+    document.getElementById('stPrecommandeDatesGroup').style.display = 'none';
     document.getElementById('stPhoto').value = '';
     document.getElementById('photoPreviewStick').style.display = 'none';
     document.getElementById('stCat').value = 'tous';
@@ -1467,6 +1573,9 @@ async function ouvrirModifierStick(stickId) {
   document.getElementById('stQuota').value = s.quota_par_membre ?? '';
   document.getElementById('stStock').value = s.stock ?? '';
   document.getElementById('stMode').value = s.mode || 'stock';
+  document.getElementById('stPrecommandeDebut').value = isoVersDateLocal(s.precommande_debut);
+  document.getElementById('stPrecommandeFin').value = isoVersDateLocal(s.precommande_fin);
+  toggleModePrecommandeStick();
   document.getElementById('stHelloasso').value = s.lien_helloasso || '';
   document.getElementById('stPhoto').value = '';
   if (s.visuel_url) {
@@ -1510,6 +1619,8 @@ async function doModifierStick() {
       quota_par_membre: parseInt(document.getElementById('stQuota').value) || null,
       stock: parseInt(document.getElementById('stStock').value) || 0,
       mode: document.getElementById('stMode').value,
+      precommande_debut: dateLocalVersISO('stPrecommandeDebut'),
+      precommande_fin: dateLocalVersISO('stPrecommandeFin'),
       lien_helloasso: lienHelloasso,
     };
     if (photoFile) {
