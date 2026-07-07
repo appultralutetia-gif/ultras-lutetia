@@ -1323,36 +1323,6 @@
 </div>
 
 
-<!-- Modal Distribution Sticks (Admin) -->
-<div class="modal-overlay" id="modalDistribuer" style="display:none;" onclick="closeModalOutside(event,'modalDistribuer')">
-  <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-handle"></div>
-    <h3 class="modal-title">Enregistrer une distribution</h3>
-    <div class="form-group">
-      <label>Stick / Article</label>
-      <select id="distribStickId"></select>
-    </div>
-    <div class="form-group">
-      <label>Membre</label>
-      <select id="distribMembreId"></select>
-    </div>
-    <div class="form-group">
-      <label>Quantité</label>
-      <input type="number" id="distribQte" value="1" min="1">
-    </div>
-    <div class="form-group">
-      <label>Mode</label>
-      <select id="distribMode">
-        <option value="cash">Cash (en présentiel)</option>
-        <option value="helloasso">HelloAsso (en ligne)</option>
-        <option value="gratuit">Gratuit</option>
-      </select>
-    </div>
-    <button class="btn btn-primary" onclick="doDistribuerStick(this)">Enregistrer</button>
-    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalDistribuer')">Annuler</button>
-  </div>
-</div>
-
 <!-- Modal Valider Cash Stick (Admin/Bureau/Cellule Sticks) -->
 <div class="modal-overlay" id="modalCashStick" style="display:none;" onclick="closeModalOutside(event,'modalCashStick')">
   <div class="modal" onclick="event.stopPropagation()">
