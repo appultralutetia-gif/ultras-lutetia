@@ -1418,6 +1418,22 @@ async function receptionnerCommande(commandeId) {
   return { success: true };
 }
 
+// Statut intermédiaire "préparé" (07/07/2026, demande Remi) — un sac déjà
+// fait à l'avance, pas encore remis physiquement au membre. Purement
+// informatif pour l'équipe qui prépare, aucun changement d'affichage
+// côté membre (toujours "Disponible — à retirer" tant que non scanné).
+async function marquerCommandePreparee(commandeId) {
+  const { error } = await sb.from('commandes')
+    .update({
+      statut: 'prepare',
+      preparee_par: currentUser.id,
+      preparee_at: new Date().toISOString(),
+    })
+    .eq('id', commandeId);
+  if (error) throw error;
+  return { success: true };
+}
+
 // ============================================================
 // BOUTIQUE — STICKS
 // ============================================================
@@ -1585,6 +1601,18 @@ async function receptionnerStick(distribId) {
   return { success: true };
 }
 
+async function marquerStickPrepare(distribId) {
+  const { error } = await sb.from('sticks_distribution')
+    .update({
+      statut: 'prepare',
+      preparee_par: currentUser.id,
+      preparee_at: new Date().toISOString(),
+    })
+    .eq('id', distribId);
+  if (error) throw error;
+  return { success: true };
+}
+
 async function validerPaiementStick(distribId) {
   // ⚠️ Avant le 21/06/2026 cette fonction écrivait toujours
   // statut:'paye_helloasso', incohérent avec le reste de l'UI qui affiche
@@ -1596,13 +1624,14 @@ async function validerPaiementStick(distribId) {
   // statut final commun aux deux flux, confirmé par scan ou bouton manuel.
   const { data: distrib } = await sb.from('sticks_distribution')
     .select('stick_id, quantite, statut').eq('id', distribId).single();
-  if (distrib && distrib.statut !== 'disponible' && distrib.statut !== 'distribue') {
-    // Sécurité : on ne confirme une remise que depuis 'disponible' (payé
-    // et prêt) — un scan sur une ligne encore 'en_attente' ou
-    // 'precommande_validee' serait un état incohérent (ne devrait jamais
-    // arriver via l'UI normale, qui ne propose au scan que les lignes
-    // 'disponible', cf. scan.js). Un statut déjà 'distribue' est en
-    // revanche accepté sans erreur (idempotence en cas de double-clic).
+  if (distrib && distrib.statut !== 'disponible' && distrib.statut !== 'prepare' && distrib.statut !== 'distribue') {
+    // Sécurité : on ne confirme une remise que depuis 'disponible'/'prepare'
+    // (payé et prêt, préparé à l'avance ou non) — un scan sur une ligne
+    // encore 'en_attente' ou 'precommande_validee' serait un état
+    // incohérent (ne devrait jamais arriver via l'UI normale, qui ne
+    // propose au scan que ces lignes-là, cf. scan.js). Un statut déjà
+    // 'distribue' est accepté sans erreur (idempotence en cas de
+    // double-clic).
     throw new Error('Cette remise n\'est pas encore disponible (paiement non confirmé ou précommande non réceptionnée)');
   }
   const { error } = await sb.from('sticks_distribution')
@@ -2036,11 +2065,11 @@ window.UL = {
   getStats, getMesStats,
   // Matos
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
-  passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande, distribuerProduitAdmin,
+  passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande, marquerCommandePreparee, distribuerProduitAdmin,
   getMesCommandes, getAllCommandes, updateCommandeStatut,
   // Sticks
   getSticks, getStickById, createStick, updateStick, getMonQuotaStick,
-  demanderStickHelloAsso, receptionnerStick, getMesSticks,
+  demanderStickHelloAsso, receptionnerStick, marquerStickPrepare, getMesSticks,
   distribuerStickAdmin, getAllDistributions, validerPaiementStick, confirmerDistributionStick,
   // Cartage
   getCartageCatalogue, getAllCartageCatalogue, createCartage, updateCartage, archiverCartage,
