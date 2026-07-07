@@ -226,7 +226,7 @@ function renderGererCartageArticles() {
   el.innerHTML = allCartageCatalogueAdmin.map(c => `
     <div class="card" style="margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-        ${c.image_url ? `<img src="${c.image_url}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;flex-shrink:0;">` : ''}
+        ${c.image_url ? `<img src="${c.image_url}" style="width:70px;height:70px;object-fit:cover;border-radius:10px;flex-shrink:0;">` : ''}
         <div style="flex:1;min-width:0;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(c.nom)}</div>
           <div style="font-size:12px;color:var(--gris);">${c.prix}€ · Saison ${esc(c.saison)}</div>
