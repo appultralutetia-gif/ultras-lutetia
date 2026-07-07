@@ -427,21 +427,9 @@
     <div id="sectionCotisation" style="display:none;">
       <!-- Statut membre -->
       <div id="cotisationStatut" class="card"></div>
-      <!-- Admin : liste membres + config -->
-      <div id="adminCotisationSection" style="display:none;">
-        <div class="section-title" style="margin-top:20px;">⚙️ Gestion du cartage</div>
-        <div class="card" style="margin-bottom:12px;">
-          <div class="card-label">Configuration</div>
-          <div class="form-group"><label>Lien HelloAsso cotisations</label><input type="url" id="configLienCotisation" placeholder="https://www.helloasso.com/..."></div>
-          <div class="form-group"><label>Montant (€)</label><input type="number" id="configMontantCotisation" placeholder="20"></div>
-          <button class="btn btn-primary" onclick="doSauvegarderConfigCotisation()">Enregistrer</button>
-        </div>
-        <div style="display:flex;gap:6px;margin-bottom:12px;">
-          <button class="filter-btn active" onclick="filtrerCotisations('tous')" id="fcTous">Tous</button>
-          <button class="filter-btn" onclick="filtrerCotisations('a_jour')" id="fcAjour">À jour</button>
-          <button class="filter-btn" onclick="filtrerCotisations('en_attente')" id="fcAttente">En attente</button>
-        </div>
-        <div id="listeCotisations"></div>
+      <!-- Admin : renvoi vers la page dédiée (catalogue + suivi des paiements) -->
+      <div id="cotisationAdminLien" style="display:none;margin-top:14px;">
+        <button class="btn btn-secondary" style="width:100%;" onclick="showPage('pageGererCartage')">⚙️ Gérer le cartage</button>
       </div>
     </div>
 
@@ -556,7 +544,7 @@
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button class="btn btn-secondary" onclick="showPage('pageMembres')">👤 Gérer les membres</button>
           <button class="btn btn-secondary" onclick="showPage('pageDemandesAdmin')">🔔 Demandes d'inscription en attente</button>
-          <button class="btn btn-secondary" onclick="showPage('pageCartage')">🗂️ Cartage</button>
+          <button class="btn btn-secondary" onclick="showPage('pageGererCartage')">🗂️ Gérer le cartage</button>
         </div>
       </div>
     </div>
@@ -679,19 +667,60 @@
     <div id="demandesListeAdmin"></div>
   </div>
 
-  <!-- ── PAGE CARTAGE ────────────────────────────────────────── -->
-  <div id="pageCartage" class="page">
+  <!-- ── PAGE GÉRER LE CARTAGE ────────────────────────────────── -->
+  <div id="pageGererCartage" class="page">
     <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
       <button class="btn btn-sm btn-secondary" onclick="showPage('pageAdmin')">← Retour</button>
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;">🗂️ Cartage</span>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;">🗂️ Gérer le cartage</span>
     </div>
-    <div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;">
-      <button class="filter-btn active" id="fcartTous" onclick="filtrerCartage('tous')">Tous</button>
-      <button class="filter-btn" id="fcartCartes" onclick="filtrerCartage('cartes')">✅ Cartés</button>
-      <button class="filter-btn" id="fcartIncomplets" onclick="filtrerCartage('incomplets')">⚠️ Incomplets</button>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn-tab active" id="tabGererCartageArticles" onclick="switchGererCartageTab('articles')">📦 Articles</button>
+      <button class="btn-tab" id="tabGererCartageSuivi" onclick="switchGererCartageTab('suivi')">👥 Suivi des paiements</button>
     </div>
-    <div id="cartageStats" style="display:flex;gap:8px;margin-bottom:14px;font-size:13px;color:var(--gris);"></div>
-    <div id="cartageListe"></div>
+
+    <!-- Sous-page Articles -->
+    <div id="subPageGererCartageArticles">
+      <button class="btn btn-primary" style="width:100%;margin-bottom:14px;" onclick="ouvrirCreerCartage()">+ Ajouter un cartage</button>
+      <div id="gererCartageArticles"></div>
+    </div>
+
+    <!-- Sous-page Suivi des paiements -->
+    <div id="subPageGererCartageSuivi" style="display:none;">
+      <div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;">
+        <button class="filter-btn active" id="fcartTous" onclick="filtrerCartage('tous')">Tous</button>
+        <button class="filter-btn" id="fcartCartes" onclick="filtrerCartage('cartes')">✅ Cartés</button>
+        <button class="filter-btn" id="fcartIncomplets" onclick="filtrerCartage('incomplets')">⚠️ Incomplets</button>
+        <button class="filter-btn" id="fcartAttente" onclick="filtrerCartage('attente')">⏳ En attente de paiement</button>
+        <button class="filter-btn" id="fcartPaye" onclick="filtrerCartage('paye')">💳 Payé</button>
+      </div>
+      <div id="cartageStats" style="display:flex;gap:8px;margin-bottom:14px;font-size:13px;color:var(--gris);flex-wrap:wrap;"></div>
+      <div id="cartageListe"></div>
+    </div>
+  </div>
+
+  <!-- Modal Créer/Modifier un cartage -->
+  <div class="modal-overlay" id="modalCreerCartage" style="display:none;" onclick="closeModalOutside(event,'modalCreerCartage')">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title" id="cartageModalTitre">Ajouter un cartage</h3>
+      <input type="hidden" id="cartageId">
+      <div class="form-group"><label>Nom</label><input type="text" id="cartageNom" placeholder="ex: Cartage standard"></div>
+      <div class="form-group"><label>Description (optionnel)</label><textarea id="cartageDesc" placeholder="Description optionnelle"></textarea></div>
+      <div class="form-group"><label>Prix (€)</label><input type="number" id="cartagePrix" placeholder="20"></div>
+      <div class="form-group"><label>Saison</label><input type="text" id="cartageSaison" placeholder="2026-2027"></div>
+      <button class="btn btn-primary" style="width:100%;" onclick="doSauvegarderCartage()">Enregistrer</button>
+    </div>
+  </div>
+
+  <!-- Modal Valider un paiement de cartage (Admin) -->
+  <div class="modal-overlay" id="modalValiderCartagePaiement" style="display:none;" onclick="closeModalOutside(event,'modalValiderCartagePaiement')">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title" id="validerCartageTitre">Valider le paiement</h3>
+      <input type="hidden" id="validerCartageMembreId">
+      <div id="validerCartageOptions"></div>
+      <button class="btn btn-secondary" style="width:100%;margin-top:10px;" onclick="closeModal('modalValiderCartagePaiement')">Annuler</button>
+    </div>
   </div>
 
   <!-- Bottom nav (7 onglets) -->
