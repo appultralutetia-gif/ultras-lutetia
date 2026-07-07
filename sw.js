@@ -1,6 +1,15 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v37
+// ULTRAS LUTETIA — Service Worker v38
 // ============================================================
+//
+// v38 (07/07/2026) : CACHE_NAME bumpé (v37 → v38) — nettoyage de code
+// mort, sans changement fonctionnel : suppression du modal
+// "Enregistrer une distribution" (modalDistribuer/doDistribuerStick/
+// loadDistribuerModal), orphelin depuis la restructuration du 05/07/2026
+// (jamais ouvert par aucun bouton — distribuerStickAdmin, lui, reste
+// utilisé via le modal Cash Stick actif). testable.js supprimé du dépôt
+// (fichier jamais chargé par index.html, contenait encore des références
+// à l'ancien système de cotisation).
 //
 // v37 (07/07/2026) : CACHE_NAME bumpé (v36 → v37) — 2 corrections : (1)
 // bug préexistant du scan de retrait Matos ("Confirmer retrait") jamais
@@ -413,7 +422,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v37';
+const CACHE_NAME = 'ul-v38';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
