@@ -1146,8 +1146,9 @@
     <div class="form-group">
       <label>Niveau d'accès</label>
       <select id="pAcces" onchange="toggleSectionSelect()">
-        <option value="tous">Généraliste — tout le monde</option>
-        <option value="section">Section spécifique</option>
+        <option value="tous">Tous les membres</option>
+        <option value="draft_confirme">Draft + Confirmés</option>
+        <option value="confirme">Confirmés uniquement</option>
       </select>
     </div>
     <div class="form-group" id="sectionSelectGroup" style="display:none;">
@@ -1156,7 +1157,7 @@
         <option value="">Chargement...</option>
       </select>
       <p style="font-size:11px;color:var(--gris);margin-top:6px;">
-        Draft de cette section + tous les Confirmés pourront voir et commander cet article.
+        Draft + Confirmés : membres de cette section, Draft ou Confirmé. Confirmés uniquement : Confirmés de cette section uniquement.
       </p>
     </div>
     <div class="form-group">
@@ -1216,8 +1217,8 @@
     <div class="form-group"><label>Catégorie</label>
       <select id="stCat">
         <option value="tous">Tous les membres</option>
-        <option value="draft_confirme">Draft + Confirmés (de la section)</option>
-        <option value="confirme">Confirmés uniquement (de la section)</option>
+        <option value="draft_confirme">Draft + Confirmés</option>
+        <option value="confirme">Confirmés uniquement</option>
       </select>
     </div>
     <div class="form-group">
