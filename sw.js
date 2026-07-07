@@ -1,6 +1,17 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v35
+// ULTRAS LUTETIA — Service Worker v36
 // ============================================================
+//
+// v36 (07/07/2026) : CACHE_NAME bumpé (v35 → v36) — 3 corrections : (1)
+// bug "0 membres" dans Suivi des paiements Cartage — même cause que les
+// bugs déjà rencontrés sur getAllDistributions/getAllCommandes : double
+// FK vers membres (membre_id + valide_par) sur cartage_paiements rendait
+// l'embed ambigu, la requête échouait entièrement en silence. Corrigé en
+// précisant la contrainte exacte. (2) Barre de filtres du Suivi des
+// paiements passée en retour à la ligne (flex-wrap) au lieu du scroll
+// horizontal qui laissait un bouton à moitié invisible sur mobile. (3)
+// Toute mention "Cotisation" remplacée par "Cartage" dans les textes
+// visibles (carte membre, fiche Profil, liste Suivi des paiements).
 //
 // v35 (07/07/2026) : CACHE_NAME bumpé (v34 → v35) — carte de paiement
 // Cartage (vue membre) reprend exactement le format visuel des cartes
@@ -392,7 +403,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v35';
+const CACHE_NAME = 'ul-v36';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
