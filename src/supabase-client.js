@@ -1617,80 +1617,126 @@ async function validerPaiementStick(distribId) {
 }
 
 // ============================================================
-// BOUTIQUE — COTISATIONS
+// BOUTIQUE — CARTAGE (catalogue d'articles, comme Matos/Sticks)
+// ────────────────────────────────────────────────────────────
+// Remplace le 07/07/2026 l'ancien système (lien HelloAsso statique dans
+// config_asso + validation manuelle admin, table cotisations) par un
+// vrai catalogue permettant plusieurs types de cartage en parallèle
+// (ex: 2 tarifs différents), chacun avec son propre Checkout API
+// HelloAsso automatisé — même principe que Matos/Sticks. L'ancienne
+// table cotisations et les clés config_asso cotisation_* sont conservées
+// en base (non supprimées) mais ne sont plus utilisées par le code
+// ci-dessous.
 // ============================================================
 
-async function getConfigCotisation() {
-  const { data } = await sb.from('config_asso')
-    .select('*').in('cle', ['cotisation_lien_helloasso', 'cotisation_montant', 'cotisation_saison']);
-  const cfg = {};
-  (data || []).forEach(r => { cfg[r.cle] = r.valeur; });
-  return {
-    lien: cfg.cotisation_lien_helloasso || '',
-    montant: cfg.cotisation_montant || '20',
-    saison: cfg.cotisation_saison || '2026-2027',
-  };
+async function getCartageCatalogue() {
+  const { data } = await sb.from('cartage_catalogue')
+    .select('*')
+    .eq('statut', 'disponible')
+    .order('prix');
+  return data || [];
 }
 
-async function updateConfigCotisation(lien, montant) {
-  await Promise.all([
-    sb.from('config_asso').update({ valeur: lien }).eq('cle', 'cotisation_lien_helloasso'),
-    sb.from('config_asso').update({ valeur: montant }).eq('cle', 'cotisation_montant'),
-  ]);
+async function getAllCartageCatalogue() {
+  const { data } = await sb.from('cartage_catalogue')
+    .select('*')
+    .order('created_at', { ascending: false });
+  return data || [];
+}
+
+async function createCartage(cartage) {
+  const { data, error } = await sb.from('cartage_catalogue').insert(cartage).select().single();
+  if (error) throw error;
+  return data;
+}
+
+async function updateCartage(id, updates) {
+  const { error } = await sb.from('cartage_catalogue').update(updates).eq('id', id);
+  if (error) throw error;
   return { success: true };
 }
 
-async function getMaCotisation() {
-  const cfg = await getConfigCotisation();
-  const { data } = await sb.from('cotisations')
-    .select('*')
-    .eq('membre_id', currentUser.id)
-    .eq('saison', cfg.saison)
-    .single();
-  return { cotisation: data, config: cfg };
+async function archiverCartage(id) {
+  return updateCartage(id, { statut: 'archive' });
 }
 
-async function validerCotisationCash(membreId) {
-  const cfg = await getConfigCotisation();
-  const { error } = await sb.from('cotisations').upsert({
+// Mes paiements de cartage (vue membre, "Cotisation") — remplace
+// getMaCotisation. Retourne l'historique (pour repérer un éventuel
+// en_attente/refuse à relancer) + le statut "à jour" tiré directement de
+// membres.cotisation_a_jour (mis à jour par le webhook ou la validation
+// admin Cash/HA).
+async function getMesPaiementsCartage() {
+  const { data: paiements } = await sb.from('cartage_paiements')
+    .select('*, cartage:cartage_catalogue(nom, prix)')
+    .eq('membre_id', currentUser.id)
+    .order('created_at', { ascending: false });
+  return { paiements: paiements || [], aJour: !!currentMembre?.cotisation_a_jour };
+}
+
+// Paiement HelloAsso automatisé — délègue entièrement à l'Edge Function
+// (elle crée/réutilise la ligne cartage_paiements, comme pour Matos/
+// Sticks/Déplacements).
+async function demanderCartageHelloAsso(cartageId) {
+  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
+    body: { cartageId },
+  });
+  if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
+  if (data?.error) throw new Error(data.error);
+  if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
+  return data;
+}
+
+// Validation Cash/HA par un admin — nécessite de préciser QUEL cartage
+// (plusieurs types possibles désormais), contrairement à l'ancien
+// système où il n'y en avait qu'un seul.
+async function validerCartageCash(membreId, cartageId) {
+  const { data: cartage } = await sb.from('cartage_catalogue').select('*').eq('id', cartageId).single();
+  if (!cartage) throw new Error('Cartage introuvable');
+  const { error } = await sb.from('cartage_paiements').insert({
     membre_id: membreId,
-    saison: cfg.saison,
-    montant: parseFloat(cfg.montant),
+    cartage_id: cartageId,
+    saison: cartage.saison,
+    montant: cartage.prix,
     mode_paiement: 'cash',
     statut: 'paye',
     valide_par: currentUser.id,
     paye_at: new Date().toISOString(),
-  }, { onConflict: 'membre_id,saison' });
+  });
   if (error) throw error;
   await sb.from('membres').update({ cotisation_a_jour: true }).eq('id', membreId);
   return { success: true };
 }
 
-async function validerCotisationHelloAsso(membreId) {
-  const cfg = await getConfigCotisation();
-  const { error } = await sb.from('cotisations').upsert({
+async function validerCartageHelloAssoManuel(membreId, cartageId) {
+  const { data: cartage } = await sb.from('cartage_catalogue').select('*').eq('id', cartageId).single();
+  if (!cartage) throw new Error('Cartage introuvable');
+  const { error } = await sb.from('cartage_paiements').insert({
     membre_id: membreId,
-    saison: cfg.saison,
-    montant: parseFloat(cfg.montant),
+    cartage_id: cartageId,
+    saison: cartage.saison,
+    montant: cartage.prix,
     mode_paiement: 'helloasso',
     statut: 'paye',
     valide_par: currentUser.id,
     paye_at: new Date().toISOString(),
-  }, { onConflict: 'membre_id,saison' });
+  });
   if (error) throw error;
   await sb.from('membres').update({ cotisation_a_jour: true }).eq('id', membreId);
   return { success: true };
 }
 
-async function getAllCotisations() {
-  const cfg = await getConfigCotisation();
+// Suivi des paiements (page Admin "Gérer le cartage") — pour chaque
+// membre, on ramène son paiement de cartage le plus récent (pour savoir
+// s'il a un en_attente/refuse en cours), en plus du flag cotisation_a_jour
+// qui reste la source de vérité pour "à jour" ou non.
+async function getAllCartagePaiements() {
   const { data } = await sb.from('membres')
-    .select('id, nom, prenom, pseudo_telegram, cotisation_a_jour, section:sections(nom), cotisations(statut, mode_paiement, paye_at)')
+    .select('id, nom, prenom, pseudo_telegram, statut, cotisation_a_jour, charte_signee, section:sections(nom), cartage_paiements(statut, montant, mode_paiement, paye_at, cartage:cartage_catalogue(nom), created_at)')
     .order('nom');
-  return (data || []).map(m => ({
-    ...m,
-    cotisation_saison: (m.cotisations || []).find(c => true) || null,
-  }));
+  return (data || []).map(m => {
+    const paiements = (m.cartage_paiements || []).slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return { ...m, dernierPaiementCartage: paiements[0] || null };
+  });
 }
 
 // ============================================================
@@ -1973,9 +2019,10 @@ window.UL = {
   getSticks, getStickById, createStick, updateStick, getMonQuotaStick,
   demanderStickHelloAsso, receptionnerStick, getMesSticks,
   distribuerStickAdmin, getAllDistributions, validerPaiementStick, confirmerDistributionStick,
-  // Cotisations
-  getConfigCotisation, updateConfigCotisation, getMaCotisation,
-  validerCotisationCash, validerCotisationHelloAsso, getAllCotisations,
+  // Cartage
+  getCartageCatalogue, getAllCartageCatalogue, createCartage, updateCartage, archiverCartage,
+  getMesPaiementsCartage, demanderCartageHelloAsso,
+  validerCartageCash, validerCartageHelloAssoManuel, getAllCartagePaiements,
   // Storage / Upload
   uploadPhotoMatos, uploadPhotoStick, updatePhotoMatos, updatePhotoStick,
   // Email
