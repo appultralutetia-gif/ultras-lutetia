@@ -356,7 +356,7 @@ function filtrerCartage(filtre) {
           <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(m.prenom)} ${esc(m.nom)}</div>
           <div style="font-size:11px;color:var(--gris);">@${esc(m.pseudo_telegram)} · <span class="statut-${m.statut}">${m.statut}</span></div>
           <div style="font-size:11px;margin-top:3px;">
-            ${m.cotisation_a_jour ? '✅' : '❌'} Cotisation &nbsp;|&nbsp; ${m.charte_signee ? '✅' : '❌'} Charte
+            ${m.cotisation_a_jour ? '✅' : '❌'} Cartage &nbsp;|&nbsp; ${m.charte_signee ? '✅' : '❌'} Charte
           </div>
           ${dp && dp.statut === 'en_attente' ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:2px;">⏳ Paiement en cours (${esc(dp.cartage?.nom||'?')})</div>` : ''}
           ${dp && dp.statut === 'refuse' ? `<div style="font-size:11px;color:var(--rouge);margin-top:2px;">❌ Paiement refusé (${esc(dp.cartage?.nom||'?')})</div>` : ''}
@@ -402,7 +402,7 @@ async function doValiderCartage(cartageId, mode) {
   try {
     if (mode === 'cash') await UL.validerCartageCash(membreId, cartageId);
     else await UL.validerCartageHelloAssoManuel(membreId, cartageId);
-    toast('Cotisation validée ✅', 'success');
+    toast('Cartage validé ✅', 'success');
     closeModal('modalValiderCartagePaiement');
     loadCartageSuivi();
   } catch(e) { toast(e.message || 'Impossible de valider ce paiement', 'error'); }
