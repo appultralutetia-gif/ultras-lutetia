@@ -1293,10 +1293,24 @@ async function getMesCommandes() {
   return data || [];
 }
 
+// ⚠️ BUG CORRIGÉ (07/07/2026) — même cause que celle déjà rencontrée et
+// corrigée sur getAllDistributions() le 05/07/2026 : depuis l'ajout de la
+// colonne receptionnee_par (référençant elle aussi membres(id)) lors de
+// la restructuration Matos/Sticks, la table commandes a DEUX clés
+// étrangères vers membres (membre_id ET receptionnee_par). Sans préciser
+// laquelle utiliser, PostgREST refuse la requête avec une erreur
+// d'ambiguïté (statut 300) — non catchée ici (seul `data` était
+// déstructuré, jamais `error`), donc getAllCommandes() retournait []  en
+// silence. Symptôme observé : "Mes commandes" (getMesCommandes, qui ne
+// fait pas ce join) affichait bien les commandes du membre, mais aucune
+// commande n'apparaissait jamais dans la page Admin → Gestion, même en
+// filtrant "En cours". Corrigé en précisant la contrainte FK exacte — on
+// veut le membre auteur de la commande, pas l'admin qui l'a réceptionnée.
 async function getAllCommandes() {
-  const { data } = await sb.from('commandes')
-    .select('*, membre:membres(nom, prenom, pseudo_telegram), commande_items(*, produit:produits(nom, mode))')
+  const { data, error } = await sb.from('commandes')
+    .select('*, membre:membres!commandes_membre_id_fkey(nom, prenom, pseudo_telegram), commande_items(*, produit:produits(nom, mode))')
     .order('created_at', { ascending: false });
+  if (error) throw error;
   return data || [];
 }
 
