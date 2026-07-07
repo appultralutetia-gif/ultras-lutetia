@@ -84,7 +84,7 @@ function renderMatos(produits) {
         <div class="produit-nom">${esc(p.nom)}</div>
         <div class="produit-prix">${p.prix}€</div>
         <div class="produit-meta">
-          ${p.avec_tailles ? '• Tailles dispo' : ''}
+          ${labelTypeTailles(p.type_tailles) ? `• ${labelTypeTailles(p.type_tailles)}` : ''}
           ${p.quota_par_membre ? `• Quota: ${p.quota_par_membre} max` : ''}
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${stockBadge}${sectionBadge}</div>
@@ -112,11 +112,11 @@ async function openCommander(produitId) {
     // Section tailles — menu déroulant (05/07/2026, demande Remi ; boutons
     // cliquables remplacés par un <select>, plus rapide sur mobile et plus
     // cohérent avec le reste des formulaires de l'app).
-    const taillesHtml = p.avec_tailles ? `
+    const taillesHtml = taillesPourType(p.type_tailles) ? `
       <div class="form-group">
         <label>Taille</label>
         <select id="cmdTaille">
-          ${['XS','S','M','L','XL','XXL'].map(t => `<option value="${t}" ${t==='M'?'selected':''}>${t}</option>`).join('')}
+          ${optionsTaillesHtml(p.type_tailles)}
         </select>
       </div>` : '';
 
@@ -150,7 +150,7 @@ async function openCommander(produitId) {
         </select>
       </div>
       ${p.mode === 'precommande' ? `<div class="info-box" style="font-size:12px;">📋 Article en précommande — paiement HelloAsso uniquement. Il sera disponible au retrait une fois reçu par la cellule Matos.</div>` : ''}
-      <button class="btn btn-primary" onclick="doCommander('${p.id}',${!!p.avec_tailles})">Valider la commande</button>
+      <button class="btn btn-primary" onclick="doCommander('${p.id}',${!!taillesPourType(p.type_tailles)})">Valider la commande</button>
       <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalCommander')">Annuler</button>
     `;
     showModal('modalCommander');
@@ -831,13 +831,13 @@ function renderMatosAdmin(produits) {
         <div class="produit-nom">${esc(p.nom)}</div>
         <div class="produit-prix">${p.prix}€ · Stock: ${p.stock} · Lot de 1</div>
         <div class="produit-meta">
-          ${p.avec_tailles ? '• Tailles dispo' : ''}
+          ${labelTypeTailles(p.type_tailles) ? `• ${labelTypeTailles(p.type_tailles)}` : ''}
           ${p.quota_par_membre ? `• Quota: ${p.quota_par_membre} max` : ''}
           ${p.mode === 'precommande' ? `• Précommande${formatPlagePrecommande(p)}` : ''}
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${stockBadge}${sectionBadge}${archiveBadge}</div>
         <div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;">
-          ${p.mode !== 'precommande' ? `<button class="btn btn-sm btn-success" onclick="ouvrirCashMatos('${p.id}','${esc(p.nom)}',${!!p.avec_tailles})">💵 Cash</button>` : ''}
+          ${p.mode !== 'precommande' ? `<button class="btn btn-sm btn-success" onclick="ouvrirCashMatos('${p.id}','${esc(p.nom)}','${p.type_tailles || 'aucune'}')">💵 Cash</button>` : ''}
           <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierProduit('${p.id}')">✏️ Modifier</button>
           <button class="btn btn-sm btn-secondary" onclick="modifierStock('${p.id}','${esc(p.nom)}',${p.stock})">📦 Stock</button>
           <button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${p.id}','matos')">🖼️ Photo</button>
@@ -876,12 +876,14 @@ function renderSticksAdmin(sticks) {
 // ── Cash Matos (nouveau, 05/07/2026 — même principe que Cash Stick) ──
 let _allMembresCashMatos = [];
 
-async function ouvrirCashMatos(produitId, nom, avecTailles) {
+async function ouvrirCashMatos(produitId, nom, typeTailles) {
   document.getElementById('cashMatosId').value = produitId;
   document.getElementById('cashMatosTitre').textContent = `Valider un cash — ${nom}`;
   document.getElementById('cashMatosQte').value = '1';
   document.getElementById('cashMatosSearch').value = '';
-  document.getElementById('cashMatosTailleGroup').style.display = avecTailles ? 'block' : 'none';
+  const tailles = taillesPourType(typeTailles);
+  document.getElementById('cashMatosTailleGroup').style.display = tailles ? 'block' : 'none';
+  if (tailles) document.getElementById('cashMatosTaille').innerHTML = optionsTaillesHtml(typeTailles);
   document.getElementById('cashMatosListeMembres').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   showModal('modalCashMatos');
   try {
@@ -1226,6 +1228,33 @@ function formatPlagePrecommande(item) {
   return ` (dès le ${debut})`;
 }
 
+// ── Types de tailles (07/07/2026, demande Remi) ─────────────────
+// Remplace l'ancienne case à cocher "avec tailles" (oui/non) par un choix
+// entre 3 types, chacun avec sa propre échelle de tailles usuelles.
+// 'aucune' = pas de sélection de taille (article taille unique).
+// Le champ produits.avec_tailles (booléen) est conservé en base et tenu
+// à jour en parallèle (avec_tailles = type_tailles !== 'aucune') pour ne
+// pas casser d'éventuel autre code qui le lirait encore (ex: testable.js).
+const TAILLES_PAR_TYPE = {
+  standard: ['XS','S','M','L','XL','XXL'],
+  pantalon: ['38','40','42','44','46','48','50','52'],
+};
+function taillesPourType(type) {
+  return TAILLES_PAR_TYPE[type] || null;
+}
+// Génère les <option> pour un <select> de taille, avec une sélection par
+// défaut au milieu de l'échelle (comportement identique à l'ancien select
+// figé qui présélectionnait 'M').
+function optionsTaillesHtml(type, valeurActuelle) {
+  const tailles = taillesPourType(type);
+  if (!tailles) return '';
+  const defaut = valeurActuelle || tailles[Math.floor((tailles.length - 1) / 2)];
+  return tailles.map(t => `<option value="${t}" ${t === defaut ? 'selected' : ''}>${t}</option>`).join('');
+}
+function labelTypeTailles(type) {
+  return type === 'pantalon' ? 'Tailles pantalon' : type === 'standard' ? 'Tailles S-XXL' : '';
+}
+
 function previewPhoto(input, type) {
   const file = input.files[0];
   if (!file) return;
@@ -1310,7 +1339,8 @@ async function doCreerProduit() {
       prix,
       stock: parseInt(document.getElementById('pStock').value) || 0,
       quota_par_membre: parseInt(document.getElementById('pQuota').value) || null,
-      avec_tailles: document.getElementById('pTailles').checked,
+      type_tailles: document.getElementById('pTypeTailles').value,
+      avec_tailles: document.getElementById('pTypeTailles').value !== 'aucune',
       niveau_acces: acces,
       section_id: sectionId,
       mode: document.getElementById('pMode').value,
@@ -1348,7 +1378,7 @@ async function doCreerProduit() {
       });
     }
     document.getElementById('pAcces').value = 'tous';
-    document.getElementById('pTailles').checked = false;
+    document.getElementById('pTypeTailles').value = 'aucune';
     document.getElementById('sectionSelectGroup').style.display = 'none';
     loadAdminBoutique();
   } catch(e) {
@@ -1377,7 +1407,7 @@ async function ouvrirModifierProduit(produitId) {
   document.getElementById('pPrix').value = p.prix ?? '';
   document.getElementById('pStock').value = p.stock ?? '';
   document.getElementById('pQuota').value = p.quota_par_membre ?? '';
-  document.getElementById('pTailles').checked = !!p.avec_tailles;
+  document.getElementById('pTypeTailles').value = p.type_tailles || (p.avec_tailles ? 'standard' : 'aucune');
   document.getElementById('pAcces').value = p.niveau_acces || 'tous';
   document.getElementById('pMode').value = p.mode || 'stock';
   document.getElementById('pPrecommandeDebut').value = isoVersDateLocal(p.precommande_debut);
@@ -1426,7 +1456,8 @@ async function doModifierProduit() {
       prix,
       stock: parseInt(document.getElementById('pStock').value) || 0,
       quota_par_membre: parseInt(document.getElementById('pQuota').value) || null,
-      avec_tailles: document.getElementById('pTailles').checked,
+      type_tailles: document.getElementById('pTypeTailles').value,
+      avec_tailles: document.getElementById('pTypeTailles').value !== 'aucune',
       niveau_acces: acces,
       section_id: sectionId,
       mode: document.getElementById('pMode').value,
