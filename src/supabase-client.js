@@ -1147,18 +1147,24 @@ async function getProduits() {
   // ce champ ne prend jamais : un Admin/Bureau n'ayant que son rôle dans
   // roles_app (cas normal) tombait alors dans la branche restreinte.
   const isAdminBureauCellule = isAdmin(membre) || isBureau(membre) || isCellule(membre);
-  const isConfirme = statut === 'confirme' || isAdminBureauCellule;
   const { data } = await sb.from('produits')
     .select('*, section:sections(id, nom)')
     .eq('statut', 'disponible')
     .order('nom');
+  // ⚠️ Modèle changé (07/07/2026, demande Remi) : Matos utilise désormais
+  // la même typologie à 3 niveaux que Sticks (tous/draft_confirme/confirme,
+  // tous deux restreints à la section de l'article) au lieu de l'ancien
+  // modèle à 2 niveaux (tous/section, où "section" restait visible à TOUS
+  // les Confirmés quelle que soit leur section — incohérent avec Sticks).
   return (data || []).filter(p => {
     if (isAdminBureauCellule) return true;
     if (p.niveau_acces === 'tous') return true;
-    if (p.niveau_acces === 'section') {
-      if (isConfirme) return true;
-      if (statut === 'draft' && sectionId && p.section_id === sectionId) return true;
-      return false;
+    const memeSection = sectionId && p.section_id === sectionId;
+    if (p.niveau_acces === 'draft_confirme') {
+      return memeSection && (statut === 'draft' || statut === 'confirme');
+    }
+    if (p.niveau_acces === 'confirme') {
+      return memeSection && statut === 'confirme';
     }
     return false;
   });
