@@ -818,9 +818,27 @@ function renderMatosAdmin(produits) {
   if (!produits.length) { el.innerHTML = '<div class="empty-state"><div>🛍️</div>Aucun article</div>'; return; }
   el.innerHTML = produits.map(p => {
     const icones = { textile:'👕', accessoire:'🎒' };
-    const stockBadge = p.stock <= 3 && p.stock > 0
-      ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
-      : p.stock === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
+    // ⚠️ BUG CORRIGÉ (07/07/2026) : cette vue Admin affichait encore
+    // "Épuisé" pour tout article à stock=0, y compris en précommande en
+    // cours (stock=0 par défaut tant que rien n'est reçu) — le correctif
+    // du même jour n'avait été appliqué qu'à la vue membre (renderMatos),
+    // pas ici. Même logique reprise : badge de fenêtre de précommande à
+    // la place du badge de stock quand mode === 'precommande'.
+    const precommandeOuverte = precommandeEstOuverte(p);
+    let stockBadge;
+    if (p.mode === 'precommande') {
+      if (precommandePasEncoreOuverte(p)) {
+        stockBadge = `<span class="badge badge-orange" style="font-size:10px;">Précommande dès le ${new Date(p.precommande_debut).toLocaleDateString('fr-FR')}</span>`;
+      } else if (!precommandeOuverte) {
+        stockBadge = `<span class="badge badge-rouge" style="font-size:10px;">Précommande terminée</span>`;
+      } else {
+        stockBadge = `<span class="badge badge-bleu" style="font-size:10px;">Précommande en cours</span>`;
+      }
+    } else {
+      stockBadge = p.stock <= 3 && p.stock > 0
+        ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
+        : p.stock === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
+    }
     const sectionBadge = p.section
       ? `<span class="badge badge-bleu" style="font-size:10px;">Section ${esc(p.section.nom)}</span>` : '';
     const archiveBadge = p.statut === 'archive'
