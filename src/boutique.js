@@ -1271,9 +1271,12 @@ async function loadCotisation() {
             : '💳 Payer via HelloAsso';
           return `
           <div class="card" style="margin-top:10px;padding:12px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <div style="font-weight:600;">${esc(c.nom)}</div>
-              <div style="font-size:14px;">${c.prix}€</div>
+            <div style="display:flex;gap:10px;align-items:center;">
+              ${c.image_url ? `<img src="${c.image_url}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;flex-shrink:0;">` : ''}
+              <div style="flex:1;min-width:0;display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-weight:600;">${esc(c.nom)}</div>
+                <div style="font-size:14px;">${c.prix}€</div>
+              </div>
             </div>
             ${c.description ? `<div style="font-size:12px;color:var(--gris);margin-top:4px;">${esc(c.description)}</div>` : ''}
             <button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="doPayerCartage('${c.id}',this)">${label}</button>
@@ -1417,6 +1420,13 @@ function previewPhoto(input, type) {
     reader.onload = e => {
       const imgEl = document.getElementById('photoPreviewImgStick');
       const wrapEl = document.getElementById('photoPreviewStick');
+      if (imgEl) imgEl.src = e.target.result;
+      if (wrapEl) wrapEl.style.display = 'block';
+    };
+  } else if (type === 'cartage') {
+    reader.onload = e => {
+      const imgEl = document.getElementById('photoPreviewImgCartage');
+      const wrapEl = document.getElementById('photoPreviewCartage');
       if (imgEl) imgEl.src = e.target.result;
       if (wrapEl) wrapEl.style.display = 'block';
     };
