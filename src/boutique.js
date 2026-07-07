@@ -88,6 +88,7 @@ function renderMatos(produits) {
           ${p.quota_par_membre ? `• Quota: ${p.quota_par_membre} max` : ''}
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${stockBadge}${sectionBadge}</div>
+        ${p.mode === 'precommande' && p.precommande_livraison_estimee ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(p.precommande_livraison_estimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
         ${peutCommander ? `
         <button class="btn btn-sm btn-primary" style="margin-top:10px;" onclick="openCommander('${p.id}')">
           ${p.mode === 'precommande' ? '📋 Précommander' : '🛒 Commander'}
@@ -219,19 +220,37 @@ function renderMesCommandes(commandes) {
     if (c.statut === 'refuse' || c.statut === 'annulee') return 'badge-rouge';
     return 'badge-orange';
   };
-  el.innerHTML = commandes.map(c => `
+  el.innerHTML = commandes.map(c => {
+    const items = c.commande_items || [];
+    // Repli défensif : si aucune ligne n'est remontée (cf. le bug RLS
+    // suspecté sur commande_items, voir getMesCommandes), on l'affiche
+    // clairement au lieu de laisser un titre vide qui donne l'impression
+    // que la commande est "muette" — et ça permet de repérer facilement
+    // si le souci revient après la migration RLS.
+    if (!items.length) console.warn('Commande sans commande_items — RLS ?', c.id);
+    const detailItems = items.length
+      ? items.map(i => `${esc(i.produit?.nom || '?')} ×${i.quantite}${i.taille ? ` (${esc(i.taille)})` : ''}`).join(', ')
+      : '⚠️ Détail de commande indisponible — contacte le bureau si besoin';
+    // Date de livraison estimée — portée par l'article (fixée une fois
+    // par l'admin pour toute la précommande, pas par commande individuelle).
+    const livraisonEstimee = items
+      .map(i => i.produit?.mode === 'precommande' ? i.produit?.precommande_livraison_estimee : null)
+      .find(Boolean);
+    return `
     <div class="card" style="margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${(c.commande_items||[]).map(i=>esc(i.produit?.nom||'?')).join(', ')}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${detailItems}</div>
         <span class="badge ${badgeClasse(c)}">${statuts[c.statut]||c.statut}</span>
       </div>
       <div style="font-size:12px;color:var(--gris);">
         ${c.total}€ · ${c.mode_paiement === 'helloasso' ? 'HelloAsso' : 'Cash'} ·
         ${new Date(c.created_at).toLocaleDateString('fr-FR')}
       </div>
+      ${livraisonEstimee ? `<div style="font-size:12px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(livraisonEstimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
       ${c.statut === 'refuse' ? `
       <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="doReessayerCommande('${c.commande_items?.[0]?.produit_id||''}')">🔄 Relancer le paiement</button>` : ''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // Un membre dont le paiement HelloAsso a été refusé doit pouvoir relancer
@@ -369,6 +388,7 @@ function renderSticks(sticks) {
       </div>
       ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
       ${statutBadge}
+      ${s.mode === 'precommande' && s.precommande_livraison_estimee ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(s.precommande_livraison_estimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
       <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">
         ${peutCommander ? `<button class="btn btn-sm btn-primary" style="width:100%;" onclick="ouvrirCommanderStick('${s.id}')">💳 HelloAsso</button>` : ''}
       </div>
@@ -1021,6 +1041,7 @@ function renderMesSticks(distribs) {
         </div>
         <span class="badge ${d.statut==='distribue'||d.statut==='disponible'?'badge-vert':d.statut==='precommande_validee'?'badge-bleu':d.statut==='refuse'||d.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[d.statut]||d.statut}</span>
       </div>
+      ${d.stick?.mode === 'precommande' && d.stick?.precommande_livraison_estimee ? `<div style="font-size:12px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(d.stick.precommande_livraison_estimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
       ${d.statut === 'refuse' ? `
       <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="ouvrirCommanderStick('${d.stick_id}')">🔄 Relancer le paiement</button>` : ''}
     </div>`).join('');
@@ -1208,6 +1229,12 @@ function dateLocalVersISO(id) {
 // Convertit une valeur ISO (venant de la base) vers le format attendu par
 // un <input type="datetime-local"> ("YYYY-MM-DDTHH:mm", heure locale) —
 // nécessaire pour pré-remplir le champ en mode édition.
+// Valeur d'un <input type="date"> simple (pas de conversion de fuseau
+// nécessaire, contrairement à datetime-local) — null si vide.
+function dateSimpleOuNull(id) {
+  return document.getElementById(id).value || null;
+}
+
 function isoVersDateLocal(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -1364,6 +1391,7 @@ async function doCreerProduit() {
       mode: document.getElementById('pMode').value,
       precommande_debut: dateLocalVersISO('pPrecommandeDebut'),
       precommande_fin: dateLocalVersISO('pPrecommandeFin'),
+      precommande_livraison_estimee: dateSimpleOuNull('pLivraisonEstimee'),
       statut: 'disponible',
       photo_url: photoUrl,
     });
@@ -1376,7 +1404,7 @@ async function doCreerProduit() {
     toast(`Article créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Généraliste'}`, 'success');
     closeModal('modalCreerProduit');
     reinitialiserFormulaireProduit();
-    ['pNom','pDesc','pPrix','pStock','pQuota','pPrecommandeDebut','pPrecommandeFin'].forEach(id => document.getElementById(id).value = '');
+    ['pNom','pDesc','pPrix','pStock','pQuota','pPrecommandeDebut','pPrecommandeFin','pLivraisonEstimee'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('pPhoto').value = '';
     document.getElementById('photoPreviewMatos').style.display = 'none';
     document.getElementById('pMode').value = 'stock';
@@ -1438,6 +1466,7 @@ async function ouvrirModifierProduit(produitId) {
   document.getElementById('pMode').value = p.mode || 'stock';
   document.getElementById('pPrecommandeDebut').value = isoVersDateLocal(p.precommande_debut);
   document.getElementById('pPrecommandeFin').value = isoVersDateLocal(p.precommande_fin);
+  document.getElementById('pLivraisonEstimee').value = p.precommande_livraison_estimee ? String(p.precommande_livraison_estimee).substring(0,10) : '';
   toggleModePrecommandeMatos();
   document.getElementById('pPhoto').value = '';
   if (p.photo_url) {
@@ -1489,6 +1518,7 @@ async function doModifierProduit() {
       mode: document.getElementById('pMode').value,
       precommande_debut: dateLocalVersISO('pPrecommandeDebut'),
       precommande_fin: dateLocalVersISO('pPrecommandeFin'),
+      precommande_livraison_estimee: dateSimpleOuNull('pLivraisonEstimee'),
     };
     if (photoFile) {
       updates.photo_url = await UL.uploadPhotoMatos(photoFile, nom);
@@ -1570,6 +1600,7 @@ async function doCreerStick() {
       mode: document.getElementById('stMode').value,
       precommande_debut: dateLocalVersISO('stPrecommandeDebut'),
       precommande_fin: dateLocalVersISO('stPrecommandeFin'),
+      precommande_livraison_estimee: dateSimpleOuNull('stLivraisonEstimee'),
       lien_helloasso: lienHelloasso,
       statut: 'disponible',
       visuel_url: visuelUrl,
@@ -1583,7 +1614,7 @@ async function doCreerStick() {
     toast(`Stick créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Tous les membres'}`, 'success');
     closeModal('modalCreerStick');
     reinitialiserFormulaireStick();
-    ['stNom','stPrix','stLot','stQuota','stStock','stHelloasso','stPrecommandeDebut','stPrecommandeFin'].forEach(id => document.getElementById(id).value = '');
+    ['stNom','stPrix','stLot','stQuota','stStock','stHelloasso','stPrecommandeDebut','stPrecommandeFin','stLivraisonEstimee'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('stLot').value = '1';
     document.getElementById('stMode').value = 'stock';
     document.getElementById('stPrecommandeDatesGroup').style.display = 'none';
@@ -1635,6 +1666,7 @@ async function ouvrirModifierStick(stickId) {
   document.getElementById('stMode').value = s.mode || 'stock';
   document.getElementById('stPrecommandeDebut').value = isoVersDateLocal(s.precommande_debut);
   document.getElementById('stPrecommandeFin').value = isoVersDateLocal(s.precommande_fin);
+  document.getElementById('stLivraisonEstimee').value = s.precommande_livraison_estimee ? String(s.precommande_livraison_estimee).substring(0,10) : '';
   toggleModePrecommandeStick();
   document.getElementById('stHelloasso').value = s.lien_helloasso || '';
   document.getElementById('stPhoto').value = '';
@@ -1681,6 +1713,7 @@ async function doModifierStick() {
       mode: document.getElementById('stMode').value,
       precommande_debut: dateLocalVersISO('stPrecommandeDebut'),
       precommande_fin: dateLocalVersISO('stPrecommandeFin'),
+      precommande_livraison_estimee: dateSimpleOuNull('stLivraisonEstimee'),
       lien_helloasso: lienHelloasso,
     };
     if (photoFile) {
