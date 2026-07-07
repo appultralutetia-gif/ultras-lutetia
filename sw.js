@@ -1,6 +1,20 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v32
+// ULTRAS LUTETIA — Service Worker v33
 // ============================================================
+//
+// v33 (07/07/2026) : CACHE_NAME bumpé (v32 → v33) — refonte complète du
+// Cartage (demande Remi) : remplace l'ancien système (lien HelloAsso
+// statique + validation manuelle, un seul tarif possible) par un vrai
+// catalogue d'articles (cartage_catalogue), exactement comme Matos/
+// Sticks : plusieurs types de cartage possibles en parallèle (utile dès
+// l'an prochain avec 2 tarifs), paiement HelloAsso automatisé avec suivi
+// de statut (en_attente/payé/refusé) et relance possible. Nouvelle page
+// Admin "🗂️ Gérer le cartage" (remplace l'ancien bouton "Cartage" dans
+// Membres) avec 2 sous-onglets : Articles (CRUD du catalogue) et Suivi
+// des paiements (ex-page Cartage, avec 2 nouveaux filtres — En attente de
+// paiement / Payé — en plus de Tous/Cartés/Incomplets). Validation Cash/
+// HA admin passe désormais par une sélection du cartage concerné (utile
+// dès qu'il y a plus d'un tarif actif).
 //
 // v32 (07/07/2026) : CACHE_NAME bumpé (v31 → v32) — demandes Remi :
 // (1) Relance de paiement possible depuis "Mes commandes"/"Mes stickers"
@@ -364,7 +378,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v32';
+const CACHE_NAME = 'ul-v33';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
