@@ -1270,21 +1270,18 @@ async function loadCotisation() {
             ? (paiementEnCours.statut === 'refuse' ? '🔄 Relancer le paiement' : '💳 Reprendre le paiement')
             : '💳 Payer via HelloAsso';
           return `
-          <div class="card" style="margin-top:10px;padding:12px;">
-            <div style="display:flex;gap:10px;align-items:center;">
-              ${c.image_url ? `<img src="${c.image_url}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;flex-shrink:0;">` : ''}
-              <div style="flex:1;min-width:0;display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-weight:600;">${esc(c.nom)}</div>
-                <div style="font-size:14px;">${c.prix}€</div>
-              </div>
+          <div class="card" style="margin-top:10px;padding:10px;">
+            <div style="width:100%;height:150px;border-radius:8px;overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
+              ${c.image_url ? `<img src="${c.image_url}" style="width:100%;height:100%;object-fit:cover;">` : `<span style="font-size:48px;">🗂️</span>`}
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(c.nom)}</div>
+              <div style="font-size:14px;">${c.prix}€</div>
             </div>
             ${c.description ? `<div style="font-size:12px;color:var(--gris);margin-top:4px;">${esc(c.description)}</div>` : ''}
             <button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="doPayerCartage('${c.id}',this)">${label}</button>
           </div>`;
-        }).join('')}
-        <div style="text-align:center;margin-top:10px;font-size:12px;color:var(--gris);">
-          Paiement cash possible — contacte un admin
-        </div>`;
+        }).join('')}`;
     }
 
     const lienAdmin = document.getElementById('cotisationAdminLien');
