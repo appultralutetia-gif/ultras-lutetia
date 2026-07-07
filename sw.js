@@ -1,6 +1,18 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v28
+// ULTRAS LUTETIA — Service Worker v29
 // ============================================================
+//
+// v29 (07/07/2026) : CACHE_NAME bumpé (v28 → v29) — 2 bugs corrigés :
+// (1) getAllCommandes() (supabase-client.js) retournait [] en silence à
+// cause d'une ambiguïté de clé étrangère PostgREST (commandes a deux FK
+// vers membres depuis l'ajout de receptionnee_par : membre_id et
+// receptionnee_par) — même cause que le bug déjà corrigé sur
+// getAllDistributions() le 05/07/2026, jamais reportée ici. Conséquence :
+// aucune commande Matos n'apparaissait dans Admin → Gestion, même "En
+// cours", alors que "Mes commandes" (côté membre) les affichait
+// normalement. (2) La vue Admin du catalogue Matos affichait "Épuisé"
+// pour un article en précommande en cours (stock=0 par défaut) — le
+// correctif du même jour n'avait été appliqué qu'à la vue membre.
 //
 // v28 (07/07/2026) : CACHE_NAME bumpé (v27 → v28) — bug corrigé : le
 // bouton "✏️ Modifier" (Matos et Sticks) dans la page Admin dédiée
@@ -311,7 +323,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v28';
+const CACHE_NAME = 'ul-v29';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
