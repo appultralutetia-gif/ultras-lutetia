@@ -1137,10 +1137,11 @@
     <div class="form-group"><label>Quota par membre (optionnel — vide = pas de limite)</label><input type="number" id="pQuota" placeholder="ex: 2" min="1"></div>
     <div class="form-group">
       <label>Tailles disponibles</label>
-      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;" onclick="document.getElementById('pTailles').click()">
-        <input type="checkbox" id="pTailles" style="width:20px;height:20px;flex-shrink:0;cursor:pointer;accent-color:var(--bleu);" onclick="event.stopPropagation()">
-        <span style="font-size:14px;">Article avec tailles (S/M/L/XL/XXL)</span>
-      </div>
+      <select id="pTypeTailles">
+        <option value="aucune">Taille unique (pas de choix de taille)</option>
+        <option value="standard">Vêtement (S/M/L/XL/XXL)</option>
+        <option value="pantalon">Pantalon (38 à 52)</option>
+      </select>
     </div>
     <div class="form-group">
       <label>Niveau d'accès</label>
@@ -1334,14 +1335,7 @@
     <input type="hidden" id="cashMatosId">
     <div class="form-group" id="cashMatosTailleGroup" style="display:none;">
       <label>Taille</label>
-      <select id="cashMatosTaille">
-        <option value="XS">XS</option>
-        <option value="S">S</option>
-        <option value="M" selected>M</option>
-        <option value="L">L</option>
-        <option value="XL">XL</option>
-        <option value="XXL">XXL</option>
-      </select>
+      <select id="cashMatosTaille"></select>
     </div>
     <div class="form-group">
       <label>Quantité</label>
