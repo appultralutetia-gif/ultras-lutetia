@@ -1,6 +1,16 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v25
+// ULTRAS LUTETIA — Service Worker v26
 // ============================================================
+//
+// v26 (07/07/2026) : CACHE_NAME bumpé (v25 → v26) — plages de précommande
+// optionnelles (début/fin) pour Matos et Sticks, avec fermeture
+// automatique du bouton "Précommander"/"HelloAsso" à la date de fin
+// (remplacé par un badge "Précommande terminée"), et badge "dès le ..."
+// avant la date de début. Corrige au passage le badge "Épuisé" trompeur
+// affiché pour un article en précommande (stock=0 par défaut). Idem pour
+// Déplacements : la date_limite_inscription déjà en base est désormais
+// réellement appliquée (bouton "M'inscrire" remplacé par un badge une
+// fois la date dépassée) — avant, elle n'était qu'informative.
 //
 // v25 (05/07/2026) : CACHE_NAME bumpé (v24 → v25) suite à une demande de
 // Remi — nouvel onglet top-level "📋 Gestion" dans pageAdminBoutique, qui
@@ -286,7 +296,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v25';
+const CACHE_NAME = 'ul-v26';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
