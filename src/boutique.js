@@ -1200,38 +1200,6 @@ async function doConfirmerDistributionManuelle(distribId) {
   } catch(e) { toast(e.message || 'Impossible de confirmer la distribution', 'error'); }
 }
 
-async function loadDistribuerModal() {
-  try {
-    const [sticks, membres] = await Promise.all([
-      UL.getSticks(),
-      UL.getAllMembres(),
-    ]);
-    document.getElementById('distribStickId').innerHTML = sticks.map(s =>
-      `<option value="${s.id}">${esc(s.nom)} (stock: ${s.stock})</option>`).join('');
-    document.getElementById('distribMembreId').innerHTML = membres.map(m =>
-      `<option value="${m.id}">@${esc(m.pseudo_telegram)} — ${esc(m.prenom)} ${esc(m.nom)}</option>`).join('');
-  } catch(e) {}
-}
-
-async function doDistribuerStick(btn) {
-  const stickId = document.getElementById('distribStickId').value;
-  const membreId = document.getElementById('distribMembreId').value;
-  const qte = parseInt(document.getElementById('distribQte').value) || 1;
-  const mode = document.getElementById('distribMode').value;
-  const texteOriginal = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
-  try {
-    await UL.distribuerStickAdmin(stickId, membreId, qte, mode);
-    toast('Distribution enregistrée ✅', 'success');
-    closeModal('modalDistribuer');
-    loadSticks();
-  } catch(e) {
-    toast(e.message || 'Impossible d\'enregistrer la distribution', 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
-  }
-}
-
 // ── COTISATION (07/07/2026 : catalogue de cartages, plus lien statique) ─
 async function loadCotisation() {
   try {
