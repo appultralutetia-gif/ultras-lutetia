@@ -1,6 +1,18 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v38
+// ULTRAS LUTETIA — Service Worker v39
 // ============================================================
+//
+// v39 (07/07/2026) : CACHE_NAME bumpé (v38 → v39) — nouveau statut
+// intermédiaire "prepare" (Matos + Sticks), demandé par Remi : permet de
+// marquer un sac/article comme déjà préparé à l'avance (avant que le
+// membre ne vienne le récupérer), sans le marquer 'distribue'
+// prématurément. Purement interne — le membre continue de voir
+// "Disponible — à retirer" tant que ce n'est pas scanné.
+//   disponible → prepare (préparé, pas encore remis) → distribue (scan)
+// Bouton "✔️ Marquer préparé" ajouté dans Gestion → Par membre et dans
+// Commandes en cours (Matos + Sticks). Scan et confirmation manuelle
+// mis à jour pour accepter 'prepare' comme scannable, au même titre que
+// 'disponible'.
 //
 // v38 (07/07/2026) : CACHE_NAME bumpé (v37 → v38) — nettoyage de code
 // mort, sans changement fonctionnel : suppression du modal
@@ -422,7 +434,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v38';
+const CACHE_NAME = 'ul-v39';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
