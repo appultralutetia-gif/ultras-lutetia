@@ -49,7 +49,7 @@ async function loadProfil() {
     ${m.section ? `<div style="font-size:13px;margin-bottom:6px;">🛡️ Section: <strong>${m.section.nom}</strong></div>` : ''}
     ${evaluationsHtml}
     <div style="font-size:13px;margin-bottom:6px;">📋 Charte: ${m.charte_signee ? '✅ Signée' : '❌ Non signée'}</div>
-    <div style="font-size:13px;">💶 Cotisation: ${m.cotisation_a_jour ? '✅ À jour' : '⏳ En attente'}</div>
+    <div style="font-size:13px;">💶 Cartage: ${m.cotisation_a_jour ? '✅ À jour' : '⏳ En attente'}</div>
   `;
   try {
     const stats = await UL.getMesStats();
