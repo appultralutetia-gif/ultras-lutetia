@@ -1,6 +1,11 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v26
+// ULTRAS LUTETIA — Service Worker v27
 // ============================================================
+//
+// v27 (07/07/2026) : CACHE_NAME bumpé (v26 → v27) — la case à cocher
+// "Article avec tailles" (Matos) devient un choix à 3 valeurs : Taille
+// unique / Vêtement (S-XXL) / Pantalon (38-52), chacune avec sa propre
+// échelle de tailles proposée au membre et dans le flux Cash admin.
 //
 // v26 (07/07/2026) : CACHE_NAME bumpé (v25 → v26) — plages de précommande
 // optionnelles (début/fin) pour Matos et Sticks, avec fermeture
@@ -296,7 +301,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v26';
+const CACHE_NAME = 'ul-v27';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
