@@ -1220,13 +1220,25 @@ async function passerCommande(produitId, taille, quantite = 1) {
     mode_paiement: 'cash',
   }).select().single();
   if (error) throw error;
-  await sb.from('commande_items').insert({
+  // ⚠️ BUG CORRIGÉ (07/07/2026) : cet insert n'était jamais vérifié —
+  // cause réelle trouvée le 07/07/2026 : la colonne prix_unitaire
+  // n'existait pas sur commande_items (cf.
+  // migration_commande_items_prix_unitaire.sql), donc l'insert échouait
+  // en silence à chaque fois depuis l'introduction du mode HelloAsso pour
+  // Matos — la commande partait quand même sans aucune ligne d'article.
+  // Corrigé pour vérifier l'erreur et annuler proprement la commande si
+  // l'insertion des lignes échoue.
+  const { error: itemError } = await sb.from('commande_items').insert({
     commande_id: commande.id,
     produit_id: produitId,
     quantite,
     taille: taille || null,
     prix_unitaire: produit.prix,
   });
+  if (itemError) {
+    await sb.from('commandes').delete().eq('id', commande.id);
+    throw itemError;
+  }
   return commande;
 }
 
@@ -1263,13 +1275,20 @@ async function distribuerProduitAdmin(produitId, membreId, taille, quantite = 1)
     mode_paiement: 'cash',
   }).select().single();
   if (error) throw error;
-  await sb.from('commande_items').insert({
+  // ⚠️ BUG CORRIGÉ (07/07/2026) — même correctif que passerCommande
+  // ci-dessus : vérification d'erreur + annulation de la commande si
+  // l'insertion des lignes échoue.
+  const { error: itemError } = await sb.from('commande_items').insert({
     commande_id: commande.id,
     produit_id: produitId,
     quantite,
     taille: taille || null,
     prix_unitaire: produit.prix,
   });
+  if (itemError) {
+    await sb.from('commandes').delete().eq('id', commande.id);
+    throw itemError;
+  }
   return commande;
 }
 // Commande HelloAsso — délègue entièrement à l'Edge Function (elle crée
