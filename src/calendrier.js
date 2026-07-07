@@ -193,41 +193,146 @@ async function saisirScore(matchId) {
   } catch(e) { toast(e.message || 'Une erreur est survenue', 'error'); }
 }
 
-// ─── CARTAGE ──────────────────────────────────────────────────
+// ─── GÉRER LE CARTAGE (07/07/2026) ─────────────────────────────
+// Remplace l'ancienne page pageCartage (liste membres + config lien
+// statique) par une vraie page de gestion à 2 sous-onglets, symétrique à
+// pageAdminBoutique : Articles (catalogue cartage_catalogue, CRUD comme
+// Matos/Sticks) et Suivi des paiements (ex-pageCartage, filtres étendus).
 let allCartage = [], currentFiltreCartage = 'tous';
+let allCartageCatalogueAdmin = [];
 
-async function loadCartage() {
+function switchGererCartageTab(tab) {
+  document.getElementById('tabGererCartageArticles').classList.toggle('active', tab === 'articles');
+  document.getElementById('tabGererCartageSuivi').classList.toggle('active', tab === 'suivi');
+  document.getElementById('subPageGererCartageArticles').style.display = tab === 'articles' ? 'block' : 'none';
+  document.getElementById('subPageGererCartageSuivi').style.display = tab === 'suivi' ? 'block' : 'none';
+}
+
+async function loadGererCartage() {
+  await Promise.all([loadGererCartageArticles(), loadCartageSuivi()]);
+}
+
+// ── Sous-onglet Articles ────────────────────────────────────────
+async function loadGererCartageArticles() {
   try {
-    const membres = await UL.getAllMembres();
-    allCartage = membres;
-    const cartes = membres.filter(m => m.cotisation_a_jour && m.charte_signee);
-    const incomplets = membres.filter(m => !m.cotisation_a_jour || !m.charte_signee);
+    allCartageCatalogueAdmin = await UL.getAllCartageCatalogue();
+    renderGererCartageArticles();
+  } catch(e) { toast('Erreur chargement cartage', 'error'); }
+}
+
+function renderGererCartageArticles() {
+  const el = document.getElementById('gererCartageArticles');
+  if (!allCartageCatalogueAdmin.length) { el.innerHTML = '<div class="empty-state"><div>🗂️</div>Aucun cartage créé</div>'; return; }
+  el.innerHTML = allCartageCatalogueAdmin.map(c => `
+    <div class="card" style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(c.nom)}</div>
+          <div style="font-size:12px;color:var(--gris);">${c.prix}€ · Saison ${esc(c.saison)}</div>
+          ${c.description ? `<div style="font-size:12px;color:var(--gris);margin-top:2px;">${esc(c.description)}</div>` : ''}
+        </div>
+        <span class="badge ${c.statut === 'archive' ? 'badge-rouge' : 'badge-vert'}">${c.statut === 'archive' ? 'Archivé' : 'Disponible'}</span>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
+        <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierCartage('${c.id}')">✏️ Modifier</button>
+        ${c.statut !== 'archive' ? `<button class="btn btn-sm btn-danger" onclick="doArchiverCartage('${c.id}')">Archiver</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+function ouvrirCreerCartage() {
+  document.getElementById('cartageModalTitre').textContent = 'Ajouter un cartage';
+  document.getElementById('cartageId').value = '';
+  document.getElementById('cartageNom').value = '';
+  document.getElementById('cartageDesc').value = '';
+  document.getElementById('cartagePrix').value = '';
+  document.getElementById('cartageSaison').value = allCartageCatalogueAdmin[0]?.saison || '2026-2027';
+  showModal('modalCreerCartage');
+}
+
+function ouvrirModifierCartage(id) {
+  const c = allCartageCatalogueAdmin.find(x => x.id === id);
+  if (!c) return toast('Cartage introuvable', 'error');
+  document.getElementById('cartageModalTitre').textContent = 'Modifier le cartage';
+  document.getElementById('cartageId').value = c.id;
+  document.getElementById('cartageNom').value = c.nom;
+  document.getElementById('cartageDesc').value = c.description || '';
+  document.getElementById('cartagePrix').value = c.prix;
+  document.getElementById('cartageSaison').value = c.saison;
+  showModal('modalCreerCartage');
+}
+
+async function doSauvegarderCartage() {
+  const id = document.getElementById('cartageId').value;
+  const nom = document.getElementById('cartageNom').value.trim();
+  const prix = parseFloat(document.getElementById('cartagePrix').value);
+  const saison = document.getElementById('cartageSaison').value.trim();
+  if (!nom) return toast('Nom requis', 'error');
+  if (!prix || isNaN(prix)) return toast('Prix requis', 'error');
+  if (!saison) return toast('Saison requise', 'error');
+  const payload = {
+    nom,
+    description: document.getElementById('cartageDesc').value.trim() || null,
+    prix,
+    saison,
+  };
+  try {
+    if (id) await UL.updateCartage(id, payload);
+    else await UL.createCartage({ ...payload, statut: 'disponible' });
+    toast('Cartage enregistré ✅', 'success');
+    closeModal('modalCreerCartage');
+    loadGererCartageArticles();
+  } catch(e) { toast(e.message || 'Impossible d\'enregistrer le cartage', 'error'); }
+}
+
+async function doArchiverCartage(id) {
+  if (!confirm('Archiver ce cartage ? Il ne sera plus proposé aux membres.')) return;
+  try { await UL.archiverCartage(id); toast('Cartage archivé', 'success'); loadGererCartageArticles(); }
+  catch(e) { toast('Impossible d\'archiver ce cartage', 'error'); }
+}
+
+// ── Sous-onglet Suivi des paiements (ex-pageCartage) ────────────
+async function loadCartageSuivi() {
+  try {
+    allCartage = await UL.getAllCartagePaiements();
+    const cartes = allCartage.filter(m => m.cotisation_a_jour && m.charte_signee);
+    const incomplets = allCartage.filter(m => !m.cotisation_a_jour || !m.charte_signee);
+    const enAttente = allCartage.filter(m => m.dernierPaiementCartage && m.dernierPaiementCartage.statut === 'en_attente');
+    const payes = allCartage.filter(m => m.cotisation_a_jour);
     document.getElementById('cartageStats').innerHTML =
-      `<span>👥 ${membres.length} membres</span>` +
+      `<span>👥 ${allCartage.length} membres</span>` +
       `<span style="color:var(--vert);">✅ ${cartes.length} cartés</span>` +
-      `<span style="color:var(--orange);">⚠️ ${incomplets.length} incomplets</span>`;
+      `<span style="color:var(--orange);">⚠️ ${incomplets.length} incomplets</span>` +
+      `<span style="color:var(--bleu-clair);">⏳ ${enAttente.length} en attente de paiement</span>`;
     filtrerCartage(currentFiltreCartage);
   } catch(e) { toast('Erreur cartage', 'error'); }
 }
 
 function filtrerCartage(filtre) {
   currentFiltreCartage = filtre;
-  ['fcartTous','fcartCartes','fcartIncomplets'].forEach(id => {
+  ['fcartTous','fcartCartes','fcartIncomplets','fcartAttente','fcartPaye'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('active');
   });
-  const aid = {tous:'fcartTous',cartes:'fcartCartes',incomplets:'fcartIncomplets'}[filtre];
+  const aid = {tous:'fcartTous',cartes:'fcartCartes',incomplets:'fcartIncomplets',attente:'fcartAttente',paye:'fcartPaye'}[filtre];
   if (aid && document.getElementById(aid)) document.getElementById(aid).classList.add('active');
 
   let filtered = allCartage;
   if (filtre === 'cartes') filtered = allCartage.filter(m => m.cotisation_a_jour && m.charte_signee);
   if (filtre === 'incomplets') filtered = allCartage.filter(m => !m.cotisation_a_jour || !m.charte_signee);
+  // Nouveaux filtres (07/07/2026, demande Remi) : basés sur le paiement de
+  // cartage le plus récent (dernierPaiementCartage), indépendamment de la
+  // charte — un membre "en attente de paiement" a une tentative HelloAsso
+  // en cours (en_attente) non encore confirmée ni refusée.
+  if (filtre === 'attente') filtered = allCartage.filter(m => m.dernierPaiementCartage && m.dernierPaiementCartage.statut === 'en_attente');
+  if (filtre === 'paye') filtered = allCartage.filter(m => m.cotisation_a_jour);
 
   const el = document.getElementById('cartageListe');
   if (!filtered.length) { el.innerHTML = '<div class="empty-state"><div>🗂️</div>Aucun membre</div>'; return; }
 
   el.innerHTML = filtered.map(m => {
     const carte = m.cotisation_a_jour && m.charte_signee;
+    const dp = m.dernierPaiementCartage;
     return `<div class="card" style="margin-bottom:8px;padding:12px;border-left:3px solid ${carte?'#22C55E':'#F59E0B'};">
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="avatar" style="width:36px;height:36px;font-size:13px;">${((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase()}</div>
@@ -237,29 +342,54 @@ function filtrerCartage(filtre) {
           <div style="font-size:11px;margin-top:3px;">
             ${m.cotisation_a_jour ? '✅' : '❌'} Cotisation &nbsp;|&nbsp; ${m.charte_signee ? '✅' : '❌'} Charte
           </div>
+          ${dp && dp.statut === 'en_attente' ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:2px;">⏳ Paiement en cours (${esc(dp.cartage?.nom||'?')})</div>` : ''}
+          ${dp && dp.statut === 'refuse' ? `<div style="font-size:11px;color:var(--rouge);margin-top:2px;">❌ Paiement refusé (${esc(dp.cartage?.nom||'?')})</div>` : ''}
         </div>
         <span class="badge ${carte?'badge-vert':'badge-orange'}" style="flex-shrink:0;">${carte?'✅ Carté':'⚠️ Incomplet'}</span>
       </div>
       ${!m.cotisation_a_jour ? `
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
-        <button class="btn btn-sm btn-success" onclick="doValiderCotisationCashEtRafraichirCartage('${m.id}')">💵 Cash</button>
-        <button class="btn btn-sm btn-primary" onclick="doValiderCotisationHAEtRafraichirCartage('${m.id}')">💳 HA</button>
+        <button class="btn btn-sm btn-primary" onclick="ouvrirValiderCartage('${m.id}','${esc(m.prenom)} ${esc(m.nom)}')">💰 Valider un paiement</button>
       </div>` : ''}
     </div>`;
   }).join('');
 }
 
-// Wrappers attendant la fin réelle de la validation (doValiderCotisationCash/HA,
-// boutique.js) avant de rafraîchir la page Cartage — remplace l'ancien
-// setTimeout(loadCartage, 400) qui pouvait rafraîchir avant que la requête
-// réseau soit confirmée (connexion lente) et laisser l'ancien statut affiché.
-async function doValiderCotisationCashEtRafraichirCartage(membreId) {
-  await doValiderCotisationCash(membreId);
-  loadCartage();
+// Modal de validation Cash/HA — nécessite de choisir QUEL cartage
+// désormais (plusieurs types possibles), contrairement à l'ancien bouton
+// direct Cash/HA quand il n'y avait qu'un seul cartage global.
+async function ouvrirValiderCartage(membreId, nomMembre) {
+  document.getElementById('validerCartageMembreId').value = membreId;
+  document.getElementById('validerCartageTitre').textContent = `Valider le paiement — ${nomMembre}`;
+  document.getElementById('validerCartageOptions').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  showModal('modalValiderCartagePaiement');
+  try {
+    const catalogue = await UL.getCartageCatalogue();
+    document.getElementById('validerCartageOptions').innerHTML = catalogue.length ? catalogue.map(c => `
+      <div class="card" style="margin-bottom:8px;padding:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div style="font-weight:600;">${esc(c.nom)}</div>
+          <div>${c.prix}€</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm btn-success" style="flex:1;" onclick="doValiderCartage('${c.id}','cash')">💵 Cash</button>
+          <button class="btn btn-sm btn-primary" style="flex:1;" onclick="doValiderCartage('${c.id}','helloasso')">💳 HA (manuel)</button>
+        </div>
+      </div>`).join('') : '<div class="empty-state"><div>📦</div>Aucun cartage disponible — crée-en un dans l\'onglet Articles.</div>';
+  } catch(e) {
+    document.getElementById('validerCartageOptions').innerHTML = '<div class="empty-state">Erreur de chargement</div>';
+  }
 }
-async function doValiderCotisationHAEtRafraichirCartage(membreId) {
-  await doValiderCotisationHA(membreId);
-  loadCartage();
+
+async function doValiderCartage(cartageId, mode) {
+  const membreId = document.getElementById('validerCartageMembreId').value;
+  try {
+    if (mode === 'cash') await UL.validerCartageCash(membreId, cartageId);
+    else await UL.validerCartageHelloAssoManuel(membreId, cartageId);
+    toast('Cotisation validée ✅', 'success');
+    closeModal('modalValiderCartagePaiement');
+    loadCartageSuivi();
+  } catch(e) { toast(e.message || 'Impossible de valider ce paiement', 'error'); }
 }
 
 // ─── ÉVÉNEMENTS ──────────────────────────────────────────────
