@@ -1,10 +1,9 @@
 // ─── BOUTIQUE ─────────────────────────────────────────────────
 
-let allProduits = [], allSticks = [], allCotisations = [];
-let currentFiltresMatos = 'tous', currentFiltresSticks = 'tous', currentFiltresCotisations = 'tous';
+let allProduits = [], allSticks = [];
+let currentFiltresMatos = 'tous', currentFiltresSticks = 'tous';
 
 async function loadBoutique() {
-  const m = UL.getCurrentMembre();
   // Note (05/07/2026) : les actions d'admin (Ajouter un article/stick,
   // Modifier, Stock, Photo, Archiver, Cash, Toutes les commandes,
   // Historique distributions) ont été retirées de cette page — elles
@@ -12,9 +11,8 @@ async function loadBoutique() {
   // (cf. loadAdminBoutique), accessible via Admin → "Gérer la boutique
   // matos/sticks". Cette page (bottom nav "Boutique") reste 100% côté
   // membre : parcourir le catalogue et acheter, rien d'autre.
-  if (isBureau(m)) {
-    document.getElementById('adminCotisationSection').style.display = 'block';
-  }
+  // Le lien "⚙️ Gérer le cartage" (admin/bureau) est géré directement
+  // dans loadCotisation() via #cotisationAdminLien.
   await Promise.all([loadMatos(), loadSticks(), loadCotisation()]);
 }
 
@@ -1234,87 +1232,75 @@ async function doDistribuerStick(btn) {
   }
 }
 
-// ── COTISATION ─────────────────────────────────────────────────
+// ── COTISATION (07/07/2026 : catalogue de cartages, plus lien statique) ─
 async function loadCotisation() {
   try {
-    const { cotisation, config } = await UL.getMaCotisation();
-    const aJour = cotisation && cotisation.statut === 'paye';
-    document.getElementById('cotisationStatut').innerHTML = `
-      <div class="cotisation-badge ${aJour ? 'ok' : 'nok'}">
-        <div style="font-size:48px;">${aJour ? '✅' : '⏳'}</div>
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">
-          ${aJour ? 'Cotisation à jour' : 'Cotisation en attente'}
+    const [catalogue, { paiements, aJour }] = await Promise.all([
+      UL.getCartageCatalogue(),
+      UL.getMesPaiementsCartage(),
+    ]);
+    const el = document.getElementById('cotisationStatut');
+
+    if (aJour) {
+      const dernierPaye = paiements.find(p => p.statut === 'paye');
+      el.innerHTML = `
+        <div class="cotisation-badge ok">
+          <div style="font-size:48px;">✅</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">Cotisation à jour</div>
+          ${dernierPaye ? `
+          <div style="font-size:13px;color:var(--gris);">${esc(dernierPaye.cartage?.nom || 'Cartage')} · ${dernierPaye.montant}€</div>
+          <div style="font-size:12px;color:var(--vert);">Payé le ${new Date(dernierPaye.paye_at).toLocaleDateString('fr-FR')}</div>` : ''}
+        </div>`;
+    } else if (!catalogue.length) {
+      el.innerHTML = `
+        <div class="cotisation-badge nok">
+          <div style="font-size:48px;">⏳</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">Cotisation en attente</div>
+          <div style="font-size:13px;color:var(--gris);margin-top:6px;">Aucun cartage disponible pour le moment — contacte un admin.</div>
+        </div>`;
+    } else {
+      el.innerHTML = `
+        <div class="cotisation-badge nok">
+          <div style="font-size:48px;">⏳</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">Cotisation en attente</div>
         </div>
-        <div style="font-size:13px;color:var(--gris);">Saison ${config.saison} · ${config.montant}€</div>
-        ${aJour ? `<div style="font-size:12px;color:var(--vert);">Payé le ${new Date(cotisation.paye_at).toLocaleDateString('fr-FR')}</div>` : ''}
-      </div>
-      ${!aJour && config.lien ? `
-        <a href="${config.lien}" target="_blank">
-          <button class="btn btn-primary">💳 Payer via HelloAsso</button>
-        </a>
-        <div style="text-align:center;margin-top:8px;font-size:12px;color:var(--gris);">
+        ${catalogue.map(c => {
+          const paiementEnCours = paiements.find(p => p.cartage_id === c.id && (p.statut === 'en_attente' || p.statut === 'refuse'));
+          const label = paiementEnCours
+            ? (paiementEnCours.statut === 'refuse' ? '🔄 Relancer le paiement' : '💳 Reprendre le paiement')
+            : '💳 Payer via HelloAsso';
+          return `
+          <div class="card" style="margin-top:10px;padding:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-weight:600;">${esc(c.nom)}</div>
+              <div style="font-size:14px;">${c.prix}€</div>
+            </div>
+            ${c.description ? `<div style="font-size:12px;color:var(--gris);margin-top:4px;">${esc(c.description)}</div>` : ''}
+            <button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="doPayerCartage('${c.id}',this)">${label}</button>
+          </div>`;
+        }).join('')}
+        <div style="text-align:center;margin-top:10px;font-size:12px;color:var(--gris);">
           Paiement cash possible — contacte un admin
-        </div>` : ''}`;
-    if (isAdmin(UL.getCurrentMembre()) || isBureau(UL.getCurrentMembre())) {
-      const config2 = await UL.getConfigCotisation();
-      document.getElementById('configLienCotisation').value = config2.lien || '';
-      document.getElementById('configMontantCotisation').value = config2.montant || '20';
-      await loadListeCotisations();
+        </div>`;
     }
+
+    const lienAdmin = document.getElementById('cotisationAdminLien');
+    if (lienAdmin) lienAdmin.style.display = (isAdmin(UL.getCurrentMembre()) || isBureau(UL.getCurrentMembre())) ? 'block' : 'none';
   } catch(e) { toast('Erreur cotisations', 'error'); }
 }
 
-async function loadListeCotisations() {
+async function doPayerCartage(cartageId, btn) {
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    allCotisations = await UL.getAllCotisations();
-    renderCotisations(allCotisations);
-  } catch(e) {}
-}
-
-function filtrerCotisations(filtre) {
-  document.querySelectorAll('#adminCotisationSection .filter-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
-  currentFiltresCotisations = filtre;
-  let filtered = allCotisations;
-  if (filtre === 'a_jour') filtered = allCotisations.filter(m => m.cotisation_a_jour);
-  if (filtre === 'en_attente') filtered = allCotisations.filter(m => !m.cotisation_a_jour);
-  renderCotisations(filtered);
-}
-
-function renderCotisations(membres) {
-  const el = document.getElementById('listeCotisations');
-  if (!membres.length) { el.innerHTML = '<div class="empty-state"><div>👥</div>Aucun membre</div>'; return; }
-  el.innerHTML = membres.map(m => `
-    <div class="card" style="margin-bottom:8px;padding:12px;">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <div class="avatar" style="width:34px;height:34px;font-size:13px;">${((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase()}</div>
-        <div style="flex:1;">
-          <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;">${esc(m.prenom)} ${esc(m.nom)}</div>
-          <div style="font-size:11px;color:var(--gris);">@${esc(m.pseudo_telegram)} ${m.section ? '· ' + esc(m.section.nom) : ''}</div>
-        </div>
-        <span class="badge ${m.cotisation_a_jour ? 'badge-vert' : 'badge-orange'}">${m.cotisation_a_jour ? '✅ À jour' : '⏳ Attente'}</span>
-      </div>
-      ${!m.cotisation_a_jour ? `
-      <div style="display:flex;gap:6px;margin-top:10px;">
-        <button class="btn btn-sm btn-success" onclick="doValiderCotisationCash('${m.id}')">💵 Valider cash</button>
-        <button class="btn btn-sm btn-primary" onclick="doValiderCotisationHA('${m.id}')">💳 Valider HA</button>
-      </div>` : ''}
-    </div>`).join('');
-}
-
-async function doValiderCotisationCash(membreId) {
-  try { await UL.validerCotisationCash(membreId); toast('Cotisation validée (cash) ✅', 'success'); loadListeCotisations(); }
-  catch(e) { toast(e.message || 'Impossible de valider la cotisation cash', 'error'); }
-}
-async function doValiderCotisationHA(membreId) {
-  try { await UL.validerCotisationHelloAsso(membreId); toast('Cotisation validée (HelloAsso) ✅', 'success'); loadListeCotisations(); }
-  catch(e) { toast(e.message || 'Impossible de valider la cotisation HelloAsso', 'error'); }
-}
-async function doSauvegarderConfigCotisation() {
-  const lien = document.getElementById('configLienCotisation').value.trim();
-  const montant = document.getElementById('configMontantCotisation').value.trim();
-  try { await UL.updateConfigCotisation(lien, montant); toast('Config cotisation enregistrée ✅', 'success'); }
-  catch(e) { toast('Impossible de sauvegarder la configuration', 'error'); }
+    toast('Redirection vers le paiement…', 'success');
+    const { redirectUrl } = await UL.demanderCartageHelloAsso(cartageId);
+    window.location.href = redirectUrl;
+    // Pas de réactivation du bouton : la page quitte l'app vers HelloAsso.
+  } catch(e) {
+    toast(e.message || 'Impossible de lancer le paiement', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
 }
 
 // ─── MATOS ────────────────────────────────────────────────────
