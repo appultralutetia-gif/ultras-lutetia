@@ -705,6 +705,14 @@
       <h3 class="modal-title" id="cartageModalTitre">Ajouter un cartage</h3>
       <input type="hidden" id="cartageId">
       <div class="form-group"><label>Nom</label><input type="text" id="cartageNom" placeholder="ex: Cartage standard"></div>
+      <div class="form-group">
+        <label>Image (optionnel)</label>
+        <div id="photoPreviewCartage" style="display:none;margin-bottom:8px;">
+          <img id="photoPreviewImgCartage" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--surface-4);">
+        </div>
+        <input type="file" id="cartagePhoto" accept="image/png,image/jpeg" onchange="previewPhoto(this,'cartage')"
+          style="background:var(--surface-2);border:1.5px dashed var(--surface-4);border-radius:9px;padding:10px;color:var(--gris);width:100%;cursor:pointer;">
+      </div>
       <div class="form-group"><label>Description (optionnel)</label><textarea id="cartageDesc" placeholder="Description optionnelle"></textarea></div>
       <div class="form-group"><label>Prix (€)</label><input type="number" id="cartagePrix" placeholder="20"></div>
       <div class="form-group"><label>Saison</label><input type="text" id="cartageSaison" placeholder="2026-2027"></div>
