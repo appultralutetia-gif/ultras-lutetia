@@ -326,15 +326,14 @@ async function loadCartageSuivi() {
 
 function filtrerCartage(filtre) {
   currentFiltreCartage = filtre;
-  ['fcartTous','fcartCartes','fcartIncomplets','fcartAttente','fcartPaye'].forEach(id => {
+  ['fcartTous','fcartIncomplets','fcartAttente','fcartPaye'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('active');
   });
-  const aid = {tous:'fcartTous',cartes:'fcartCartes',incomplets:'fcartIncomplets',attente:'fcartAttente',paye:'fcartPaye'}[filtre];
+  const aid = {tous:'fcartTous',incomplets:'fcartIncomplets',attente:'fcartAttente',paye:'fcartPaye'}[filtre];
   if (aid && document.getElementById(aid)) document.getElementById(aid).classList.add('active');
 
   let filtered = allCartage;
-  if (filtre === 'cartes') filtered = allCartage.filter(m => m.cotisation_a_jour && m.charte_signee);
   if (filtre === 'incomplets') filtered = allCartage.filter(m => !m.cotisation_a_jour || !m.charte_signee);
   // Nouveaux filtres (07/07/2026, demande Remi) : basés sur le paiement de
   // cartage le plus récent (dernierPaiementCartage), indépendamment de la
