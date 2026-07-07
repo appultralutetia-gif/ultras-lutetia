@@ -24,6 +24,16 @@ function calculerStatutPaiementDepl(monInscrit) {
   return { estInscrit, estPaye, estRefuse };
 }
 
+// Le champ date_limite_inscription existait déjà en base et était affiché
+// en simple texte informatif ("⏳ Limite: ..."), sans jamais bloquer
+// réellement une nouvelle inscription une fois la date passée (05/07/2026,
+// même chantier que les plages de précommande Matos/Sticks — demande
+// Remi : auto-fermeture à la date). Optionnel : un déplacement sans date
+// limite reste ouvert sans limite, comportement inchangé.
+function inscriptionsDeplFermees(d) {
+  return !!d.date_limite_inscription && new Date() > new Date(d.date_limite_inscription);
+}
+
 function renderDeplCard(d) {
   const m = UL.getCurrentMembre();
   const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}) : '';
@@ -37,7 +47,9 @@ function renderDeplCard(d) {
   // l'ouverture de la modal (la carte entière reste cliquable pour le détail).
   let boutonAction;
   if (!estInscrit) {
-    boutonAction = `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">M'inscrire</button>`;
+    boutonAction = inscriptionsDeplFermees(d)
+      ? `<span class="badge badge-gris">⏳ Inscriptions terminées</span>`
+      : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">M'inscrire</button>`;
   } else if (estRefuse) {
     boutonAction = `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">❌ Réessayer le paiement</button>`;
   } else if (!estPaye) {
@@ -104,7 +116,9 @@ async function openDepl(deplId) {
       <div style="font-size:14px;margin-bottom:16px;font-weight:600;">👥 ${nbInscrits} inscrit${nbInscrits>1?'s':''}${d.places_max?' / '+d.places_max+' places':''}</div>`;
 
     if (!estInscrit) {
-      html += `<button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">M'inscrire</button>`;
+      html += inscriptionsDeplFermees(d)
+        ? `<div class="info-box">⏳ Les inscriptions sont terminées pour ce déplacement.</div>`
+        : `<button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">M'inscrire</button>`;
     } else if (estRefuse) {
       html += `<div class="info-box error">❌ Paiement refusé</div>
         <button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">Réessayer le paiement</button>`;
