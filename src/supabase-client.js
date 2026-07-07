@@ -1818,6 +1818,12 @@ async function uploadPhotoStick(file, stickNom) {
   return uploadPhoto(file, 'sticks', stickNom, 400, 0.80);
 }
 
+// Réutilise le bucket 'matos' (pas de bucket dédié à créer) — préfixe
+// "cartage-" dans le nom de fichier pour rester lisible côté Storage.
+async function uploadPhotoCartage(file, cartageNom) {
+  return uploadPhoto(file, 'matos', `cartage-${cartageNom}`, 400, 0.80);
+}
+
 async function updatePhotoMatos(produitId, photoUrl) {
   const { error } = await sb.from('produits')
     .update({ photo_url: photoUrl })
@@ -2024,7 +2030,7 @@ window.UL = {
   getMesPaiementsCartage, demanderCartageHelloAsso,
   validerCartageCash, validerCartageHelloAssoManuel, getAllCartagePaiements,
   // Storage / Upload
-  uploadPhotoMatos, uploadPhotoStick, updatePhotoMatos, updatePhotoStick,
+  uploadPhotoMatos, uploadPhotoStick, uploadPhotoCartage, updatePhotoMatos, updatePhotoStick,
   // Email
   envoyerEmailValidation,
   // Notifications push
