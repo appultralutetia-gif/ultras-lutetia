@@ -1388,13 +1388,21 @@ async function doCreerProduit() {
 }
 
 // Ouvre le modal modalCreerProduit en mode édition, pré-rempli avec les
-// valeurs actuelles — réutilise allProduits (déjà chargée par loadMatos)
-// plutôt que de resolliciter le réseau. Même principe de swap dynamique
-// (titre + bouton submit) que pour les matchs (cf. ouvrirModifierMatch
-// dans admin.js), pour rester cohérent avec ce pattern déjà en place dans
-// le projet plutôt que de dupliquer un second modal complet.
+// valeurs actuelles — réutilise allProduitsAdmin (chargée par
+// loadAdminBoutique, la page Admin dédiée) plutôt que de resolliciter le
+// réseau. Même principe de swap dynamique (titre + bouton submit) que
+// pour les matchs (cf. ouvrirModifierMatch dans admin.js), pour rester
+// cohérent avec ce pattern déjà en place dans le projet plutôt que de
+// dupliquer un second modal complet.
+// ⚠️ Bug corrigé le 07/07/2026 : cette fonction lisait par erreur
+// allProduits (la liste de la page membre Boutique, jamais chargée si on
+// n'a pas visité cet onglet dans la session) au lieu de allProduitsAdmin
+// (la liste de la page Admin d'où ce bouton est réellement appelé depuis
+// la restructuration du 05/07/2026) — symptôme : "Article introuvable" à
+// chaque clic sur Modifier, sauf si l'onglet Boutique membre avait été
+// ouvert avant dans la même session.
 async function ouvrirModifierProduit(produitId) {
-  const p = allProduits.find(pr => pr.id === produitId);
+  const p = allProduitsAdmin.find(pr => pr.id === produitId);
   if (!p) return toast('Article introuvable', 'error');
 
   await loadSectionsForModal();
@@ -1585,12 +1593,15 @@ async function doCreerStick() {
   }
 }
 
-// Ouvre modalCreerStick en mode édition, pré-rempli — réutilise allSticks
-// (déjà chargée par loadSticks) plutôt que de resolliciter le réseau. Même
-// principe de swap dynamique (titre + bouton submit) que pour les produits
-// Matos et les matchs, pour rester cohérent avec ce pattern.
+// Ouvre modalCreerStick en mode édition, pré-rempli — réutilise
+// allSticksAdmin (chargée par loadAdminBoutique, la page Admin dédiée)
+// plutôt que de resolliciter le réseau. Même principe de swap dynamique
+// (titre + bouton submit) que pour les produits Matos et les matchs, pour
+// rester cohérent avec ce pattern. ⚠️ Même bug corrigé que pour Matos ci-
+// dessus (07/07/2026) : lisait par erreur allSticks (page membre) au lieu
+// de allSticksAdmin (page Admin, d'où ce bouton est réellement appelé).
 async function ouvrirModifierStick(stickId) {
-  const s = allSticks.find(st => st.id === stickId);
+  const s = allSticksAdmin.find(st => st.id === stickId);
   if (!s) return toast('Stick introuvable', 'error');
 
   await loadSectionsForModalStick();
