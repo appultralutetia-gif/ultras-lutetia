@@ -1729,10 +1729,20 @@ async function validerCartageHelloAssoManuel(membreId, cartageId) {
 // membre, on ramène son paiement de cartage le plus récent (pour savoir
 // s'il a un en_attente/refuse en cours), en plus du flag cotisation_a_jour
 // qui reste la source de vérité pour "à jour" ou non.
+// ⚠️ BUG CORRIGÉ (07/07/2026) — même cause que les bugs déjà rencontrés
+// sur getAllDistributions() et getAllCommandes() : cartage_paiements a
+// DEUX clés étrangères vers membres (membre_id ET valide_par), donc
+// l'embed cartage_paiements(...) depuis membres est ambigu pour
+// PostgREST sans préciser laquelle utiliser — la requête ENTIÈRE échouait
+// (pas juste un filtrage partiel), et comme `error` n'était pas vérifié,
+// ça retournait [] en silence ("0 membres" affiché alors que des
+// paiements existaient bien). Corrigé en précisant la contrainte exacte —
+// on veut le membre PAYEUR, pas l'admin qui a validé le paiement.
 async function getAllCartagePaiements() {
-  const { data } = await sb.from('membres')
-    .select('id, nom, prenom, pseudo_telegram, statut, cotisation_a_jour, charte_signee, section:sections(nom), cartage_paiements(statut, montant, mode_paiement, paye_at, cartage:cartage_catalogue(nom), created_at)')
+  const { data, error } = await sb.from('membres')
+    .select('id, nom, prenom, pseudo_telegram, statut, cotisation_a_jour, charte_signee, section:sections(nom), cartage_paiements!cartage_paiements_membre_id_fkey(statut, montant, mode_paiement, paye_at, cartage:cartage_catalogue(nom), created_at)')
     .order('nom');
+  if (error) throw error;
   return (data || []).map(m => {
     const paiements = (m.cartage_paiements || []).slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     return { ...m, dernierPaiementCartage: paiements[0] || null };
