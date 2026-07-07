@@ -1,6 +1,13 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v34
+// ULTRAS LUTETIA — Service Worker v35
 // ============================================================
+//
+// v35 (07/07/2026) : CACHE_NAME bumpé (v34 → v35) — carte de paiement
+// Cartage (vue membre) reprend exactement le format visuel des cartes
+// Sticks (image pleine largeur 150px au lieu d'une petite vignette).
+// Mention "Paiement cash possible — contacte un admin" retirée (demande
+// Remi : le cash doit rester exceptionnel, pas mis en avant). Vignette
+// admin (onglet Articles) agrandie à 70×70 par cohérence avec Sticks.
 //
 // v34 (07/07/2026) : CACHE_NAME bumpé (v33 → v34) — ajout d'une image
 // optionnelle sur les articles de Cartage (comme Matos/Sticks), et
@@ -385,7 +392,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v34';
+const CACHE_NAME = 'ul-v35';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
