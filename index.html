@@ -1160,10 +1160,26 @@
     </div>
     <div class="form-group">
       <label>Mode</label>
-      <select id="pMode">
+      <select id="pMode" onchange="toggleModePrecommandeMatos()">
         <option value="stock">Stock en temps réel</option>
         <option value="precommande">Précommande groupée</option>
       </select>
+    </div>
+    <div class="form-group" id="pPrecommandeDatesGroup" style="display:none;">
+      <label>Plage de précommande (optionnel)</label>
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;">
+          <p style="font-size:11px;color:var(--gris);margin:0 0 4px;">Début</p>
+          <input type="datetime-local" id="pPrecommandeDebut">
+        </div>
+        <div style="flex:1;">
+          <p style="font-size:11px;color:var(--gris);margin:0 0 4px;">Fin</p>
+          <input type="datetime-local" id="pPrecommandeFin">
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--gris);margin-top:6px;">
+        Laisser vide = pas de limite de date. Si une date de fin est renseignée, le bouton "Précommander" disparaît automatiquement après cette date (remplacé par un badge "Précommande terminée"). Si une date de début est renseignée, le bouton n'apparaît qu'à partir de cette date.
+      </p>
     </div>
     <div class="form-group" id="pNotifierGroup">
       <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
@@ -1211,10 +1227,26 @@
     <div class="form-group"><label>Stock disponible (en nombre de sticks)</label><input type="number" id="stStock" placeholder="0"></div>
     <div class="form-group">
       <label>Mode</label>
-      <select id="stMode">
+      <select id="stMode" onchange="toggleModePrecommandeStick()">
         <option value="stock">En stock</option>
         <option value="precommande">Précommande</option>
       </select>
+    </div>
+    <div class="form-group" id="stPrecommandeDatesGroup" style="display:none;">
+      <label>Plage de précommande (optionnel)</label>
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;">
+          <p style="font-size:11px;color:var(--gris);margin:0 0 4px;">Début</p>
+          <input type="datetime-local" id="stPrecommandeDebut">
+        </div>
+        <div style="flex:1;">
+          <p style="font-size:11px;color:var(--gris);margin:0 0 4px;">Fin</p>
+          <input type="datetime-local" id="stPrecommandeFin">
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--gris);margin-top:6px;">
+        Laisser vide = pas de limite de date. Si une date de fin est renseignée, le bouton disparaît automatiquement après cette date (remplacé par un badge "Précommande terminée").
+      </p>
     </div>
     <div class="form-group"><label>Lien HelloAsso (optionnel — plus utilisé pour le paiement, le bouton HelloAsso se génère automatiquement à partir du prix)</label><input type="url" id="stHelloasso" placeholder="https://www.helloasso.com/..."></div>
     <div class="form-group" id="stNotifierGroup">
