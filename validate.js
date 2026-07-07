@@ -57,7 +57,7 @@ const REQUIRED_BY_MODULE = {
   'src/calendrier.js': [
     'loadCalendrier', 'filtrerCalendrier',
     'renderMatchCard', 'saisirScore',
-    'loadCartage', 'filtrerCartage',
+    'loadGererCartage', 'filtrerCartage',
     'ouvrirCreerEvenement', 'doSauvegarderEvenement',
   ],
   'src/admin.js': [
