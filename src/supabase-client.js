@@ -1380,8 +1380,15 @@ async function updateCommandeStatut(commandeId, statut) {
       }
     }
   }
+  // ⚠️ BUG CORRIGÉ (07/07/2026) : cet update écrivait aussi updated_at,
+  // colonne qui n'existe pas sur commandes (jamais ajoutée en migration) —
+  // PostgREST rejetait l'update entier ("Could not find the 'updated_at'
+  // column"), bloquant le scan de retrait Matos ("Confirmer retrait"), qui
+  // n'avait jamais été testé en conditions réelles jusqu'ici. Rien ne lit
+  // ce champ ailleurs dans le code, donc simplement retiré plutôt que
+  // d'ajouter la colonne pour rien.
   const { error } = await sb.from('commandes')
-    .update({ statut, updated_at: new Date().toISOString() })
+    .update({ statut })
     .eq('id', commandeId);
   if (error) throw error;
   return { success: true };
