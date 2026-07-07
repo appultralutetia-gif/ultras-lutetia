@@ -1,6 +1,16 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v36
+// ULTRAS LUTETIA — Service Worker v37
 // ============================================================
+//
+// v37 (07/07/2026) : CACHE_NAME bumpé (v36 → v37) — 2 corrections : (1)
+// bug préexistant du scan de retrait Matos ("Confirmer retrait") jamais
+// testé en conditions réelles jusqu'ici : updateCommandeStatut écrivait
+// une colonne updated_at inexistante sur commandes, PostgREST rejetait
+// l'update entier ("Could not find the 'updated_at' column"). Retirée,
+// rien ne la lisait nulle part. (2) Filtre "✅ Cartés" retiré du Suivi
+// des paiements Cartage (doublon avec "Payé" signalé par Remi — les deux
+// se recoupaient presque toujours) — restent Tous/Incomplets/En attente
+// de paiement/Payé.
 //
 // v36 (07/07/2026) : CACHE_NAME bumpé (v35 → v36) — 3 corrections : (1)
 // bug "0 membres" dans Suivi des paiements Cartage — même cause que les
@@ -403,7 +413,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v36';
+const CACHE_NAME = 'ul-v37';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
