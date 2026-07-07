@@ -1,6 +1,20 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v30
+// ULTRAS LUTETIA — Service Worker v31
 // ============================================================
+//
+// v31 (07/07/2026) : CACHE_NAME bumpé (v30 → v31) — cause racine trouvée
+// et corrigée pour le bug "article invisible dans Mes commandes" : la
+// colonne commande_items.prix_unitaire n'existait pas du tout en base.
+// Les 3 inserts dans commande_items (helloasso-create-checkout.ts,
+// passerCommande, distribuerProduitAdmin) échouaient donc en silence
+// depuis le 05/07/2026 (aucun ne vérifiait `error`) — la commande se
+// créait et se payait normalement, mais sans aucune ligne d'article.
+// Corrigé : colonne ajoutée (cf. migration_commande_items_prix_unitaire.sql),
+// et les 3 inserts vérifient maintenant l'erreur et annulent proprement
+// la commande si l'insertion des lignes échoue, au lieu de laisser
+// passer une commande "fantôme". ⚠️ Nécessite aussi de redéployer
+// l'Edge Function helloasso-create-checkout (fournie à part, pas dans le
+// dépôt front).
 //
 // v30 (07/07/2026) : CACHE_NAME bumpé (v29 → v30) — demande Remi : (1)
 // date de livraison estimée optionnelle pour un article en précommande
@@ -333,7 +347,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v30';
+const CACHE_NAME = 'ul-v31';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
