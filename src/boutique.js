@@ -1246,7 +1246,7 @@ async function loadCotisation() {
       el.innerHTML = `
         <div class="cotisation-badge ok">
           <div style="font-size:48px;">✅</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">Cotisation à jour</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">Cartage à jour</div>
           ${dernierPaye ? `
           <div style="font-size:13px;color:var(--gris);">${esc(dernierPaye.cartage?.nom || 'Cartage')} · ${dernierPaye.montant}€</div>
           <div style="font-size:12px;color:var(--vert);">Payé le ${new Date(dernierPaye.paye_at).toLocaleDateString('fr-FR')}</div>` : ''}
@@ -1255,14 +1255,14 @@ async function loadCotisation() {
       el.innerHTML = `
         <div class="cotisation-badge nok">
           <div style="font-size:48px;">⏳</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">Cotisation en attente</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">Cartage en attente</div>
           <div style="font-size:13px;color:var(--gris);margin-top:6px;">Aucun cartage disponible pour le moment — contacte un admin.</div>
         </div>`;
     } else {
       el.innerHTML = `
         <div class="cotisation-badge nok">
           <div style="font-size:48px;">⏳</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">Cotisation en attente</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">Cartage en attente</div>
         </div>
         ${catalogue.map(c => {
           const paiementEnCours = paiements.find(p => p.cartage_id === c.id && (p.statut === 'en_attente' || p.statut === 'refuse'));
