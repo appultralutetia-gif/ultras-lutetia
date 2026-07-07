@@ -1285,9 +1285,20 @@ async function demanderCommandeHelloAsso(produitId, taille, quantite = 1) {
   return data;
 }
 
+// ⚠️ Point ouvert (07/07/2026, signalé par Remi) : l'article commandé
+// n'apparaissait pas dans "Mes commandes" côté membre, alors que le prix/
+// statut/date s'affichaient bien. Hypothèse la plus probable : la table
+// commande_items a RLS activé sans policy de lecture pour le membre
+// propriétaire (contrairement à sticks_distribution, qui n'a pas ce
+// problème — l'article y est directement sur la ligne, sans table
+// enfant séparée à traverser). Voir migration_rls_commande_items.sql —
+// ajoute la policy manquante. Si le problème persiste après avoir exécuté
+// cette migration, il faudra vérifier les policies existantes de plus
+// près (peut-être une policy déjà présente mais mal écrite plutôt
+// qu'absente).
 async function getMesCommandes() {
   const { data } = await sb.from('commandes')
-    .select('*, commande_items(*, produit:produits(nom, photo_url, categorie))')
+    .select('*, commande_items(*, produit:produits(nom, photo_url, categorie, mode, precommande_livraison_estimee))')
     .eq('membre_id', currentUser.id)
     .order('created_at', { ascending: false });
   return data || [];
@@ -1462,7 +1473,7 @@ async function demanderStickHelloAsso(stickId, quantite = 1) {
 
 async function getMesSticks() {
   const { data } = await sb.from('sticks_distribution')
-    .select('*, stick:sticks_catalogue(nom, visuel_url, categorie, prix, section_id, section:sections(nom))')
+    .select('*, stick:sticks_catalogue(nom, visuel_url, categorie, prix, section_id, section:sections(nom), mode, precommande_livraison_estimee)')
     .eq('membre_id', currentUser.id)
     .order('created_at', { ascending: false });
   return data || [];
