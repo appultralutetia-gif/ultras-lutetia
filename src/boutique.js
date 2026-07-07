@@ -210,10 +210,13 @@ function renderMesCommandes(commandes) {
   if (!commandes.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune commande</p>'; return; }
   const statuts = {
     en_attente:'⏳ En attente de paiement', precommande_validee:'📋 Précommande validée — en attente de réception',
-    disponible:'✅ Disponible — à retirer', distribue:'✔️ Récupérée', refuse:'❌ Paiement refusé', annulee:'❌ Annulée',
+    disponible:'✅ Disponible — à retirer', prepare:'✅ Disponible — à retirer', distribue:'✔️ Récupérée', refuse:'❌ Paiement refusé', annulee:'❌ Annulée',
   };
+  // 'prepare' (préparé à l'avance par l'équipe, 07/07/2026) est un statut
+  // purement interne — le membre doit toujours voir "Disponible", jamais
+  // ce détail de préparation.
   const badgeClasse = c => {
-    if (c.statut === 'distribue' || c.statut === 'disponible') return 'badge-vert';
+    if (c.statut === 'distribue' || c.statut === 'disponible' || c.statut === 'prepare') return 'badge-vert';
     if (c.statut === 'precommande_validee') return 'badge-bleu';
     if (c.statut === 'refuse' || c.statut === 'annulee') return 'badge-rouge';
     return 'badge-orange';
@@ -268,7 +271,7 @@ let commandesSelectionneesReception = new Set();
 function renderToutesCommandes(commandes) {
   const el = document.getElementById('adminToutesCommandes');
   if (!commandes.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune commande</p>'; commandesSelectionneesReception.clear(); return; }
-  const statuts = { en_attente:'⏳', precommande_validee:'📋', disponible:'✅', distribue:'✔️', refuse:'❌', annulee:'❌' };
+  const statuts = { en_attente:'⏳', prepare:'📦', precommande_validee:'📋', disponible:'✅', distribue:'✔️', refuse:'❌', annulee:'❌' };
 
   // Ne garder en sélection que des commandes toujours affichées et
   // toujours en precommande_validee (évite de valider par erreur une
@@ -301,11 +304,12 @@ function renderToutesCommandes(commandes) {
             <div style="font-size:12px;color:var(--gris);">${(c.commande_items||[]).map(i=>`${esc(i.produit?.nom||'?')}${i.taille?` (${esc(i.taille)})`:''}${i.quantite>1?` ×${i.quantite}`:''}`).join(', ')} · ${c.total}€ · ${c.mode_paiement === 'helloasso' ? 'HelloAsso' : 'Cash'}</div>
           </div>
         </div>
-        <span class="badge ${c.statut==='distribue'||c.statut==='disponible'?'badge-vert':c.statut==='precommande_validee'?'badge-bleu':c.statut==='refuse'||c.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[c.statut]||''} ${c.statut}</span>
+        <span class="badge ${c.statut==='distribue'||c.statut==='disponible'?'badge-vert':c.statut==='prepare'||c.statut==='precommande_validee'?'badge-bleu':c.statut==='refuse'||c.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[c.statut]||''} ${c.statut}</span>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         ${c.statut==='en_attente' && c.mode_paiement==='cash' ? `<button class="btn btn-sm btn-success" onclick="changerStatutCommande('${c.id}','disponible')">💵 Confirmer paiement cash</button>` : ''}
         ${c.statut==='precommande_validee' ? `<button class="btn btn-sm btn-primary" onclick="doReceptionnerCommande('${c.id}')">📦 Marquer reçu</button>` : ''}
+        ${c.statut==='disponible' ? `<button class="btn btn-sm btn-secondary" onclick="doMarquerPreparee('matos','${c.id}')">✔️ Marquer préparé</button>` : ''}
         ${['en_attente','precommande_validee'].includes(c.statut) ? `<button class="btn btn-sm btn-danger" onclick="changerStatutCommande('${c.id}','annulee')">Annuler</button>` : ''}
       </div>
     </div>`).join('');
@@ -582,7 +586,7 @@ function switchAdminSticksSubTab(tab) {
 // attention (paiement en attente/refusé, payé mais pas encore récupéré) —
 // à l'inverse de 'distribue'/'annulee'/'rembourse', qui sont des états
 // terminaux, du seul intérêt d'un historique.
-const STATUTS_EN_COURS = ['en_attente', 'disponible', 'precommande_validee', 'refuse'];
+const STATUTS_EN_COURS = ['en_attente', 'prepare', 'disponible', 'precommande_validee', 'refuse'];
 
 let allCommandesAdmin = [], allDistribsAdmin = [];
 let currentFiltreCommandesAdmin = 'en_cours', currentFiltreDistribsAdmin = 'en_cours';
@@ -679,7 +683,7 @@ function filtrerDistribsAdminSansEvent(mode) {
 let filtreTypeGestion = 'tous', filtreStatutGestion = 'en_cours', vueGestionCommandes = 'membre';
 
 const STATUT_LABEL_GESTION = {
-  en_attente: '⏳ Attente paiement', disponible: '✅ Disponible', precommande_validee: '📋 Précommande validée',
+  en_attente: '⏳ Attente paiement', prepare: '📦 Préparé', disponible: '✅ Disponible', precommande_validee: '📋 Précommande validée',
   distribue: '✔️ Remis', refuse: '❌ Refusé', annulee: '❌ Annulée', rembourse: '↩️ Remboursé',
 };
 
@@ -693,6 +697,7 @@ function construireCommandesUnifiees() {
   for (const c of allCommandesAdmin) {
     for (const item of c.commande_items || []) {
       rows.push({
+        id: c.id,
         type: 'matos',
         mode: item.produit?.mode || 'stock',
         membre: c.membre,
@@ -708,6 +713,7 @@ function construireCommandesUnifiees() {
   }
   for (const d of allDistribsAdmin) {
     rows.push({
+      id: d.id,
       type: 'stick',
       mode: d.stick?.mode || 'stock',
       membre: d.membre,
@@ -806,13 +812,27 @@ function renderGestionCommandes() {
       <div class="card" style="margin-bottom:8px;padding:12px;">
         <div style="font-weight:700;margin-bottom:6px;">👤 ${nom}</div>
         ${g.items.map(it => `
-          <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:3px 0;gap:6px;">
             <span>${it.type === 'matos' ? '🛍️' : '🎟️'} ${esc(it.article)}${it.taille ? ' (' + it.taille + ')' : ''}${it.mode === 'precommande' ? ' · 📋' : ''} ×${it.quantite}</span>
-            <span class="badge ${it.statut === 'distribue' || it.statut === 'disponible' ? 'badge-vert' : it.statut === 'precommande_validee' ? 'badge-bleu' : it.statut === 'refuse' || it.statut === 'annulee' ? 'badge-rouge' : 'badge-orange'}" style="font-size:10px;">${STATUT_LABEL_GESTION[it.statut] || it.statut}</span>
+            <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+              ${it.statut === 'disponible' ? `<button class="btn btn-sm btn-secondary" style="font-size:10px;padding:3px 8px;" onclick="doMarquerPreparee('${it.type}','${it.id}')">✔️ Préparé</button>` : ''}
+              <span class="badge ${it.statut === 'distribue' ? 'badge-vert' : it.statut === 'disponible' ? 'badge-vert' : it.statut === 'prepare' ? 'badge-bleu' : it.statut === 'precommande_validee' ? 'badge-bleu' : it.statut === 'refuse' || it.statut === 'annulee' ? 'badge-rouge' : 'badge-orange'}" style="font-size:10px;">${STATUT_LABEL_GESTION[it.statut] || it.statut}</span>
+            </span>
           </div>`).join('')}
       </div>`;
     }).join('');
   }
+}
+
+// Statut intermédiaire "préparé" (07/07/2026) — dispatch Matos/Sticks
+// vers la bonne fonction backend selon le type de la ligne.
+async function doMarquerPreparee(type, id) {
+  try {
+    if (type === 'matos') await UL.marquerCommandePreparee(id);
+    else await UL.marquerStickPrepare(id);
+    toast('Marqué préparé ✅', 'success');
+    loadAdminBoutique();
+  } catch(e) { toast(e.message || 'Impossible de marquer cet article préparé', 'error'); }
 }
 
 // ── Export Telegram ──────────────────────────────────────────
@@ -1095,7 +1115,7 @@ function renderMesSticks(distribs) {
   if (!distribs.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucun stick reçu</p>'; return; }
   const statuts = {
     en_attente:'⏳ En attente de paiement', precommande_validee:'📋 Précommande validée — en attente de réception',
-    disponible:'✅ Disponible — à retirer', distribue:'✔️ Reçu', refuse:'❌ Paiement refusé', annulee:'❌ Annulée',
+    disponible:'✅ Disponible — à retirer', prepare:'✅ Disponible — à retirer', distribue:'✔️ Reçu', refuse:'❌ Paiement refusé', annulee:'❌ Annulée',
   };
   el.innerHTML = distribs.map(d => `
     <div class="card" style="margin-bottom:6px;padding:12px;">
@@ -1104,7 +1124,7 @@ function renderMesSticks(distribs) {
           <div style="font-weight:600;font-size:14px;">${esc(d.stick?.nom||'?')}</div>
           <div style="font-size:12px;color:var(--gris);">Qté: ${d.quantite} · ${new Date(d.created_at).toLocaleDateString('fr-FR')}</div>
         </div>
-        <span class="badge ${d.statut==='distribue'||d.statut==='disponible'?'badge-vert':d.statut==='precommande_validee'?'badge-bleu':d.statut==='refuse'||d.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[d.statut]||d.statut}</span>
+        <span class="badge ${d.statut==='distribue'||d.statut==='disponible'||d.statut==='prepare'?'badge-vert':d.statut==='precommande_validee'?'badge-bleu':d.statut==='refuse'||d.statut==='annulee'?'badge-rouge':'badge-orange'}">${statuts[d.statut]||d.statut}</span>
       </div>
       ${d.stick?.mode === 'precommande' && d.stick?.precommande_livraison_estimee ? `<div style="font-size:12px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(d.stick.precommande_livraison_estimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
       ${d.mode_paiement === 'helloasso' && (d.statut === 'refuse' || d.statut === 'en_attente') ? `
@@ -1142,11 +1162,12 @@ function renderToutesDistribs(distribs) {
             <div style="font-size:11px;color:var(--gris);">Qté: ${d.quantite} · ${d.mode_paiement} · ${new Date(d.created_at).toLocaleDateString('fr-FR')}</div>
           </div>
         </div>
-        <span class="badge ${d.statut==='distribue'||d.statut==='disponible'?'badge-vert':d.statut==='precommande_validee'?'badge-bleu':'badge-orange'}">${d.statut}</span>
+        <span class="badge ${d.statut==='distribue'||d.statut==='disponible'?'badge-vert':d.statut==='prepare'||d.statut==='precommande_validee'?'badge-bleu':'badge-orange'}">${d.statut}</span>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
         ${d.statut === 'precommande_validee' ? `<button class="btn btn-sm btn-primary" style="flex:1;" onclick="doReceptionnerStick('${d.id}')">📦 Marquer reçu</button>` : ''}
-        ${d.statut === 'disponible' ? `<button class="btn btn-sm btn-secondary" style="flex:1;" onclick="doConfirmerDistributionManuelle('${d.id}')">✔️ Confirmer (sans scan)</button>` : ''}
+        ${d.statut === 'disponible' ? `<button class="btn btn-sm btn-secondary" style="flex:1;" onclick="doMarquerPreparee('stick','${d.id}')">✔️ Marquer préparé</button>` : ''}
+        ${d.statut === 'disponible' || d.statut === 'prepare' ? `<button class="btn btn-sm btn-secondary" style="flex:1;" onclick="doConfirmerDistributionManuelle('${d.id}')">✔️ Confirmer (sans scan)</button>` : ''}
       </div>
     </div>`).join('');
 }
