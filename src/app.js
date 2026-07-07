@@ -580,7 +580,7 @@ function afficherPage(pageId) {
     pageAccueil:0, pageCalendrier:1, pageDeplacements:2,
     pageTifos:3, pageBoutique:4, pageProfil:5, pageAdmin:6,
     // pages secondaires → highlight parent
-    pageMembres:6, pageStats:6, pageCharte:5, pageCartage:6, pageDemandesAdmin:6, pageGererCharte:6,
+    pageMembres:6, pageStats:6, pageCharte:5, pageGererCartage:6, pageDemandesAdmin:6, pageGererCharte:6,
     pageMembresComite:6, pageAdminBoutique:6,
   };
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -599,7 +599,7 @@ function afficherPage(pageId) {
   if (pageId === 'pageStats') loadStats();
   if (pageId === 'pageCharte') loadCharte();
   if (pageId === 'pageGererCharte') loadGererCharte();
-  if (pageId === 'pageCartage') loadCartage();
+  if (pageId === 'pageGererCartage') loadGererCartage();
   if (pageId === 'pageDemandesAdmin') loadDemandesAdmin();
   if (pageId === 'pageMembresComite') loadMembresComite();
   if (pageId === 'pageAdminBoutique') loadAdminBoutique();
