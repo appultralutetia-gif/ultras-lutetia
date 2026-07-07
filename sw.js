@@ -1,6 +1,23 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v31
+// ULTRAS LUTETIA — Service Worker v32
 // ============================================================
+//
+// v32 (07/07/2026) : CACHE_NAME bumpé (v31 → v32) — demandes Remi :
+// (1) Relance de paiement possible depuis "Mes commandes"/"Mes stickers"
+// même en 'en_attente' (pas seulement 'refuse'), pour Matos et Sticks —
+// et côté serveur (helloasso-create-checkout), une nouvelle tentative
+// réutilise désormais la commande/distribution en_attente ou refuse déjà
+// existante pour cet article, au lieu d'en créer une nouvelle à chaque
+// fois (même principe que Déplacements). Cotisation n'a pas eu besoin de
+// changement — le bouton "Payer via HelloAsso" y est déjà toujours
+// disponible tant que non payé.
+// (2) Matos passe sur la même typologie de niveau d'accès que Sticks
+// (Tous les membres / Draft + Confirmés / Confirmés uniquement, ces deux
+// derniers restreints à une section), au lieu de l'ancien modèle à 2
+// niveaux. Suffixe "(de la section)" retiré des libellés (Matos + Sticks).
+// (3) Validation groupée de la réception des précommandes Matos et
+// Sticks : sélection multiple + pop-up de confirmation rappelant de bien
+// vérifier les articles/tailles reçus avant de tout basculer disponible.
 //
 // v31 (07/07/2026) : CACHE_NAME bumpé (v30 → v31) — cause racine trouvée
 // et corrigée pour le bug "article invisible dans Mes commandes" : la
@@ -347,7 +364,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v31';
+const CACHE_NAME = 'ul-v32';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
