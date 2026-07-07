@@ -1,6 +1,13 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v33
+// ULTRAS LUTETIA — Service Worker v34
 // ============================================================
+//
+// v34 (07/07/2026) : CACHE_NAME bumpé (v33 → v34) — ajout d'une image
+// optionnelle sur les articles de Cartage (comme Matos/Sticks), et
+// correctif RLS : la migration précédente n'avait qu'une policy de
+// lecture sur cartage_catalogue/cartage_paiements, bloquant toute
+// création/modification depuis le front ("new row violates row-level
+// security policy"). Policies d'écriture Admin/Bureau ajoutées.
 //
 // v33 (07/07/2026) : CACHE_NAME bumpé (v32 → v33) — refonte complète du
 // Cartage (demande Remi) : remplace l'ancien système (lien HelloAsso
@@ -378,7 +385,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v33';
+const CACHE_NAME = 'ul-v34';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
