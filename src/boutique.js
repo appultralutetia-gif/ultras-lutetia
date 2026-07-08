@@ -188,11 +188,12 @@ async function doCommander(produitId, avecTailles = false) {
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     if (mode === 'helloasso') {
-      toast('Redirection vers le paiement…', 'success');
       const { redirectUrl } = await UL.demanderCommandeHelloAsso(produitId, taille, quantite);
       closeModal('modalCommander');
-      window.location.href = redirectUrl;
-      // Pas de réactivation du bouton : la page quitte l'app vers HelloAsso.
+      afficherAvertissementHelloAsso(redirectUrl);
+      // Pas de réactivation du bouton : soit l'avertissement s'affiche
+      // (l'utilisateur peut revenir en arrière depuis là), soit la page
+      // quitte directement l'app vers HelloAsso (case "ne plus afficher").
     } else {
       await UL.passerCommande(produitId, taille, quantite);
       toast('Commande enregistrée ✅', 'success');
@@ -527,11 +528,10 @@ async function doCommanderStickHelloAsso(stickId, btn) {
   const quantite = parseInt(document.getElementById('stickQuantite')?.value) || 1;
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    toast('Redirection vers le paiement…', 'success');
     const { redirectUrl } = await UL.demanderStickHelloAsso(stickId, quantite);
     closeModal('modalCommanderStick');
-    window.location.href = redirectUrl;
-    // Pas de réactivation du bouton : la page quitte l'app vers HelloAsso.
+    if (btn) { btn.disabled = false; btn.textContent = '💳 Payer avec HelloAsso'; }
+    afficherAvertissementHelloAsso(redirectUrl);
   } catch(e) {
     toast(e.message || 'Impossible de lancer le paiement', 'error');
     if (btn) { btn.disabled = false; btn.textContent = '💳 Payer avec HelloAsso'; }
@@ -1282,10 +1282,9 @@ async function doPayerCartage(cartageId, btn) {
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    toast('Redirection vers le paiement…', 'success');
     const { redirectUrl } = await UL.demanderCartageHelloAsso(cartageId);
-    window.location.href = redirectUrl;
-    // Pas de réactivation du bouton : la page quitte l'app vers HelloAsso.
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+    afficherAvertissementHelloAsso(redirectUrl);
   } catch(e) {
     toast(e.message || 'Impossible de lancer le paiement', 'error');
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
@@ -1672,7 +1671,6 @@ async function doCreerStick() {
   const prix = prixRaw ? parseFloat(prixRaw) : null;
   const niveauAcces = document.getElementById('stCat').value;
   const sectionId = document.getElementById('stSection').value || null;
-  const lienHelloasso = document.getElementById('stHelloasso').value.trim() || null;
 
   if (!nom) return toast('Nom requis', 'error');
   if (niveauAcces !== 'tous' && !sectionId) return toast('Sélectionne une section', 'error');
@@ -1701,7 +1699,6 @@ async function doCreerStick() {
       precommande_debut: dateLocalVersISO('stPrecommandeDebut'),
       precommande_fin: dateLocalVersISO('stPrecommandeFin'),
       precommande_livraison_estimee: dateSimpleOuNull('stLivraisonEstimee'),
-      lien_helloasso: lienHelloasso,
       statut: 'disponible',
       visuel_url: visuelUrl,
     });
@@ -1714,7 +1711,7 @@ async function doCreerStick() {
     toast(`Stick créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Tous les membres'}`, 'success');
     closeModal('modalCreerStick');
     reinitialiserFormulaireStick();
-    ['stNom','stPrix','stLot','stQuota','stStock','stHelloasso','stPrecommandeDebut','stPrecommandeFin','stLivraisonEstimee'].forEach(id => document.getElementById(id).value = '');
+    ['stNom','stPrix','stLot','stQuota','stStock','stPrecommandeDebut','stPrecommandeFin','stLivraisonEstimee'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('stLot').value = '1';
     document.getElementById('stMode').value = 'stock';
     document.getElementById('stPrecommandeDatesGroup').style.display = 'none';
@@ -1768,7 +1765,6 @@ async function ouvrirModifierStick(stickId) {
   document.getElementById('stPrecommandeFin').value = isoVersDateLocal(s.precommande_fin);
   document.getElementById('stLivraisonEstimee').value = s.precommande_livraison_estimee ? String(s.precommande_livraison_estimee).substring(0,10) : '';
   toggleModePrecommandeStick();
-  document.getElementById('stHelloasso').value = s.lien_helloasso || '';
   document.getElementById('stPhoto').value = '';
   if (s.visuel_url) {
     document.getElementById('photoPreviewImgStick').src = s.visuel_url;
@@ -1793,7 +1789,6 @@ async function doModifierStick() {
   const prix = prixRaw ? parseFloat(prixRaw) : null;
   const niveauAcces = document.getElementById('stCat').value;
   const sectionId = document.getElementById('stSection').value || null;
-  const lienHelloasso = document.getElementById('stHelloasso').value.trim() || null;
 
   if (!nom) return toast('Nom requis', 'error');
   if (niveauAcces !== 'tous' && !sectionId) return toast('Sélectionne une section', 'error');
@@ -1814,7 +1809,6 @@ async function doModifierStick() {
       precommande_debut: dateLocalVersISO('stPrecommandeDebut'),
       precommande_fin: dateLocalVersISO('stPrecommandeFin'),
       precommande_livraison_estimee: dateSimpleOuNull('stLivraisonEstimee'),
-      lien_helloasso: lienHelloasso,
     };
     if (photoFile) {
       updates.visuel_url = await UL.uploadPhotoStick(photoFile, nom);
