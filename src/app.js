@@ -254,6 +254,152 @@ async function doLogout() {
 }
 
 // ─── App init + droits ────────────────────────────────────────
+function afficherPopupInfo(titre, corps) {
+  document.getElementById('popupInfoTitre').textContent = titre;
+  document.getElementById('popupInfoCorps').innerHTML = corps;
+  showModal('modalPopupInfo');
+}
+
+// ─── Confirmation de statut au retour de paiement HelloAsso (08/07/2026) ─
+// La redirection HelloAsso revient sur l'app avec ?helloasso=return (payé
+// ou tenté), =cancel (annulé par le membre) ou =error. Jusqu'ici rien
+// n'exploitait ce paramètre — le membre devait aller vérifier lui-même
+// dans "Mes commandes". afficherAvertissementHelloAsso (cf. plus haut)
+// mémorise en localStorage le {type, id} de la ligne concernée juste
+// avant de partir vers HelloAsso ; on l'utilise ici pour vérifier
+// précisément CETTE ligne (pas une déduction par recency).
+async function verifierRetourHelloAsso() {
+  const params = new URLSearchParams(window.location.search);
+  const retour = params.get('helloasso');
+  if (!retour) return false;
+
+  // Nettoie l'URL tout de suite — évite de redéclencher au prochain
+  // rechargement/partage de lien.
+  const urlPropre = new URL(window.location.href);
+  urlPropre.searchParams.delete('helloasso');
+  window.history.replaceState({}, '', urlPropre.pathname + urlPropre.hash);
+
+  const brut = localStorage.getItem('ul_dernier_paiement');
+  let paiementCourant = null;
+  try { paiementCourant = brut ? JSON.parse(brut) : null; } catch(e) {}
+
+  if (retour === 'cancel') {
+    afficherPopupInfo('Paiement annulé', 'Tu as annulé le paiement — aucune somme n\'a été prélevée. Tu peux réessayer à tout moment depuis l\'app.');
+    localStorage.removeItem('ul_dernier_paiement');
+    return true;
+  }
+  if (retour === 'error') {
+    afficherPopupInfo('❌ Erreur de paiement', 'Une erreur est survenue pendant le paiement. Vérifie le statut dans l\'app — si besoin, réessaie.');
+    localStorage.removeItem('ul_dernier_paiement');
+    return true;
+  }
+  if (retour !== 'return' || !paiementCourant) return false;
+
+  // Le webhook HelloAsso arrive généralement en quelques secondes, mais
+  // pas instantanément — on vérifie plusieurs fois avant d'abandonner,
+  // plutôt qu'une seule lecture qui tomberait souvent encore sur
+  // 'en_attente'.
+  for (let tentative = 0; tentative < 6; tentative++) {
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      const resultat = await lireStatutPaiement(paiementCourant.type, paiementCourant.id);
+      if (resultat && resultat.statut !== 'en_attente') {
+        afficherPopupInfo(resultat.titre, resultat.corps);
+        localStorage.removeItem('ul_dernier_paiement');
+        return true;
+      }
+    } catch(e) { /* on retente au tour suivant */ }
+  }
+  afficherPopupInfo('⏳ Paiement en cours de traitement', 'Ça prend un peu plus de temps que prévu — vérifie le statut dans l\'app dans quelques instants.');
+  localStorage.removeItem('ul_dernier_paiement');
+  return true;
+}
+
+// Lit le statut d'UNE ligne précise selon son type, et renvoie un message
+// prêt à afficher. Centralise le mapping statut → texte pour les 4 types,
+// plutôt que de le dupliquer dans verifierRetourHelloAsso.
+async function lireStatutPaiement(type, id) {
+  if (type === 'matos') {
+    const commandes = await UL.getMesCommandes();
+    const c = commandes.find(x => x.id === id);
+    if (!c) return null;
+    const nomArticle = (c.commande_items || []).map(i => i.produit?.nom).filter(Boolean).join(', ') || 'ton article';
+    const messages = {
+      disponible: `✅ Paiement confirmé — ${nomArticle} est disponible au retrait !`,
+      precommande_validee: `✅ Paiement confirmé — précommande de ${nomArticle} enregistrée, en attente de réception.`,
+      refuse: `❌ Paiement refusé pour ${nomArticle}. Tu peux réessayer depuis "Mes commandes".`,
+    };
+    return { statut: c.statut, titre: c.statut === 'refuse' ? 'Paiement refusé' : 'Paiement confirmé', corps: messages[c.statut] || `Statut : ${c.statut}` };
+  }
+  if (type === 'stick') {
+    const sticks = await UL.getMesSticks();
+    const d = sticks.find(x => x.id === id);
+    if (!d) return null;
+    const nomStick = d.stick?.nom || 'ton stick';
+    const messages = {
+      disponible: `✅ Paiement confirmé — ${nomStick} est disponible au retrait !`,
+      precommande_validee: `✅ Paiement confirmé — précommande de ${nomStick} enregistrée, en attente de réception.`,
+      refuse: `❌ Paiement refusé pour ${nomStick}. Tu peux réessayer depuis "Mes stickers".`,
+    };
+    return { statut: d.statut, titre: d.statut === 'refuse' ? 'Paiement refusé' : 'Paiement confirmé', corps: messages[d.statut] || `Statut : ${d.statut}` };
+  }
+  if (type === 'cartage') {
+    const { paiements } = await UL.getMesPaiementsCartage();
+    const p = paiements.find(x => x.id === id);
+    if (!p) return null;
+    const messages = {
+      paye: '✅ Paiement confirmé — ta cotisation est à jour !',
+      refuse: '❌ Paiement refusé pour le Cartage. Tu peux réessayer depuis l\'onglet Boutique → Cartage.',
+    };
+    return { statut: p.statut, titre: p.statut === 'refuse' ? 'Paiement refusé' : 'Paiement confirmé', corps: messages[p.statut] || `Statut : ${p.statut}` };
+  }
+  if (type === 'deplacement') {
+    const insc = await UL.getStatutInscriptionDepl(id);
+    if (!insc) return null;
+    const nomAdversaire = insc.deplacement?.adversaire || 'ce déplacement';
+    const messages = {
+      paye_ha: `✅ Paiement confirmé — ton inscription pour ${nomAdversaire} est validée !`,
+      refuse: `❌ Paiement refusé pour ${nomAdversaire}. Tu peux réessayer depuis la fiche du déplacement.`,
+    };
+    const statutSimplifie = insc.statut_paiement === 'paye_ha' || insc.statut_paiement === 'refuse' ? insc.statut_paiement : 'en_attente';
+    return { statut: statutSimplifie, titre: statutSimplifie === 'refuse' ? 'Paiement refusé' : 'Paiement confirmé', corps: messages[statutSimplifie] || `Statut : ${insc.statut_paiement}` };
+  }
+  return null;
+}
+
+// ─── Rappel "articles disponibles" à l'ouverture de l'app (08/07/2026) ──
+// Complément à la notification push (qui suppose que le membre l'a
+// activée et vue) : à chaque ouverture de l'app, vérifie si des articles
+// Matos/Sticks sont disponibles/préparés et pas encore signalés, et
+// affiche un rappel groupé. Mémorise les ids déjà signalés en
+// localStorage pour ne jamais répéter le même rappel deux fois.
+async function verifierArticlesDisponibles() {
+  try {
+    const dejaSignales = new Set(JSON.parse(localStorage.getItem('ul_articles_signales') || '[]'));
+    const [commandes, sticks] = await Promise.all([
+      UL.getMesCommandes().catch(() => []),
+      UL.getMesSticks().catch(() => []),
+    ]);
+    const pretsMatos = commandes.filter(c => (c.statut === 'disponible' || c.statut === 'prepare') && !dejaSignales.has(c.id));
+    const pretsSticks = sticks.filter(d => (d.statut === 'disponible' || d.statut === 'prepare') && !dejaSignales.has(d.id));
+    const total = pretsMatos.length + pretsSticks.length;
+    if (!total) return;
+
+    const lignes = [
+      ...pretsMatos.map(c => `• ${(c.commande_items || []).map(i => i.produit?.nom).filter(Boolean).join(', ') || 'Article Matos'}`),
+      ...pretsSticks.map(d => `• ${d.stick?.nom || 'Stick'}`),
+    ];
+    afficherPopupInfo(
+      `📦 ${total} article${total > 1 ? 's' : ''} disponible${total > 1 ? 's' : ''} !`,
+      `Tu peux venir récupérer :<br>${lignes.join('<br>')}`
+    );
+
+    // Marque ces ids comme déjà signalés, pour ne plus répéter ce rappel.
+    const nouveauxIds = [...pretsMatos.map(c => c.id), ...pretsSticks.map(d => d.id), ...dejaSignales];
+    localStorage.setItem('ul_articles_signales', JSON.stringify(nouveauxIds.slice(-200)));
+  } catch(e) { /* jamais bloquant pour le reste du chargement de l'app */ }
+}
+
 async function showApp(membre) {
   document.getElementById('loginPage').style.display = 'none';
 
@@ -292,6 +438,12 @@ async function showApp(membre) {
 
   await loadAccueil();
   proposerNotificationsPushSiPertinent();
+  // Retour de paiement d'abord (prioritaire s'il y en a un) — la pop-up
+  // "articles disponibles" n'est affichée que si aucune pop-up de retour
+  // de paiement ne l'a déjà été (même modal réutilisé pour les deux, donc
+  // jamais les deux en même temps).
+  const aAfficheRetourPaiement = await verifierRetourHelloAsso();
+  if (!aAfficheRetourPaiement) await verifierArticlesDisponibles();
 }
 
 // Détecte le cas iOS spécifique : Safari (ou tout navigateur sur iOS, qui
@@ -874,7 +1026,15 @@ function toast(msg, type='info', duree=2800) {
 // répétés (Cellule Matos/Sticks qui teste beaucoup, par exemple).
 // Appelé par tous les points de redirection HelloAsso (Matos, Sticks,
 // Cartage, Déplacements) à la place d'un window.location.href direct.
-function afficherAvertissementHelloAsso(redirectUrl) {
+function afficherAvertissementHelloAsso(redirectUrl, type = null, id = null) {
+  // Mémorise quelle ligne (commande/distribution/paiement/inscription)
+  // correspond à cette tentative — utilisé au retour de HelloAsso pour
+  // afficher une pop-up de confirmation avec le VRAI statut de CETTE
+  // tentative précise, plutôt que de deviner par recency (cf.
+  // verifierRetourHelloAsso plus bas).
+  if (type && id) {
+    localStorage.setItem('ul_dernier_paiement', JSON.stringify({ type, id }));
+  }
   if (localStorage.getItem('ul_masquer_avertissement_helloasso') === '1') {
     window.location.href = redirectUrl;
     return;
