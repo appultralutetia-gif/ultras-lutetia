@@ -1019,16 +1019,6 @@ async function getDeplacement(id) {
   return { deplacement: data, inscrits: inscrits || [], monInscrit, nbInscrits };
 }
 
-async function sInscrireDeplacements(deplacementId) {
-  const { error } = await sb.from('inscriptions_deplacement').insert({
-    deplacement_id: deplacementId,
-    membre_id: currentUser.id,
-  });
-  if (error && error.code === '23505') throw new Error('Déjà inscrit');
-  if (error) throw error;
-  return { success: true };
-}
-
 async function validerPaiementCash(deplacementId, membreId) {
   const qrCode = `UL-${Date.now()}-${membreId.slice(0,6).toUpperCase()}`;
   const { error } = await sb.from('inscriptions_deplacement')
@@ -2135,7 +2125,7 @@ window.UL = {
   createSession, openSession, closeSession, deleteSession,
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   // Déplacements
-  getDeplacements, getDeplacement, getStatutInscriptionDepl, sInscrireDeplacements,
+  getDeplacements, getDeplacement, getStatutInscriptionDepl,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
   // Annonces
   getAnnonces, publierAnnonce,
