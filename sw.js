@@ -1,6 +1,17 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v39
+// ULTRAS LUTETIA — Service Worker v40
 // ============================================================
+//
+// v40 (07/07/2026) : CACHE_NAME bumpé (v39 → v40) — 2 demandes Remi : (1)
+// champ "Lien HelloAsso" retiré du formulaire Sticks — devenu inutile
+// depuis l'automatisation du paiement (bouton généré à partir du prix),
+// il ne servait plus qu'à confusion. (2) Nouvel avertissement affiché
+// juste avant toute redirection vers HelloAsso (Matos/Sticks/Cartage/
+// Déplacements) : explique que la "contribution au modèle solidaire de
+// HelloAsso" ajoutée par défaut au paiement est un don volontaire à
+// HelloAsso, PAS à Ultras Lutetia, avec les étapes pour la remettre à 0€
+// (mockup visuel du curseur reconstitué en CSS). Case "Ne plus afficher"
+// mémorisée en localStorage par appareil.
 //
 // v39 (07/07/2026) : CACHE_NAME bumpé (v38 → v39) — nouveau statut
 // intermédiaire "prepare" (Matos + Sticks), demandé par Remi : permet de
@@ -434,7 +445,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v39';
+const CACHE_NAME = 'ul-v40';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
