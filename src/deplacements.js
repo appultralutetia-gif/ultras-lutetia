@@ -170,7 +170,6 @@ async function doInscritDepl(id, btn) {
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    toast('Redirection vers le paiement…', 'success');
     const { data, error } = await UL.sb.functions.invoke('helloasso-create-checkout', {
       body: { deplacementId: id },
     });
@@ -178,10 +177,11 @@ async function doInscritDepl(id, btn) {
     if (data?.error) throw new Error(data.error);
     if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
     closeModal('modalDepl');
-    window.location.href = data.redirectUrl;
-    // Pas de réactivation du bouton ici : la page va quitter l'app vers
-    // HelloAsso (redirection complète), donc inutile de remettre le bouton
-    // dans un état cliquable juste avant de partir.
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+    afficherAvertissementHelloAsso(data.redirectUrl);
+    // Bouton réactivé avant l'avertissement (pas systématiquement dans une
+    // modale qui se ferme — cf. bouton "M'inscrire" directement sur la
+    // carte déplacement) — voir doPayerCartage (boutique.js) même logique.
   } catch(e) {
     toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error');
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
