@@ -1,6 +1,12 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v40
+// ULTRAS LUTETIA — Service Worker v41
 // ============================================================
+//
+// v41 (07/07/2026) : CACHE_NAME bumpé (v40 → v41) — correctif texte de
+// l'avertissement HelloAsso : l'exemple "+1,20€ sur 5€" était trompeur
+// sur une grosse commande (30€ → 4,60€ de contribution constaté par
+// Remi, ~15%) — la contribution est un pourcentage du montant, pas une
+// somme fixe. Texte reformulé en conséquence.
 //
 // v40 (07/07/2026) : CACHE_NAME bumpé (v39 → v40) — 2 demandes Remi : (1)
 // champ "Lien HelloAsso" retiré du formulaire Sticks — devenu inutile
@@ -445,7 +451,7 @@
 // que pour les requêtes de navigation (e.request.mode === 'navigate'),
 // jamais pour des assets (images, JS, CSS).
 
-const CACHE_NAME = 'ul-v40';
+const CACHE_NAME = 'ul-v41';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
