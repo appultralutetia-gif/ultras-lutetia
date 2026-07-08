@@ -273,15 +273,29 @@ async function verifierRetourHelloAsso() {
   const retour = params.get('helloasso');
   if (!retour) return false;
 
+  // ⚠️ Priorité à l'URL de retour (type + id encodés directement dedans
+  // depuis l'Edge Function, 08/07/2026) plutôt qu'au localStorage — l'URL
+  // survit toujours l'aller-retour vers HelloAsso, contrairement au
+  // stockage local qui peut être isolé/effacé sur certains navigateurs
+  // (Safari iOS notamment). Le localStorage reste un repli pour les
+  // paiements initiés juste avant ce changement (URL encore sans id).
+  let paiementCourant = null;
+  const typeUrl = params.get('type');
+  const idUrl = params.get('id');
+  if (typeUrl && idUrl) {
+    paiementCourant = { type: typeUrl, id: idUrl };
+  } else {
+    const brut = localStorage.getItem('ul_dernier_paiement');
+    try { paiementCourant = brut ? JSON.parse(brut) : null; } catch(e) {}
+  }
+
   // Nettoie l'URL tout de suite — évite de redéclencher au prochain
   // rechargement/partage de lien.
   const urlPropre = new URL(window.location.href);
   urlPropre.searchParams.delete('helloasso');
+  urlPropre.searchParams.delete('type');
+  urlPropre.searchParams.delete('id');
   window.history.replaceState({}, '', urlPropre.pathname + urlPropre.hash);
-
-  const brut = localStorage.getItem('ul_dernier_paiement');
-  let paiementCourant = null;
-  try { paiementCourant = brut ? JSON.parse(brut) : null; } catch(e) {}
 
   if (retour === 'cancel') {
     afficherPopupInfo('Paiement annulé', 'Tu as annulé le paiement — aucune somme n\'a été prélevée. Tu peux réessayer à tout moment depuis l\'app.');
@@ -374,6 +388,15 @@ async function lireStatutPaiement(type, id) {
 // affiche un rappel groupé. Mémorise les ids déjà signalés en
 // localStorage pour ne jamais répéter le même rappel deux fois.
 async function verifierArticlesDisponibles() {
+  // Throttle (08/07/2026) : évite de refaire ces 2 requêtes à CHAQUE
+  // ouverture/rechargement de l'app pour tout le monde — y compris les
+  // membres qui n'ont jamais rien commandé. Une vérification toutes les
+  // 10 minutes maximum est largement suffisante pour ce rappel (pas un
+  // besoin de temps réel).
+  const derniereVerif = parseInt(localStorage.getItem('ul_derniere_verif_dispo') || '0', 10);
+  if (Date.now() - derniereVerif < 10 * 60 * 1000) return;
+  localStorage.setItem('ul_derniere_verif_dispo', String(Date.now()));
+
   try {
     const dejaSignales = new Set(JSON.parse(localStorage.getItem('ul_articles_signales') || '[]'));
     const [commandes, sticks] = await Promise.all([
