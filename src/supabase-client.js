@@ -250,10 +250,11 @@ async function getMembre(id) {
 }
 
 async function getMembreByTelegram(pseudo) {
-  const { data } = await sb.from('membres')
+  const { data, error } = await sb.from('membres')
     .select('*')
     .ilike('pseudo_telegram', normalizePseudo(pseudo))
     .maybeSingle();
+  if (error) throw error;
   return data;
 }
 
@@ -464,10 +465,11 @@ async function getOrCreateQrCodeMembre() {
 async function getMembreParQrCode(code) {
   const trimmed = (code || '').trim();
   if (!trimmed) return null;
-  const { data } = await sb.from('membres')
+  const { data, error } = await sb.from('membres')
     .select('*, section:sections(nom)')
     .eq('qr_code_membre', trimmed)
     .maybeSingle();
+  if (error) throw error;
   return data || null;
 }
 
@@ -522,7 +524,8 @@ async function regenererQrCodeMembre(membreId) {
 // ============================================================
 
 async function getSections() {
-  const { data } = await sb.from('sections').select('*').eq('actif', true).order('nom');
+  const { data, error } = await sb.from('sections').select('*').eq('actif', true).order('nom');
+  if (error) throw error;
   return data || [];
 }
 
@@ -549,12 +552,14 @@ async function getCalendar() {
 }
 
 async function getEvenements() {
-  const { data } = await sb.from('evenements').select('*').order('date');
+  const { data, error } = await sb.from('evenements').select('*').order('date');
+  if (error) throw error;
   return data || [];
 }
 
 async function getEvenement(id) {
-  const { data } = await sb.from('evenements').select('*').eq('id', id).single();
+  const { data, error } = await sb.from('evenements').select('*').eq('id', id).single();
+  if (error) throw error;
   return data;
 }
 
@@ -603,7 +608,8 @@ async function updateMatch(id, data) {
 }
 
 async function getMatchs() {
-  const { data } = await sb.from('matchs').select('*').order('date');
+  const { data, error } = await sb.from('matchs').select('*').order('date');
+  if (error) throw error;
   return data || [];
 }
 
@@ -657,13 +663,14 @@ async function getCharteActive() {
   // jamais retournée. Robuste même si le flag `active` n'a pas encore été
   // basculé manuellement par un admin au changement de saison.
   const today = new Date().toISOString().split('T')[0];
-  const { data } = await sb.from('chartes')
+  const { data, error } = await sb.from('chartes')
     .select('*')
     .eq('active', true)
     .or(`date_fin_validite.is.null,date_fin_validite.gte.${today}`)
     .order('date_fin_validite', { ascending: false, nullsFirst: false })
     .limit(1)
     .maybeSingle();
+  if (error) throw error;
   return data;
 }
 
@@ -714,7 +721,8 @@ async function getMembresNonSignataires() {
   const { data: signataires } = await sb.from('signatures_charte')
     .select('membre_id').eq('charte_id', charteActive.id);
   const sigIds = (signataires || []).map(s => s.membre_id);
-  const { data } = await sb.from('membres').select('*').not('id', 'in', `(${sigIds.join(',')})`);
+  const { data, error } = await sb.from('membres').select('*').not('id', 'in', `(${sigIds.join(',')})`);
+  if (error) throw error;
   return data || [];
 }
 
@@ -778,11 +786,12 @@ async function getUpcomingSessions() {
 
 async function getPastSessions() {
   const today = new Date().toISOString().split('T')[0];
-  const { data } = await sb.from('sessions_tifo')
+  const { data, error } = await sb.from('sessions_tifo')
     .select('*, inscriptions_session(statut)')
     .lt('date', today)
     .order('date', { ascending: false })
     .limit(20);
+  if (error) throw error;
   return (data || []).map(s => ({
     ...s,
     _nb_inscrits: s.inscriptions_session?.length || 0,
@@ -790,13 +799,15 @@ async function getPastSessions() {
 }
 
 async function getSessionDetails(sessionId) {
-  const { data } = await sb.from('sessions_tifo')
+  const { data, error } = await sb.from('sessions_tifo')
     .select('*')
     .eq('id', sessionId)
     .single();
-  const { data: inscrits } = await sb.from('inscriptions_session')
+  if (error) throw error;
+  const { data: inscrits, error: inscritsError } = await sb.from('inscriptions_session')
     .select('*, membre:membres(nom, prenom, pseudo_telegram, statut, section:sections(nom))')
     .eq('session_id', sessionId);
+  if (inscritsError) throw inscritsError;
   const monInscrit = (inscrits || []).find(i => i.membre_id === currentUser?.id);
   return { session: data, inscrits: inscrits || [], monInscrit };
 }
@@ -907,9 +918,10 @@ async function updateSession(sessionId, updates) {
 }
 
 async function getSessionsWithStats() {
-  const { data } = await sb.from('sessions_tifo')
+  const { data, error } = await sb.from('sessions_tifo')
     .select('*, inscriptions_session(statut)')
     .order('date', { ascending: false });
+  if (error) throw error;
   return (data || []).map(s => ({
     ...s,
     nb_inscrits: s.inscriptions_session?.length || 0,
@@ -927,10 +939,11 @@ async function updateInscriptionStatut(sessionId, membreId, statut) {
 }
 
 async function getPizzaOrders(sessionId) {
-  const { data } = await sb.from('inscriptions_session')
+  const { data, error } = await sb.from('inscriptions_session')
     .select('pizza, membre:membres(nom, prenom)')
     .eq('session_id', sessionId)
     .neq('pizza', 'non');
+  if (error) throw error;
   return data || [];
 }
 
@@ -981,10 +994,22 @@ async function getDeplacements(upcoming = true) {
 // devenait null, masqué comme un simple "aucun inscrit". La syntaxe
 // membres!inscriptions_deplacement_membre_id_fkey(...) précise explicitement
 // quelle FK suivre (celle du membre inscrit, pas celle du validateur).
+// Statut d'une seule inscription déplacement, par id — utilisé
+// uniquement par la pop-up de confirmation au retour de HelloAsso (08/07/
+// 2026), pas besoin de la liste complète pour ce cas précis.
+async function getStatutInscriptionDepl(id) {
+  const { data, error } = await sb.from('inscriptions_deplacement')
+    .select('statut_paiement, deplacement:deplacements(adversaire)')
+    .eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 async function getDeplacement(id) {
-  const { data } = await sb.from('deplacements')
+  const { data, error } = await sb.from('deplacements')
     .select('*, match:matchs(*)')
     .eq('id', id).single();
+  if (error) throw error;
   const { data: inscrits, error: inscritsError } = await sb.from('inscriptions_deplacement')
     .select('*, membre:membres!inscriptions_deplacement_membre_id_fkey(nom, prenom, pseudo_telegram)')
     .eq('deplacement_id', id);
@@ -1107,11 +1132,12 @@ async function getListeBusTelegram(deplacementId) {
 // ============================================================
 
 async function getAnnonces() {
-  const { data } = await sb.from('annonces')
+  const { data, error } = await sb.from('annonces')
     .select('*, publie_par:membres(nom, prenom)')
     .eq('actif', true)
     .order('created_at', { ascending: false })
     .limit(10);
+  if (error) throw error;
   return data || [];
 }
 
@@ -1178,10 +1204,11 @@ async function getProduits() {
   // ce champ ne prend jamais : un Admin/Bureau n'ayant que son rôle dans
   // roles_app (cas normal) tombait alors dans la branche restreinte.
   const isAdminBureauCellule = isAdmin(membre) || isBureau(membre) || isCellule(membre);
-  const { data } = await sb.from('produits')
+  const { data, error } = await sb.from('produits')
     .select('*, section:sections(id, nom)')
     .eq('statut', 'disponible')
     .order('nom');
+  if (error) throw error;
   // ⚠️ Modèle changé (07/07/2026, demande Remi) : Matos utilise désormais
   // la même typologie à 3 niveaux que Sticks (tous/draft_confirme/confirme,
   // tous deux restreints à la section de l'article) au lieu de l'ancien
@@ -1202,9 +1229,10 @@ async function getProduits() {
 }
 
 async function getProduitById(id) {
-  const { data } = await sb.from('produits')
+  const { data, error } = await sb.from('produits')
     .select('*, section:sections(id, nom)')
     .eq('id', id).single();
+  if (error) throw error;
   return data;
 }
 
@@ -1353,10 +1381,11 @@ async function demanderCommandeHelloAsso(produitId, taille, quantite = 1) {
 // près (peut-être une policy déjà présente mais mal écrite plutôt
 // qu'absente).
 async function getMesCommandes() {
-  const { data } = await sb.from('commandes')
+  const { data, error } = await sb.from('commandes')
     .select('*, commande_items(*, produit:produits(nom, photo_url, categorie, mode, precommande_livraison_estimee))')
     .eq('membre_id', currentUser.id)
     .order('created_at', { ascending: false });
+  if (error) throw error;
   return data || [];
 }
 
@@ -1376,7 +1405,8 @@ async function getMesCommandes() {
 async function getAllCommandes() {
   const { data, error } = await sb.from('commandes')
     .select('*, membre:membres!commandes_membre_id_fkey(nom, prenom, pseudo_telegram), commande_items(*, produit:produits(nom, mode))')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(300);
   if (error) throw error;
   return data || [];
 }
@@ -1476,10 +1506,11 @@ async function getSticks() {
   const sectionId = membre.section_id;
   // Détection via roles_app[] (isAdmin/isBureau/isCellule), pas via statut.
   const isAdminBureauCellule = isAdmin(membre) || isBureau(membre) || isCellule(membre);
-  const { data } = await sb.from('sticks_catalogue')
+  const { data, error } = await sb.from('sticks_catalogue')
     .select('*, section:sections(id, nom)')
     .eq('statut', 'disponible')
     .order('nom');
+  if (error) throw error;
   return (data || []).filter(s => {
     if (isAdminBureauCellule) return true;
     if (s.niveau_acces === 'tous') return true;
@@ -1499,9 +1530,10 @@ async function getSticks() {
 }
 
 async function getStickById(id) {
-  const { data } = await sb.from('sticks_catalogue')
+  const { data, error } = await sb.from('sticks_catalogue')
     .select('*, section:sections(id, nom)')
     .eq('id', id).single();
+  if (error) throw error;
   return data;
 }
 
@@ -1551,10 +1583,11 @@ async function demanderStickHelloAsso(stickId, quantite = 1) {
 }
 
 async function getMesSticks() {
-  const { data } = await sb.from('sticks_distribution')
+  const { data, error } = await sb.from('sticks_distribution')
     .select('*, stick:sticks_catalogue(nom, visuel_url, categorie, prix, section_id, section:sections(nom), mode, precommande_livraison_estimee)')
     .eq('membre_id', currentUser.id)
     .order('created_at', { ascending: false });
+  if (error) throw error;
   return data || [];
 }
 
@@ -1709,17 +1742,19 @@ async function validerPaiementStick(distribId) {
 // ============================================================
 
 async function getCartageCatalogue() {
-  const { data } = await sb.from('cartage_catalogue')
+  const { data, error } = await sb.from('cartage_catalogue')
     .select('*')
     .eq('statut', 'disponible')
     .order('prix');
+  if (error) throw error;
   return data || [];
 }
 
 async function getAllCartageCatalogue() {
-  const { data } = await sb.from('cartage_catalogue')
+  const { data, error } = await sb.from('cartage_catalogue')
     .select('*')
     .order('created_at', { ascending: false });
+  if (error) throw error;
   return data || [];
 }
 
@@ -2100,7 +2135,7 @@ window.UL = {
   createSession, openSession, closeSession, deleteSession,
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   // Déplacements
-  getDeplacements, getDeplacement, sInscrireDeplacements,
+  getDeplacements, getDeplacement, getStatutInscriptionDepl, sInscrireDeplacements,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
   // Annonces
   getAnnonces, publierAnnonce,
