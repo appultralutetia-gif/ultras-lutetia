@@ -360,6 +360,15 @@ async function changerStatutCommande(id, statut) {
   catch(e) { toast('Impossible de modifier le statut de la commande', 'error'); }
 }
 
+// Équivalent Sticks de changerStatutCommande — manquait jusqu'ici
+// (asymétrie repérée le 07/07/2026 : le bouton "Annuler" existait côté
+// Matos mais jamais côté Sticks).
+async function changerStatutDistrib(id, statut) {
+  if (statut === 'annulee' && !confirm('Annuler cette distribution ?')) return;
+  try { await UL.updateDistribStatut(id, statut); toast('Distribution mise à jour ✅', 'success'); loadAdminBoutique(); }
+  catch(e) { toast('Impossible de modifier le statut de la distribution', 'error'); }
+}
+
 async function doReceptionnerCommande(id) {
   try { await UL.receptionnerCommande(id); toast('Commande marquée reçue — disponible au retrait ✅', 'success'); loadAdminBoutique(); }
   catch(e) { toast('Impossible de marquer cette commande reçue', 'error'); }
@@ -1168,6 +1177,7 @@ function renderToutesDistribs(distribs) {
         ${d.statut === 'precommande_validee' ? `<button class="btn btn-sm btn-primary" style="flex:1;" onclick="doReceptionnerStick('${d.id}')">📦 Marquer reçu</button>` : ''}
         ${d.statut === 'disponible' ? `<button class="btn btn-sm btn-secondary" style="flex:1;" onclick="doMarquerPreparee('stick','${d.id}')">✔️ Marquer préparé</button>` : ''}
         ${d.statut === 'disponible' || d.statut === 'prepare' ? `<button class="btn btn-sm btn-secondary" style="flex:1;" onclick="doConfirmerDistributionManuelle('${d.id}')">✔️ Confirmer (sans scan)</button>` : ''}
+        ${['en_attente','precommande_validee'].includes(d.statut) ? `<button class="btn btn-sm btn-danger" onclick="changerStatutDistrib('${d.id}','annulee')">Annuler</button>` : ''}
       </div>
     </div>`).join('');
 }
