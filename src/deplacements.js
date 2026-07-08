@@ -178,7 +178,7 @@ async function doInscritDepl(id, btn) {
     if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
     closeModal('modalDepl');
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
-    afficherAvertissementHelloAsso(data.redirectUrl);
+    afficherAvertissementHelloAsso(data.redirectUrl, 'deplacement', data.inscriptionId);
     // Bouton réactivé avant l'avertissement (pas systématiquement dans une
     // modale qui se ferme — cf. bouton "M'inscrire" directement sur la
     // carte déplacement) — voir doPayerCartage (boutique.js) même logique.
