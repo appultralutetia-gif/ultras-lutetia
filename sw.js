@@ -1,8 +1,17 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v46
+// ULTRAS LUTETIA — Service Worker v47
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v47 (08/07/2026) : CACHE_NAME bumpé (v46 → v47) — correctif
+// d'empilement de pop-up : proposerNotificationsPushSiPertinent()
+// n'était pas attendue avant l'affichage de la pop-up de retour de
+// paiement / rappel articles disponibles, risquant d'empiler la modale
+// "Activer les notifications" avec l'une des deux nouvelles pop-ups sur
+// un premier lancement avec un paiement en cours. Toutes les 3
+// vérifications sont maintenant enchaînées avec await, jamais plus d'une
+// pop-up affichée à la fois, avec le retour de paiement en priorité.
 //
 // v46 (08/07/2026) : CACHE_NAME bumpé (v45 → v46) — 2 optimisations
 // trouvées en revue : (1) la pop-up de confirmation de paiement au
@@ -63,7 +72,7 @@
 // déplacé vers CHANGELOG.md (ce fichier-ci ne contient plus que la
 // version courante).
 
-const CACHE_NAME = 'ul-v46';
+const CACHE_NAME = 'ul-v47';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
