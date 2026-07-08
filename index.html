@@ -730,6 +730,71 @@
     </div>
   </div>
 
+  <!-- Modal Avertissement contribution volontaire HelloAsso (07/07/2026) -->
+  <!-- Affiché avant CHAQUE redirection vers un paiement HelloAsso (Matos,
+       Sticks, Cartage, Déplacements) — HelloAsso propose par défaut une
+       "contribution volontaire" (~1,20€ en général) qui ne va PAS à
+       Ultras Lutetia mais à HelloAsso lui-même. Beaucoup de membres ne
+       savent pas qu'ils peuvent la mettre à 0€. -->
+  <div class="modal-overlay" id="modalAvertissementHelloAsso" style="display:none;" onclick="event.stopPropagation()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title">⚠️ Avant de payer</h3>
+      <p style="font-size:14px;line-height:1.5;margin-bottom:14px;">
+        Sur la page HelloAsso, une <strong>contribution volontaire</strong> (souvent environ 1,20€) est ajoutée par défaut au montant. <strong>Elle ne va pas à Ultras Lutetia</strong> — c'est un don pour HelloAsso lui-même. Tu peux la remettre à 0€ si tu le souhaites.
+      </p>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <div style="flex:1;background:var(--surface-2);border:1px solid var(--surface-4);border-radius:10px;padding:10px;text-align:center;">
+          <div style="font-size:11px;color:var(--gris);margin-bottom:4px;">Par défaut</div>
+          <div style="font-size:15px;font-weight:700;color:var(--orange);">Contribution : 1,20€</div>
+        </div>
+        <div style="font-size:20px;color:var(--gris);">→</div>
+        <div style="flex:1;background:var(--surface-2);border:1px solid var(--vert);border-radius:10px;padding:10px;text-align:center;">
+          <div style="font-size:11px;color:var(--gris);margin-bottom:4px;">Après modification</div>
+          <div style="font-size:15px;font-weight:700;color:var(--vert);">Contribution : 0€</div>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--gris);line-height:1.5;margin-bottom:16px;">
+        Pour la retirer : clique sur <strong>"Modifier"</strong> à côté de cette ligne sur la page HelloAsso, mets le curseur/le montant à <strong>0€</strong>, puis valide — avant de finaliser ton paiement.
+      </p>
+      <button class="btn btn-primary" style="width:100%;" onclick="doContinuerVersHelloAsso()">J'ai compris, continuer vers le paiement</button>
+      <button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="closeModal('modalAvertissementHelloAsso')">Annuler</button>
+    </div>
+  </div>
+
+  <!-- Modal Avertissement contribution HelloAsso (07/07/2026) -->
+  <div class="modal-overlay" id="modalAvertissementHelloAsso" style="display:none;" onclick="closeModalOutside(event,'modalAvertissementHelloAsso')">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-handle"></div>
+      <input type="hidden" id="helloAssoRedirectUrl">
+      <h3 class="modal-title">⚠️ Avant de payer</h3>
+      <p style="font-size:14px;line-height:1.5;margin-bottom:14px;">
+        Sur la page HelloAsso qui va s'ouvrir, une <strong>"contribution au modèle solidaire de HelloAsso"</strong> est ajoutée par défaut à ton paiement (par exemple +1,20€ sur 5€).
+      </p>
+      <div class="info-box" style="margin-bottom:14px;">
+        ❌ Ce n'est <strong>pas</strong> un don pour Ultras Lutetia — l'association ne touche rien de plus avec cette contribution. C'est optionnel, tu peux la remettre à 0€.
+      </div>
+      <p style="font-size:13px;color:var(--gris);margin-bottom:10px;">
+        Sur la page de paiement, clique sur <strong>"Modifier"</strong> à côté de cette ligne, puis fais glisser le curseur tout à gauche :
+      </p>
+      <!-- Reconstitution du slider HelloAsso (pas de capture d'écran réelle,
+           juste un mockup visuel CSS pour illustrer le geste à faire) -->
+      <div style="background:var(--surface-2);border-radius:10px;padding:14px;margin-bottom:14px;">
+        <div style="font-size:12px;color:var(--gris);margin-bottom:8px;">Modifier ma contribution</div>
+        <div style="position:relative;height:20px;margin-bottom:8px;">
+          <div style="position:absolute;top:8px;left:0;right:0;height:4px;background:var(--surface-4);border-radius:2px;"></div>
+          <div style="position:absolute;top:0;left:0;width:22px;height:22px;border-radius:50%;background:var(--bleu);display:flex;align-items:center;justify-content:center;font-size:11px;color:white;">←</div>
+        </div>
+        <div style="text-align:center;font-size:13px;font-weight:700;">Ton soutien : 0,00 €</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:10px;padding:10px;background:rgba(255,255,255,.05);border-radius:8px;cursor:pointer;margin-bottom:14px;">
+        <input type="checkbox" id="helloAssoNePlusAfficher" style="width:18px;height:18px;flex-shrink:0;">
+        <span style="font-size:13px;">Ne plus afficher ce message</span>
+      </label>
+      <button class="btn btn-primary" style="width:100%;" onclick="doContinuerVersHelloAsso()">Continuer vers le paiement</button>
+    </div>
+  </div>
+
   <!-- Bottom nav (7 onglets) -->
   <nav class="bottom-nav">
     <div class="nav-item active" onclick="showPage('pageAccueil')" id="nav0">
@@ -1294,7 +1359,6 @@
         Laisser vide = pas de limite de date. Si une date de fin est renseignée, le bouton disparaît automatiquement après cette date (remplacé par un badge "Précommande terminée").
       </p>
     </div>
-    <div class="form-group"><label>Lien HelloAsso (optionnel — plus utilisé pour le paiement, le bouton HelloAsso se génère automatiquement à partir du prix)</label><input type="url" id="stHelloasso" placeholder="https://www.helloasso.com/..."></div>
     <div class="form-group" id="stNotifierGroup">
       <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
         <input type="checkbox" id="stNotifier" checked style="width:20px;height:20px;accent-color:#1A56DB;">
