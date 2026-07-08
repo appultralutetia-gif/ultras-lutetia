@@ -1,9 +1,28 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v43
+// ULTRAS LUTETIA — Service Worker v44
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md (07/07/2026, pour ne plus alourdir ce fichier à chaque
 // déploiement) — ne garder ici que l'entrée de la version courante.
+//
+// v44 (08/07/2026) : CACHE_NAME bumpé (v43 → v44) — gros lot de demandes
+// Remi : (1) Notification push envoyée au membre dès qu'un admin marque
+// sa précommande "reçue" (Matos + Sticks, individuel et en masse) — la
+// notif la plus utile ("viens le récupérer"), absente jusqu'ici.
+// (2) getAllCommandes() plafonné à 300 lignes (limit), comme Sticks déjà
+// à 100 — évite que la page Gestion ralentisse avec la croissance du
+// volume de commandes. (3) Les ~21 requêtes restantes sans vérification
+// d'erreur dans supabase-client.js ont été auditées et corrigées (échecs
+// désormais visibles au lieu de retourner [] en silence). (4) Nouvelle
+// pop-up de confirmation du statut de paiement au retour de HelloAsso
+// (annulé/erreur/payé/refusé) — l'Edge Function helloasso-create-checkout
+// renvoie maintenant l'id de la ligne créée (commandeId/distribId/
+// paiementId/inscriptionId) pour un suivi précis, pas une déduction par
+// recency. (5) Nouvelle pop-up de rappel "articles disponibles" à
+// l'ouverture de l'app (Matos + Sticks), pour les membres qui n'ont pas
+// activé les notifications push ou les ont manquées — ne se répète
+// jamais deux fois pour le même article (mémorisé en localStorage).
+// ⚠️ Nécessite de redéployer l'Edge Function helloasso-create-checkout.
 //
 // v43 (08/07/2026) : CACHE_NAME bumpé (v42 → v43) — nouveau jeu de
 // favicons fourni par Remi (crest Paris FC), remplace l'ancien
@@ -27,7 +46,7 @@
 // déplacé vers CHANGELOG.md (ce fichier-ci ne contient plus que la
 // version courante).
 
-const CACHE_NAME = 'ul-v43';
+const CACHE_NAME = 'ul-v44';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
