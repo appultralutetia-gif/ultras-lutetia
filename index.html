@@ -799,6 +799,18 @@
     </div>
   </div>
 
+  <!-- Modal générique d'information (08/07/2026) — confirmation de statut
+       de paiement au retour HelloAsso, et rappel articles disponibles à
+       l'ouverture de l'app. Un seul modal réutilisé pour les deux cas. -->
+  <div class="modal-overlay" id="modalPopupInfo" style="display:none;" onclick="closeModalOutside(event,'modalPopupInfo')">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-handle"></div>
+      <h3 class="modal-title" id="popupInfoTitre"></h3>
+      <div id="popupInfoCorps" style="font-size:14px;line-height:1.5;margin-bottom:16px;"></div>
+      <button class="btn btn-primary" style="width:100%;" onclick="closeModal('modalPopupInfo')">OK</button>
+    </div>
+  </div>
+
   <!-- Bottom nav (7 onglets) -->
   <nav class="bottom-nav">
     <div class="nav-item active" onclick="showPage('pageAccueil')" id="nav0">
