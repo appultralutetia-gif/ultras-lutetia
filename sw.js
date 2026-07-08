@@ -1,8 +1,20 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v45
+// ULTRAS LUTETIA — Service Worker v46
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v46 (08/07/2026) : CACHE_NAME bumpé (v45 → v46) — 2 optimisations
+// trouvées en revue : (1) la pop-up de confirmation de paiement au
+// retour de HelloAsso dépendait uniquement du localStorage pour
+// retrouver quel article était concerné — pas garanti à 100% de survivre
+// l'aller-retour cross-domaine sur tous les navigateurs (Safari iOS
+// notamment). Le type + l'id sont désormais encodés directement dans
+// l'URL de retour générée par l'Edge Function, bien plus fiable ; le
+// localStorage reste un repli pour compatibilité. (2) La pop-up "articles
+// disponibles" refaisait 2 requêtes réseau à CHAQUE ouverture de l'app,
+// pour tout le monde — throttle ajouté à 10 minutes minimum entre deux
+// vérifications. ⚠️ Nécessite de redéployer helloasso-create-checkout.
 //
 // v45 (08/07/2026) : CACHE_NAME bumpé (v44 → v45) — suppression de
 // sInscrireDeplacements (code mort, ancienne inscription gratuite sans
@@ -51,7 +63,7 @@
 // déplacé vers CHANGELOG.md (ce fichier-ci ne contient plus que la
 // version courante).
 
-const CACHE_NAME = 'ul-v45';
+const CACHE_NAME = 'ul-v46';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
