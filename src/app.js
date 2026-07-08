@@ -861,6 +861,36 @@ function toast(msg, type='info', duree=2800) {
   document.body.appendChild(el);
   setTimeout(() => el.remove(), duree);
 }
+
+// ─── Avertissement contribution HelloAsso (07/07/2026) ────────────
+// HelloAsso ajoute par défaut une "contribution au modèle solidaire" au
+// montant payé (ex: +1,20€ sur un paiement de 5€) — un don volontaire à
+// HelloAsso lui-même, PAS à Ultras Lutetia (l'asso ne touche pas plus
+// avec cette contribution). Beaucoup de membres ne s'en rendent pas
+// compte et paient plus que nécessaire sans le vouloir. On affiche un
+// avertissement juste avant chaque redirection vers HelloAsso, avec les
+// étapes pour la remettre à 0€ — mémorisé en localStorage (par appareil)
+// via une case "Ne plus afficher", pour ne pas gêner les paiements
+// répétés (Cellule Matos/Sticks qui teste beaucoup, par exemple).
+// Appelé par tous les points de redirection HelloAsso (Matos, Sticks,
+// Cartage, Déplacements) à la place d'un window.location.href direct.
+function afficherAvertissementHelloAsso(redirectUrl) {
+  if (localStorage.getItem('ul_masquer_avertissement_helloasso') === '1') {
+    window.location.href = redirectUrl;
+    return;
+  }
+  document.getElementById('helloAssoRedirectUrl').value = redirectUrl;
+  const cb = document.getElementById('helloAssoNePlusAfficher');
+  if (cb) cb.checked = false;
+  showModal('modalAvertissementHelloAsso');
+}
+
+function doContinuerVersHelloAsso() {
+  const cb = document.getElementById('helloAssoNePlusAfficher');
+  if (cb && cb.checked) localStorage.setItem('ul_masquer_avertissement_helloasso', '1');
+  const url = document.getElementById('helloAssoRedirectUrl').value;
+  window.location.href = url;
+}
 let loadingEl = null;
 function showLoading() {
   loadingEl = document.createElement('div');
