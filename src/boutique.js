@@ -188,9 +188,9 @@ async function doCommander(produitId, avecTailles = false) {
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     if (mode === 'helloasso') {
-      const { redirectUrl } = await UL.demanderCommandeHelloAsso(produitId, taille, quantite);
+      const { redirectUrl, commandeId } = await UL.demanderCommandeHelloAsso(produitId, taille, quantite);
       closeModal('modalCommander');
-      afficherAvertissementHelloAsso(redirectUrl);
+      afficherAvertissementHelloAsso(redirectUrl, 'matos', commandeId);
       // Pas de réactivation du bouton : soit l'avertissement s'affiche
       // (l'utilisateur peut revenir en arrière depuis là), soit la page
       // quitte directement l'app vers HelloAsso (case "ne plus afficher").
@@ -333,6 +333,18 @@ function toggleToutesSelectionCommandes(ids) {
 // 'disponible' d'un coup (demande Remi 07/07/2026 : chaque précommande
 // correspond à une vente groupée, donc un seul geste pour réceptionner
 // tout le lot une fois le colis reçu et contrôlé).
+// Notifie le membre que son article est prêt à être retiré (08/07/2026,
+// demande Remi) — cherché dans allCommandesAdmin (déjà chargé) plutôt que
+// de refaire une requête réseau. Jamais bloquant : une notification qui
+// échoue ne doit jamais empêcher la réception elle-même de réussir (déjà
+// garanti par envoyerNotificationPush, qui échoue silencieusement).
+function notifierReceptionCommande(commandeId) {
+  const c = allCommandesAdmin.find(x => x.id === commandeId);
+  if (!c?.membre_id) return;
+  const nomArticle = (c.commande_items || []).map(i => i.produit?.nom || '?').join(', ') || 'Ton article';
+  UL.envoyerNotificationPush(c.membre_id, '📦 Disponible !', `${nomArticle} est prêt — viens le récupérer.`, '/ultras-lutetia/');
+}
+
 async function doReceptionnerCommandesEnMasse() {
   const ids = [...commandesSelectionneesReception];
   if (!ids.length) return;
@@ -344,7 +356,7 @@ async function doReceptionnerCommandesEnMasse() {
   if (!confirme) return;
   let ok = 0, echecs = 0;
   for (const id of ids) {
-    try { await UL.receptionnerCommande(id); ok++; }
+    try { await UL.receptionnerCommande(id); notifierReceptionCommande(id); ok++; }
     catch(e) { echecs++; }
   }
   commandesSelectionneesReception.clear();
@@ -370,8 +382,12 @@ async function changerStatutDistrib(id, statut) {
 }
 
 async function doReceptionnerCommande(id) {
-  try { await UL.receptionnerCommande(id); toast('Commande marquée reçue — disponible au retrait ✅', 'success'); loadAdminBoutique(); }
-  catch(e) { toast('Impossible de marquer cette commande reçue', 'error'); }
+  try {
+    await UL.receptionnerCommande(id);
+    notifierReceptionCommande(id);
+    toast('Commande marquée reçue — disponible au retrait ✅', 'success');
+    loadAdminBoutique();
+  } catch(e) { toast('Impossible de marquer cette commande reçue', 'error'); }
 }
 
 async function modifierStock(id, nom, stockActuel) {
@@ -537,10 +553,10 @@ async function doCommanderStickHelloAsso(stickId, btn) {
   const quantite = parseInt(document.getElementById('stickQuantite')?.value) || 1;
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    const { redirectUrl } = await UL.demanderStickHelloAsso(stickId, quantite);
+    const { redirectUrl, distribId } = await UL.demanderStickHelloAsso(stickId, quantite);
     closeModal('modalCommanderStick');
     if (btn) { btn.disabled = false; btn.textContent = '💳 Payer avec HelloAsso'; }
-    afficherAvertissementHelloAsso(redirectUrl);
+    afficherAvertissementHelloAsso(redirectUrl, 'stick', distribId);
   } catch(e) {
     toast(e.message || 'Impossible de lancer le paiement', 'error');
     if (btn) { btn.disabled = false; btn.textContent = '💳 Payer avec HelloAsso'; }
@@ -1194,6 +1210,13 @@ function toggleToutesSelectionDistribs(ids) {
   filtrerDistribsAdminSansEvent(currentFiltreDistribsAdmin);
 }
 
+function notifierReceptionStick(distribId) {
+  const d = allDistribsAdmin.find(x => x.id === distribId);
+  if (!d?.membre_id) return;
+  const nomStick = d.stick?.nom || 'Ton stick';
+  UL.envoyerNotificationPush(d.membre_id, '📦 Disponible !', `${nomStick} est prêt — viens le récupérer.`, '/ultras-lutetia/');
+}
+
 async function doReceptionnerStickEnMasse() {
   const ids = [...distribsSelectionneesReception];
   if (!ids.length) return;
@@ -1205,7 +1228,7 @@ async function doReceptionnerStickEnMasse() {
   if (!confirme) return;
   let ok = 0, echecs = 0;
   for (const id of ids) {
-    try { await UL.receptionnerStick(id); ok++; }
+    try { await UL.receptionnerStick(id); notifierReceptionStick(id); ok++; }
     catch(e) { echecs++; }
   }
   distribsSelectionneesReception.clear();
@@ -1214,8 +1237,12 @@ async function doReceptionnerStickEnMasse() {
 }
 
 async function doReceptionnerStick(distribId) {
-  try { await UL.receptionnerStick(distribId); toast('Stick marqué reçu — disponible au retrait ✅', 'success'); loadAdminBoutique(); }
-  catch(e) { toast('Impossible de marquer ce stick reçu', 'error'); }
+  try {
+    await UL.receptionnerStick(distribId);
+    notifierReceptionStick(distribId);
+    toast('Stick marqué reçu — disponible au retrait ✅', 'success');
+    loadAdminBoutique();
+  } catch(e) { toast('Impossible de marquer ce stick reçu', 'error'); }
 }
 
 // Filet de secours pour confirmer une distribution Stick sans passer par
@@ -1292,9 +1319,9 @@ async function doPayerCartage(cartageId, btn) {
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    const { redirectUrl } = await UL.demanderCartageHelloAsso(cartageId);
+    const { redirectUrl, paiementId } = await UL.demanderCartageHelloAsso(cartageId);
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
-    afficherAvertissementHelloAsso(redirectUrl);
+    afficherAvertissementHelloAsso(redirectUrl, 'cartage', paiementId);
   } catch(e) {
     toast(e.message || 'Impossible de lancer le paiement', 'error');
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
