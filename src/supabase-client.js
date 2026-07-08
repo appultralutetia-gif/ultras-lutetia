@@ -2,6 +2,37 @@
 // ULTRAS LUTETIA — supabase-client.js
 // Remplace gas-shim.js — même interface, backend Supabase
 // ============================================================
+//
+// ⚠️ NOTE D'ARCHITECTURE (07/07/2026) — à lire avant de modifier Matos,
+// Sticks ou Cartage :
+//
+// Ces 3 modules couvrent un besoin très similaire ("un membre paie un
+// article/une cotisation via HelloAsso ou cash, un admin suit et valide")
+// mais avec 3 modèles de données DIFFÉRENTS :
+//   - Matos   : 2 tables — commandes (1 par achat) + commande_items
+//               (1 ligne par article/taille/quantité dans cet achat)
+//   - Sticks  : 1 table — sticks_distribution (tout sur la même ligne)
+//   - Cartage : 1 table — cartage_paiements (tout sur la même ligne,
+//               pas de notion de stock/précommande contrairement aux 2
+//               autres)
+//
+// Conséquence pratique : la quasi-totalité des bugs corrigés le
+// 07/07/2026 venaient d'une fonctionnalité ajoutée sur UN SEUL des 3
+// modules puis oubliée sur les autres (double FK vers membres non gérée
+// partout, colonne manquante sur un seul des 3, bouton "Annuler" présent
+// sur Matos mais pas Sticks, etc.). Avant de considérer une fonctionnalité
+// "terminée" sur l'un des 3, vérifier systématiquement si elle doit
+// exister sur les 2 autres — et si un embed Supabase du type
+// `membre:membres(...)` est ajouté sur une nouvelle table, vérifier
+// d'abord si cette table a une deuxième colonne référençant membres
+// (valide_par, receptionnee_par, distribue_par...) et préciser la
+// contrainte FK exacte (`membres!ma_table_membre_id_fkey(...)`) dès le
+// départ plutôt que d'attendre l'erreur en production.
+//
+// Une fusion des 3 modèles en un seul serait plus robuste à terme, mais
+// c'est un refactor risqué vu l'usage réel de l'app — pas fait ici,
+// simplement documenté comme point de vigilance.
+// ============================================================
 
 const SUPABASE_URL = 'https://afgriuvrtdkklluvtswg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmZ3JpdXZydGRra2xsdXZ0c3dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MTkwODgsImV4cCI6MjA5NzI5NTA4OH0.3jXUyJD87MjhFJctzceMVoeHWGCSqGmVy3TPuXGQebc';
@@ -1613,6 +1644,18 @@ async function marquerStickPrepare(distribId) {
   return { success: true };
 }
 
+// Changement de statut générique (Annuler notamment) — équivalent Sticks
+// de updateCommandeStatut. Pas de décrémentation de stock ici : elle est
+// gérée par validerPaiementStick au moment de 'distribue', pas concernée
+// par une annulation.
+async function updateDistribStatut(distribId, statut) {
+  const { error } = await sb.from('sticks_distribution')
+    .update({ statut })
+    .eq('id', distribId);
+  if (error) throw error;
+  return { success: true };
+}
+
 async function validerPaiementStick(distribId) {
   // ⚠️ Avant le 21/06/2026 cette fonction écrivait toujours
   // statut:'paye_helloasso', incohérent avec le reste de l'UI qui affiche
@@ -2069,7 +2112,7 @@ window.UL = {
   getMesCommandes, getAllCommandes, updateCommandeStatut,
   // Sticks
   getSticks, getStickById, createStick, updateStick, getMonQuotaStick,
-  demanderStickHelloAsso, receptionnerStick, marquerStickPrepare, getMesSticks,
+  demanderStickHelloAsso, receptionnerStick, marquerStickPrepare, updateDistribStatut, getMesSticks,
   distribuerStickAdmin, getAllDistributions, validerPaiementStick, confirmerDistributionStick,
   // Cartage
   getCartageCatalogue, getAllCartageCatalogue, createCartage, updateCartage, archiverCartage,
