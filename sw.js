@@ -1,9 +1,18 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v42
+// ULTRAS LUTETIA — Service Worker v43
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md (07/07/2026, pour ne plus alourdir ce fichier à chaque
 // déploiement) — ne garder ici que l'entrée de la version courante.
+//
+// v43 (08/07/2026) : CACHE_NAME bumpé (v42 → v43) — nouveau jeu de
+// favicons fourni par Remi (crest Paris FC), remplace l'ancien
+// manifest.webmanifest qui pointait vers icons/icon-192.png /
+// icons/icon-512.png — fichiers qui n'ont jamais existé (erreur "Download
+// error or resource isn't a valid image" déjà repérée dans la console
+// pendant une session précédente). Corrigé au passage : l'icône/badge des
+// notifications push pointait vers ce même chemin cassé — mis à jour
+// vers le nouveau fichier valide.
 //
 // v42 (07/07/2026) : CACHE_NAME bumpé (v41 → v42) — 4 correctifs/
 // harmonisations : (1) bouton "Annuler" ajouté côté Sticks (Commandes en
@@ -18,7 +27,7 @@
 // déplacé vers CHANGELOG.md (ce fichier-ci ne contient plus que la
 // version courante).
 
-const CACHE_NAME = 'ul-v42';
+const CACHE_NAME = 'ul-v43';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
@@ -124,8 +133,8 @@ self.addEventListener('push', e => {
   const titre = data.titre || 'Ultras Lutetia';
   const options = {
     body: data.corps || '',
-    icon: '/ultras-lutetia/icons/icon-192.png',
-    badge: '/ultras-lutetia/icons/icon-192.png',
+    icon: '/ultras-lutetia/web-app-manifest-192x192.png',
+    badge: '/ultras-lutetia/web-app-manifest-192x192.png',
     data: { url: data.url || '/ultras-lutetia/' },
   };
   e.waitUntil(self.registration.showNotification(titre, options));
