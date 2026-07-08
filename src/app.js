@@ -460,13 +460,18 @@ async function showApp(membre) {
   document.getElementById('charteGate').style.display = 'none';
 
   await loadAccueil();
-  proposerNotificationsPushSiPertinent();
-  // Retour de paiement d'abord (prioritaire s'il y en a un) — la pop-up
-  // "articles disponibles" n'est affichée que si aucune pop-up de retour
-  // de paiement ne l'a déjà été (même modal réutilisé pour les deux, donc
-  // jamais les deux en même temps).
+  // ⚠️ Toutes ces vérifications sont enchaînées avec await (08/07/2026) —
+  // proposerNotificationsPushSiPertinent() n'était pas attendue avant,
+  // risquant d'empiler sa modale "Activer les notifications" avec la
+  // pop-up de retour de paiement ou celle des articles disponibles
+  // (deux overlays visibles en même temps sur un premier lancement avec
+  // un paiement en cours). Retour de paiement traité en priorité
+  // (le plus pertinent pour l'action que le membre vient de faire),
+  // puis proposition de notifications, puis rappel articles disponibles
+  // — jamais plus d'une pop-up affichée à la fois.
   const aAfficheRetourPaiement = await verifierRetourHelloAsso();
-  if (!aAfficheRetourPaiement) await verifierArticlesDisponibles();
+  const aProposeNotifs = aAfficheRetourPaiement ? false : await proposerNotificationsPushSiPertinent();
+  if (!aAfficheRetourPaiement && !aProposeNotifs) await verifierArticlesDisponibles();
 }
 
 // Détecte le cas iOS spécifique : Safari (ou tout navigateur sur iOS, qui
@@ -488,14 +493,15 @@ function _estIOSHorsEcranAccueil() {
 // activées, déjà refusées dans le navigateur, ou techniquement impossibles
 // ici (iOS hors écran d'accueil, navigateur non compatible).
 async function proposerNotificationsPushSiPertinent() {
-  if (localStorage.getItem('ul_notifs_proposees')) return;
-  if (_estIOSHorsEcranAccueil()) return;
-  if (!UL.notificationsPushSupportees()) return;
+  if (localStorage.getItem('ul_notifs_proposees')) return false;
+  if (_estIOSHorsEcranAccueil()) return false;
+  if (!UL.notificationsPushSupportees()) return false;
 
   const statut = await UL.getStatutNotificationsPush();
-  if (statut !== 'inactif') return; // déjà activées, déjà refusées, ou non supporté
+  if (statut !== 'inactif') return false; // déjà activées, déjà refusées, ou non supporté
 
   afficherModalePropositionNotifs();
+  return true;
 }
 
 function afficherModalePropositionNotifs() {
