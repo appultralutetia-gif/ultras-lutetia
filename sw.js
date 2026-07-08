@@ -1,9 +1,14 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v44
+// ULTRAS LUTETIA — Service Worker v45
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
-// CHANGELOG.md (07/07/2026, pour ne plus alourdir ce fichier à chaque
-// déploiement) — ne garder ici que l'entrée de la version courante.
+// CHANGELOG.md.
+//
+// v45 (08/07/2026) : CACHE_NAME bumpé (v44 → v45) — suppression de
+// sInscrireDeplacements (code mort, ancienne inscription gratuite sans
+// paiement, jamais appelée depuis l'intégration HelloAsso). Push et
+// pop-up "articles disponibles" gardés tous les deux intentionnellement
+// (redondance voulue par Remi).
 //
 // v44 (08/07/2026) : CACHE_NAME bumpé (v43 → v44) — gros lot de demandes
 // Remi : (1) Notification push envoyée au membre dès qu'un admin marque
@@ -46,7 +51,7 @@
 // déplacé vers CHANGELOG.md (ce fichier-ci ne contient plus que la
 // version courante).
 
-const CACHE_NAME = 'ul-v44';
+const CACHE_NAME = 'ul-v45';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
