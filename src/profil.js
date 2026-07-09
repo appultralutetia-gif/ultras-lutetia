@@ -50,12 +50,9 @@ async function loadProfil() {
     ${evaluationsHtml}
     <div style="font-size:13px;margin-bottom:6px;">📋 Charte: ${m.charte_signee ? '✅ Signée' : '❌ Non signée'}</div>
     <div style="font-size:13px;">💶 Cartage: ${m.cotisation_a_jour ? '✅ À jour' : '⏳ En attente'}</div>
-    ${!m.cotisation_a_jour ? `
-    <div style="margin-top:10px;display:flex;gap:6px;">
-      <input type="text" id="codeReaboInput" placeholder="Code de réabonnement" style="flex:1;" autocapitalize="characters">
-      <button class="btn btn-sm btn-primary" onclick="doActiverCodeReabo()">Activer</button>
-    </div>` : ''}
+    <div id="profilReabonnementBtn" style="margin-top:10px;"></div>
   `;
+  afficherBoutonReabonnementProfil();
   try {
     const stats = await UL.getMesStats();
     document.getElementById('profilStats').innerHTML = `
@@ -132,24 +129,81 @@ async function doDesactiverNotifs() {
   } catch(e) { toast(e.message || 'Impossible de désactiver les notifications', 'error'); }
 }
 
-// Activation d'un code de réabonnement (cartage payé hors app avant le
-// lancement du module Cartage, cf. migration_codes_reabonnement.sql) —
-// la vérification (email correspondant, code non déjà utilisé) se fait
-// entièrement côté serveur via redeem_code_reabonnement(), cette
-// fonction ne fait qu'afficher le résultat et recharger le profil.
-async function doActiverCodeReabo() {
-  const input = document.getElementById('codeReaboInput');
-  const code = input ? input.value.trim() : '';
-  if (!code) return toast('Entre ton code de réabonnement', 'error');
+// Bouton "Mon (ré)abonnement" affiché dans Profil — masqué si le Bureau/
+// Admin a désactivé la page pour la saison (cf. toggleReabonnementAdmin,
+// admin.js). Séparé de loadProfil() pour ne pas bloquer l'affichage du
+// reste du profil si cet appel réseau est lent/échoue.
+async function afficherBoutonReabonnementProfil() {
+  const el = document.getElementById('profilReabonnementBtn');
+  if (!el) return;
+  try {
+    const ouvert = await UL.getStatutReabonnement();
+    el.innerHTML = ouvert
+      ? `<button class="btn btn-secondary" onclick="showPage('pageReabonnement');loadReabonnement()">🎫 Mon (ré)abonnement</button>`
+      : '';
+  } catch(e) { el.innerHTML = ''; }
+}
+
+// ─── PAGE "MON (RÉ)ABONNEMENT" ─────────────────────────────────
+// Le code de réabonnement sert sur le site externe de billetterie du
+// Paris FC, pas dans cette app — le rôle de cette page est uniquement
+// de retrouver et d'afficher le/les code(s) du membre (via son email),
+// avec le lien vers billetterie.parisfc.fr et le guide PDF du club. Le
+// bouton "J'ai terminé" est déclaratif (aucune vérification possible
+// depuis l'app) — il marque juste cotisation_a_jour = true côté UL.
+async function loadReabonnement() {
+  const el = document.getElementById('reabonnementContainer');
+  if (!el) return;
+  el.innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  try {
+    const codes = await UL.getMesCodesReabonnement();
+    if (!codes.length) {
+      el.innerHTML = `
+        <div class="empty-state"><div>❓</div>Aucun code trouvé pour ton adresse email.<br>
+        Contacte le bureau si tu penses que c'est une erreur.</div>`;
+      return;
+    }
+    el.innerHTML = `
+      <div class="card" style="margin-bottom:14px;">
+        <div style="font-size:14px;margin-bottom:10px;">
+          Utilise le code ci-dessous sur le site de billetterie du Paris FC pour activer ton (ré)abonnement.
+          Le guide détaillé (PDF) explique chaque étape.
+        </div>
+        <a class="btn btn-primary" style="display:block;text-align:center;margin-bottom:8px;"
+           href="https://billetterie.parisfc.fr/fr/access/activation-code" target="_blank" rel="noopener">
+          🎟️ Accéder à la billetterie Paris FC
+        </a>
+        <a class="btn btn-secondary" style="display:block;text-align:center;"
+           href="/ultras-lutetia/guide-code-activation.pdf" target="_blank" rel="noopener">
+          📄 Voir le guide (PDF)
+        </a>
+      </div>
+      ${codes.map(c => `
+        <div class="card" style="margin-bottom:10px;">
+          ${c.nom || c.prenom ? `<div style="font-size:12px;color:var(--gris);margin-bottom:4px;">Pour : ${esc(c.prenom||'')} ${esc(c.nom||'')}</div>` : ''}
+          <div style="font-family:'Courier New',monospace;font-size:20px;font-weight:700;letter-spacing:1px;background:var(--fond2,rgba(255,255,255,.06));border-radius:8px;padding:10px;text-align:center;margin-bottom:10px;">
+            ${esc(c.code)}
+          </div>
+          ${c.utilise
+            ? `<div style="font-size:13px;color:var(--vert,#10B981);">✅ Marqué comme terminé${c.utilise_at ? ' le ' + new Date(c.utilise_at).toLocaleDateString('fr-FR') : ''}</div>`
+            : `<button class="btn btn-sm btn-secondary" style="width:100%;" onclick="doConfirmerReabonnement('${c.code}', this)">✅ J'ai terminé mon (ré)abonnement</button>`}
+        </div>`).join('')}
+    `;
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger tes codes</div>';
+  }
+}
+
+async function doConfirmerReabonnement(code, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     const res = await UL.redeemCodeReabonnement(code);
-    if (res && res.success) {
-      toast('Cartage activé ✅', 'success');
-      loadProfil();
-    } else {
-      toast((res && res.error) || 'Code invalide', 'error');
-    }
-  } catch(e) { toast(e.message || 'Impossible de valider ce code', 'error'); }
+    if (res && res.success) { toast('Réabonnement confirmé ✅', 'success'); loadReabonnement(); }
+    else { toast((res && res.error) || 'Impossible de confirmer', 'error'); if (btn) { btn.disabled = false; btn.textContent = "✅ J'ai terminé mon (ré)abonnement"; } }
+  } catch(e) {
+    toast(e.message || 'Impossible de confirmer', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = "✅ J'ai terminé mon (ré)abonnement"; }
+  }
 }
 
 async function doChangeMdp() {
