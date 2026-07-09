@@ -50,6 +50,11 @@ async function loadProfil() {
     ${evaluationsHtml}
     <div style="font-size:13px;margin-bottom:6px;">📋 Charte: ${m.charte_signee ? '✅ Signée' : '❌ Non signée'}</div>
     <div style="font-size:13px;">💶 Cartage: ${m.cotisation_a_jour ? '✅ À jour' : '⏳ En attente'}</div>
+    ${!m.cotisation_a_jour ? `
+    <div style="margin-top:10px;display:flex;gap:6px;">
+      <input type="text" id="codeReaboInput" placeholder="Code de réabonnement" style="flex:1;" autocapitalize="characters">
+      <button class="btn btn-sm btn-primary" onclick="doActiverCodeReabo()">Activer</button>
+    </div>` : ''}
   `;
   try {
     const stats = await UL.getMesStats();
@@ -125,6 +130,26 @@ async function doDesactiverNotifs() {
     toast('Notifications désactivées', 'success');
     chargerStatutNotifsProfil();
   } catch(e) { toast(e.message || 'Impossible de désactiver les notifications', 'error'); }
+}
+
+// Activation d'un code de réabonnement (cartage payé hors app avant le
+// lancement du module Cartage, cf. migration_codes_reabonnement.sql) —
+// la vérification (email correspondant, code non déjà utilisé) se fait
+// entièrement côté serveur via redeem_code_reabonnement(), cette
+// fonction ne fait qu'afficher le résultat et recharger le profil.
+async function doActiverCodeReabo() {
+  const input = document.getElementById('codeReaboInput');
+  const code = input ? input.value.trim() : '';
+  if (!code) return toast('Entre ton code de réabonnement', 'error');
+  try {
+    const res = await UL.redeemCodeReabonnement(code);
+    if (res && res.success) {
+      toast('Cartage activé ✅', 'success');
+      loadProfil();
+    } else {
+      toast((res && res.error) || 'Code invalide', 'error');
+    }
+  } catch(e) { toast(e.message || 'Impossible de valider ce code', 'error'); }
 }
 
 async function doChangeMdp() {
