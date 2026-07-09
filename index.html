@@ -244,9 +244,15 @@
   <!-- ── PAGE SESSIONS ──────────────────────────────────────── -->
   <div id="pageTifos" class="page">
 
-    <!-- Bouton créer session (Bureau+ ou Membre Cellule) -->
+    <!-- Actions Bureau+ / cellule_tifo (déplacées ici depuis le hub Admin,
+         demande Remi 09/07/2026 — un seul point d'entrée "Gérer les
+         tifos" là-bas, toutes les actions à cet endroit) -->
     <div id="btnCreerTifo" style="display:none;margin-bottom:16px;">
-      <button class="btn btn-primary" onclick="showModal('modalCreerSession')">+ Nouveau tifo</button>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-primary" onclick="showModal('modalCreerSession')">+ Nouveau tifo</button>
+        <button class="btn btn-secondary" onclick="ouvrirModifierSession()">✏️ Modifier une session</button>
+        <button class="btn btn-secondary" onclick="ouvrirEvaluationMembresTifo()">⭐ Évaluation membres</button>
+      </div>
     </div>
 
     <div class="section-title">Sessions à venir</div>
@@ -541,58 +547,48 @@
   <div id="pageAdmin" class="page">
     <h2 style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.05em;margin-bottom:16px;">⚙️ Administration</h2>
 
-    <!-- Membres (Bureau+) -->
+    <!-- Membres (Bureau+) — fusionne les anciennes sections Calendrier et
+         Charte, désormais gérées ici (même droit d'accès : isBureau, cf.
+         app.js applyRights). "Demandes d'inscription en attente" déplacé
+         vers la section Comité de passage, ci-dessous (demande Remi
+         09/07/2026) — le Comité est justement le public qui les traite. -->
     <div id="adminSectionMembres" style="display:none;">
       <div class="section-title">👥 Membres</div>
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button class="btn btn-secondary" onclick="showPage('pageMembres')">👤 Gérer les membres</button>
-          <button class="btn btn-secondary" onclick="showPage('pageDemandesAdmin')">🔔 Demandes d'inscription en attente</button>
+          <button class="btn btn-secondary" onclick="ouvrirCreerEvenement()">🎉 Créer un événement</button>
+          <button class="btn btn-secondary" onclick="showModal('modalAnnonce')">📣 Publier une annonce</button>
+          <button class="btn btn-secondary" onclick="showModal('modalMatchs');loadMatchsList()">⚽ Gérer le calendrier (matchs)</button>
+          <button class="btn btn-secondary" onclick="showPage('pageGererCharte')">✏️ Gérer la charte</button>
           <button class="btn btn-secondary" onclick="showPage('pageGererCartage')">🗂️ Gérer le cartage</button>
         </div>
       </div>
     </div>
 
-    <!-- Calendrier (Bureau+) -->
-    <div id="adminSectionCalendrier" style="display:none;">
-      <div class="section-title">📅 Calendrier</div>
-      <div class="card" style="margin-bottom:12px;">
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showModal('modalMatchs');loadMatchsList()">⚽ Gérer le calendrier (matchs)</button>
-          <button class="btn btn-secondary" onclick="ouvrirCreerEvenement()">🎉 Créer un événement</button>
-          <button class="btn btn-secondary" onclick="showModal('modalAnnonce')">📣 Publier une annonce</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Charte (Bureau+) -->
-    <div id="adminSectionCharte" style="display:none;">
-      <div class="section-title">📋 Charte</div>
-      <div class="card" style="margin-bottom:12px;">
-        <button class="btn btn-secondary" onclick="showPage('pageGererCharte')">✏️ Gérer la charte</button>
-      </div>
-    </div>
-
-    <!-- Déplacements (Bureau+ ou cellule_depl) -->
+    <!-- Déplacements (Bureau+ ou cellule_depl) — "Créer un déplacement"
+         retiré (demande Remi 09/07/2026) : redondant avec le bouton
+         "+ Nouveau déplacement" déjà présent en haut de pageDeplacements
+         (btnCreerDepl, même garde hasCelluleDepl). -->
     <div id="adminSectionDepl" style="display:none;">
       <div class="section-title">🚌 Déplacements</div>
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button class="btn btn-secondary" onclick="showPage('pageDeplacements')">📋 Gérer les déplacements</button>
-          <button class="btn btn-secondary" onclick="ouvrirCreerDepl()">+ Créer un déplacement</button>
         </div>
       </div>
     </div>
 
-    <!-- Sessions (Bureau+ ou cellule_tifo) -->
+    <!-- Tifos (Bureau+ ou cellule_tifo) — réduit à un seul point d'entrée
+         (demande Remi 09/07/2026) : "+ Nouveau tifo", "Modifier une
+         session" et "Évaluation membres" ont été déplacés à l'intérieur
+         de pageTifos elle-même (à côté du bouton "+ Nouveau tifo" déjà
+         présent là-bas), au lieu d'être dupliqués/dispersés ici. -->
     <div id="adminSectionTifos" style="display:none;">
-      <div class="section-title">🎨 Tifos Tifo</div>
+      <div class="section-title">🎨 Tifos</div>
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn btn-secondary" onclick="showModal('modalCreerSession')">+ Nouveau tifo</button>
-          <button class="btn btn-secondary" onclick="ouvrirModifierSession()">✏️ Modifier une session</button>
-          <button class="btn btn-secondary" onclick="showPage('pageTifos')">📋 Gérer les sessions</button>
-          <button class="btn btn-secondary" onclick="ouvrirEvaluationMembresTifo()">⭐ Évaluation membres</button>
+          <button class="btn btn-secondary" onclick="showPage('pageTifos')">📋 Gérer les tifos</button>
         </div>
       </div>
     </div>
@@ -623,6 +619,7 @@
       <div class="card" style="margin-bottom:12px;">
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button class="btn btn-secondary" onclick="showPage('pageMembresComite')">🌟 Évaluation des membres</button>
+          <button class="btn btn-secondary" onclick="showPage('pageDemandesAdmin')">🔔 Demandes d'inscription en attente</button>
         </div>
       </div>
     </div>
