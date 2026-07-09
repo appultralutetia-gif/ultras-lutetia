@@ -1,8 +1,23 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v54
+// ULTRAS LUTETIA — Service Worker v55
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v55 (09/07/2026) : CACHE_NAME bumpé (v54 → v55) — retour Remi : l'outil
+// de recherche au cas par cas "ne sert pas à grand chose", le code doit
+// être visible directement sur chaque carte membre de la page Comité de
+// passage. loadMembresComite() charge maintenant TOUTE la table
+// codes_reabonnement en un seul appel (admin_lister_codes_reabonnement,
+// cf. migration_liste_codes_reabonnement.sql), indexée par email
+// côté front — chaque carte affiche son(ses) code(s) le cas échéant, ou
+// "Aucun code réabonnement pour cet email" sinon. Échec silencieux si
+// l'appel échoue (rôle insuffisant, etc.) : la page se charge quand même,
+// juste sans codes affichés. La page de recherche au cas par cas
+// (pageVerifCode) reste disponible en plus — utile pour une personne pas
+// encore inscrite sur l'app, donc absente de cette liste de cartes.
+// ⚠️ Nécessite d'exécuter migration_liste_codes_reabonnement.sql (après
+// migration_maj_role_recherche_code.sql) avant de déployer admin.js.
 //
 // v54 (09/07/2026) : CACHE_NAME bumpé (v53 → v54) — "🔍 Vérifier un code
 // réabonnement" ouvert au Comité de passage (demande Remi), pas
@@ -112,7 +127,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v54';
+const CACHE_NAME = 'ul-v55';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
