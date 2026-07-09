@@ -1,78 +1,26 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v47
+// ULTRAS LUTETIA — Service Worker v48
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
-// v47 (08/07/2026) : CACHE_NAME bumpé (v46 → v47) — correctif
-// d'empilement de pop-up : proposerNotificationsPushSiPertinent()
-// n'était pas attendue avant l'affichage de la pop-up de retour de
-// paiement / rappel articles disponibles, risquant d'empiler la modale
-// "Activer les notifications" avec l'une des deux nouvelles pop-ups sur
-// un premier lancement avec un paiement en cours. Toutes les 3
-// vérifications sont maintenant enchaînées avec await, jamais plus d'une
-// pop-up affichée à la fois, avec le retour de paiement en priorité.
-//
-// v46 (08/07/2026) : CACHE_NAME bumpé (v45 → v46) — 2 optimisations
-// trouvées en revue : (1) la pop-up de confirmation de paiement au
-// retour de HelloAsso dépendait uniquement du localStorage pour
-// retrouver quel article était concerné — pas garanti à 100% de survivre
-// l'aller-retour cross-domaine sur tous les navigateurs (Safari iOS
-// notamment). Le type + l'id sont désormais encodés directement dans
-// l'URL de retour générée par l'Edge Function, bien plus fiable ; le
-// localStorage reste un repli pour compatibilité. (2) La pop-up "articles
-// disponibles" refaisait 2 requêtes réseau à CHAQUE ouverture de l'app,
-// pour tout le monde — throttle ajouté à 10 minutes minimum entre deux
-// vérifications. ⚠️ Nécessite de redéployer helloasso-create-checkout.
-//
-// v45 (08/07/2026) : CACHE_NAME bumpé (v44 → v45) — suppression de
-// sInscrireDeplacements (code mort, ancienne inscription gratuite sans
-// paiement, jamais appelée depuis l'intégration HelloAsso). Push et
-// pop-up "articles disponibles" gardés tous les deux intentionnellement
-// (redondance voulue par Remi).
-//
-// v44 (08/07/2026) : CACHE_NAME bumpé (v43 → v44) — gros lot de demandes
-// Remi : (1) Notification push envoyée au membre dès qu'un admin marque
-// sa précommande "reçue" (Matos + Sticks, individuel et en masse) — la
-// notif la plus utile ("viens le récupérer"), absente jusqu'ici.
-// (2) getAllCommandes() plafonné à 300 lignes (limit), comme Sticks déjà
-// à 100 — évite que la page Gestion ralentisse avec la croissance du
-// volume de commandes. (3) Les ~21 requêtes restantes sans vérification
-// d'erreur dans supabase-client.js ont été auditées et corrigées (échecs
-// désormais visibles au lieu de retourner [] en silence). (4) Nouvelle
-// pop-up de confirmation du statut de paiement au retour de HelloAsso
-// (annulé/erreur/payé/refusé) — l'Edge Function helloasso-create-checkout
-// renvoie maintenant l'id de la ligne créée (commandeId/distribId/
-// paiementId/inscriptionId) pour un suivi précis, pas une déduction par
-// recency. (5) Nouvelle pop-up de rappel "articles disponibles" à
-// l'ouverture de l'app (Matos + Sticks), pour les membres qui n'ont pas
-// activé les notifications push ou les ont manquées — ne se répète
-// jamais deux fois pour le même article (mémorisé en localStorage).
-// ⚠️ Nécessite de redéployer l'Edge Function helloasso-create-checkout.
-//
-// v43 (08/07/2026) : CACHE_NAME bumpé (v42 → v43) — nouveau jeu de
-// favicons fourni par Remi (crest Paris FC), remplace l'ancien
-// manifest.webmanifest qui pointait vers icons/icon-192.png /
-// icons/icon-512.png — fichiers qui n'ont jamais existé (erreur "Download
-// error or resource isn't a valid image" déjà repérée dans la console
-// pendant une session précédente). Corrigé au passage : l'icône/badge des
-// notifications push pointait vers ce même chemin cassé — mis à jour
-// vers le nouveau fichier valide.
-//
-// v42 (07/07/2026) : CACHE_NAME bumpé (v41 → v42) — 4 correctifs/
-// harmonisations : (1) bouton "Annuler" ajouté côté Sticks (Commandes en
-// cours), asymétrie avec Matos qui l'avait déjà. (2) Notification push
-// envoyée au membre à la confirmation d'un paiement HelloAsso (Matos,
-// Sticks, Cartage, Déplacements) — jusqu'ici le webhook ne notifiait
-// jamais, il fallait rouvrir l'app pour savoir si le paiement avait
-// abouti. (3) Note d'architecture ajoutée dans supabase-client.js
-// documentant la divergence de modèles Matos/Sticks/Cartage, pour éviter
-// que de futures fonctionnalités soient oubliées sur l'un des 3 comme
-// c'est arrivé plusieurs fois aujourd'hui. (4) Historique du changelog
-// déplacé vers CHANGELOG.md (ce fichier-ci ne contient plus que la
-// version courante).
+// v48 (09/07/2026) : CACHE_NAME bumpé (v47 → v48) — Comité de passage
+// (page Membres → onglet Comité) : ajout d'un bouton "✏️ Modifier" sur
+// chaque membre non-protégé (Bureau/Admin restent hors de portée, comme
+// pour le blocage), ouvrant le modal existant modalEditMembre en mode
+// restreint ('comite') : Statut UL, Validé Tifo, Section et Rôles
+// Fonctionnels modifiables, identité (prénom/nom/pseudo/email) masquée
+// et jamais envoyée modifiée. Rôles Admin App / Bureau retirés de la
+// liste dans ce mode — un membre éligible au Comité n'a de toute façon
+// jamais l'un de ces deux rôles (sinon protégé), les proposer aurait
+// permis au Comité de se créer lui-même un accès Admin/Bureau, jamais
+// voulu. admin.js : logique d'ouverture/rôles factorisée dans
+// _ouvrirModalEditMembre(m, mode), réutilisée par openEditMembre (page
+// Membres, Bureau+, mode 'complet') et la nouvelle openEditMembreComite
+// (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
+// aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v47';
+const CACHE_NAME = 'ul-v48';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
