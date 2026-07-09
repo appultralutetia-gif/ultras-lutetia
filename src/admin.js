@@ -633,6 +633,35 @@ async function refuserDemandeAdmin(membreId) {
   } catch(e) { toast('Impossible de refuser la demande', 'error'); }
 }
 
+// Recherche Bureau/Admin d'un code de réabonnement — pour vérifier
+// qu'une personne en a bien un (support/dépannage) sans devoir attendre
+// qu'elle se connecte elle-même sur "Mon (ré)abonnement". Le rôle est
+// re-vérifié côté serveur (cf. migration_admin_recherche_code.sql).
+async function chercherCodeReaboAdmin() {
+  const terme = document.getElementById('verifCodeRecherche').value.trim();
+  const el = document.getElementById('verifCodeResultats');
+  if (!terme) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="empty-state"><div>⏳</div>Recherche…</div>';
+  try {
+    const resultats = await UL.rechercherCodeReabonnementAdmin(terme);
+    if (!resultats.length) {
+      el.innerHTML = '<div class="empty-state"><div>❓</div>Aucun code trouvé pour cette recherche</div>';
+      return;
+    }
+    el.innerHTML = resultats.map(c => `
+      <div class="card" style="margin-bottom:8px;padding:14px;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;">${esc(c.prenom||'')} ${esc(c.nom||'')}</div>
+        <div style="font-size:12px;color:var(--gris);margin-bottom:6px;">✉️ ${esc(c.email)}</div>
+        <div style="font-family:'Courier New',monospace;font-size:16px;font-weight:700;background:var(--fond2,rgba(255,255,255,.06));border-radius:6px;padding:6px 10px;display:inline-block;">
+          ${esc(c.code)}
+        </div>
+        <div style="font-size:12px;color:var(--gris);margin-top:6px;">Abonné 25-26 : ${esc(c.abonne_25_26||'—')}${c.date_paiement ? ' · Payé le ' + new Date(c.date_paiement).toLocaleDateString('fr-FR') : ''}</div>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur de recherche</div>';
+  }
+}
+
 // Bascule Bureau/Admin de la page "Mon (ré)abonnement" (Profil) — à
 // masquer en dehors de la période de campagne, cf. migration_
 // reabonnement_page.sql. Demande confirmation en rappelant l'état actuel
@@ -691,6 +720,11 @@ async function doSauvegarderCharte() {
 // renderCarteEvaluation/doNoterMembre sont définis dans tifos.js
 // (modules en globals window-exposed, partage normal sur ce projet).
 let _allMembresComite = [];
+// Codes de réabonnement indexés par email (minuscules, espaces retirés) —
+// chargés une seule fois par visite de la page, pas un appel par carte.
+// Une même adresse peut avoir plusieurs codes (cf. lignes dupliquées
+// tolérées dans le fichier source) — on garde un tableau par email.
+let _codesReaboParEmail = {};
 // État combiné des filtres — partagé par les deux boutons d'export, qui
 // exportent toujours exactement ce qui est affiché à l'écran.
 let _filtresComite = { recherche: '', statut: '', sectionId: '', niveau: '' };
@@ -710,10 +744,20 @@ async function loadMembresComite() {
   document.querySelectorAll('#filtresNiveauComite .filter-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.niveau === ''));
   try {
-    const [membres, sections] = await Promise.all([
+    const [membres, sections, codesReabo] = await Promise.all([
       UL.getAllMembres(),
       UL.getSections(),
+      // N'échoue jamais le chargement de la page si ça échoue (ex. rôle
+      // insuffisant côté serveur) — les cartes s'affichent juste sans
+      // code, dégradation silencieuse plutôt que page bloquée.
+      UL.listerCodesReabonnementAdmin().catch(() => []),
     ]);
+    _codesReaboParEmail = {};
+    codesReabo.forEach(c => {
+      const cle = (c.email || '').trim().toLowerCase();
+      if (!cle) return;
+      (_codesReaboParEmail[cle] = _codesReaboParEmail[cle] || []).push(c);
+    });
     const membreIds = membres.map(m => m.id);
     const [evals, participations] = await Promise.all([
       UL.getEvaluationsCourantesBatch(membreIds),
@@ -832,6 +876,7 @@ function renderMembreComiteCard(m) {
     : isCellule(m) ? '🛡️ Membre Cellule'
     : STATUT_LABEL_COMITE[m.statut] || m.statut;
   const categorie = categorieNotationComite(m);
+  const codesReabo = _codesReaboParEmail[(m.email||'').trim().toLowerCase()] || [];
   return `<div class="card" style="margin-bottom:8px;padding:12px;">
     <div style="display:flex;align-items:center;gap:10px;">
       <div class="avatar" style="width:36px;height:36px;font-size:13px;flex-shrink:0;">${((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase()}</div>
@@ -842,6 +887,11 @@ function renderMembreComiteCard(m) {
         ${m.section ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:1px;">🛡️ ${esc(m.section.nom)}</div>` : ''}
       </div>
       <span class="badge ${m.actif?'badge-vert':'badge-rouge'}" style="flex-shrink:0;font-size:10px;">${m.actif?'✅ Actif':'⛔ Bloqué'}</span>
+    </div>
+    <div style="margin-top:8px;">
+      ${codesReabo.length
+        ? codesReabo.map(c => `<span style="font-family:'Courier New',monospace;font-size:12px;font-weight:700;background:var(--fond2,rgba(255,255,255,.06));border-radius:5px;padding:3px 8px;display:inline-block;margin-right:4px;margin-top:4px;">🎫 ${esc(c.code)}</span>`).join('')
+        : `<span style="font-size:11px;color:var(--gris);opacity:.7;">🎫 Aucun code réabonnement pour cet email</span>`}
     </div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--gris);">
       <span>🖌️ ${m._participation?.tifoPresent ?? 0} présent${(m._participation?.tifoPresent ?? 0) === 1 ? '' : 's'} · ${m._participation?.tifoAbsent ?? 0} absent${(m._participation?.tifoAbsent ?? 0) === 1 ? '' : 's'}</span>
