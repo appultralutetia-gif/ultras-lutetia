@@ -1162,6 +1162,32 @@ async function redeemCodeReabonnement(code) {
   return data; // { success: true } ou { success: false, error: '...' }
 }
 
+// Retrouve le(s) code(s) de réabonnement associé(s) à l'email du membre
+// connecté — remplace la saisie manuelle : l'app affiche directement le
+// code au lieu de demander au membre de le retaper (cf. migration_
+// reabonnement_page.sql, retour Remi 09/07/2026 "je ne vois pas les
+// codes").
+async function getMesCodesReabonnement() {
+  const { data, error } = await sb.rpc('get_mes_codes_reabonnement');
+  if (error) throw error;
+  return data || [];
+}
+
+// Statut global (Bureau/Admin peut masquer la page "Mon (ré)abonnement"
+// en dehors de la période de campagne) — lecture publique, table à une
+// seule ligne (parametres_reabonnement).
+async function getStatutReabonnement() {
+  const { data, error } = await sb.from('parametres_reabonnement').select('ouvert').eq('id', 1).single();
+  if (error) throw error;
+  return !!(data && data.ouvert);
+}
+
+async function setReabonnementOuvert(ouvert) {
+  const { data, error } = await sb.rpc('set_reabonnement_ouvert', { p_ouvert: !!ouvert });
+  if (error) throw error;
+  return data;
+}
+
 // ============================================================
 // STATS
 // ============================================================
@@ -2151,7 +2177,7 @@ window.UL = {
   // Annonces
   getAnnonces, publierAnnonce,
   // Codes de réabonnement
-  redeemCodeReabonnement,
+  redeemCodeReabonnement, getMesCodesReabonnement, getStatutReabonnement, setReabonnementOuvert,
   // Stats
   getStats, getMesStats,
   // Matos
