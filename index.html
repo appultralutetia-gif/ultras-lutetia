@@ -562,6 +562,7 @@
           <button class="btn btn-secondary" onclick="showModal('modalMatchs');loadMatchsList()">⚽ Gérer le calendrier (matchs)</button>
           <button class="btn btn-secondary" onclick="showPage('pageGererCharte')">✏️ Gérer la charte</button>
           <button class="btn btn-secondary" onclick="showPage('pageGererCartage')">🗂️ Gérer le cartage</button>
+          <button class="btn btn-secondary" onclick="toggleReabonnementAdmin()">🎫 Activer/désactiver Réabonnement</button>
         </div>
       </div>
     </div>
@@ -666,6 +667,15 @@
       <span id="demandesBadge2" class="badge badge-orange" style="display:none;"></span>
     </div>
     <div id="demandesListeAdmin"></div>
+  </div>
+
+  <!-- ── PAGE MON (RÉ)ABONNEMENT (accessible depuis Profil) ────── -->
+  <div id="pageReabonnement" class="page">
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
+      <button class="btn btn-sm btn-secondary" onclick="showPage('pageProfil')">← Retour</button>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;">🎫 Mon (ré)abonnement</span>
+    </div>
+    <div id="reabonnementContainer"></div>
   </div>
 
   <!-- ── PAGE GÉRER LE CARTAGE ────────────────────────────────── -->
