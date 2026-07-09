@@ -181,28 +181,13 @@ async function loadReabonnement() {
       ${codes.map(c => `
         <div class="card" style="margin-bottom:10px;">
           ${c.nom || c.prenom ? `<div style="font-size:12px;color:var(--gris);margin-bottom:4px;">Pour : ${esc(c.prenom||'')} ${esc(c.nom||'')}</div>` : ''}
-          <div style="font-family:'Courier New',monospace;font-size:20px;font-weight:700;letter-spacing:1px;background:var(--fond2,rgba(255,255,255,.06));border-radius:8px;padding:10px;text-align:center;margin-bottom:10px;">
+          <div style="font-family:'Courier New',monospace;font-size:20px;font-weight:700;letter-spacing:1px;background:var(--fond2,rgba(255,255,255,.06));border-radius:8px;padding:10px;text-align:center;">
             ${esc(c.code)}
           </div>
-          ${c.utilise
-            ? `<div style="font-size:13px;color:var(--vert,#10B981);">✅ Marqué comme terminé${c.utilise_at ? ' le ' + new Date(c.utilise_at).toLocaleDateString('fr-FR') : ''}</div>`
-            : `<button class="btn btn-sm btn-secondary" style="width:100%;" onclick="doConfirmerReabonnement('${c.code}', this)">✅ J'ai terminé mon (ré)abonnement</button>`}
         </div>`).join('')}
     `;
   } catch(e) {
     el.innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger tes codes</div>';
-  }
-}
-
-async function doConfirmerReabonnement(code, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
-  try {
-    const res = await UL.redeemCodeReabonnement(code);
-    if (res && res.success) { toast('Réabonnement confirmé ✅', 'success'); loadReabonnement(); }
-    else { toast((res && res.error) || 'Impossible de confirmer', 'error'); if (btn) { btn.disabled = false; btn.textContent = "✅ J'ai terminé mon (ré)abonnement"; } }
-  } catch(e) {
-    toast(e.message || 'Impossible de confirmer', 'error');
-    if (btn) { btn.disabled = false; btn.textContent = "✅ J'ai terminé mon (ré)abonnement"; }
   }
 }
 
