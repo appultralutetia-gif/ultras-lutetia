@@ -86,6 +86,7 @@ const KNOWN_DYNAMIC = new Set([
   'evalTifoListe', 'evalTifoSearch',
   'evalComiteSympaListe', 'evalComiteDraftListe',
   'modalPropositionNotifs', // modale créée dynamiquement (cf. afficherModalePropositionNotifs, app.js) — jamais dans le HTML statique
+  'codeReaboInput', // input créé dynamiquement dans le template loadProfil() (profil.js) — jamais dans le HTML statique
 ]);
 
 // ── Validation d'un fichier ─────────────────────────────────────
