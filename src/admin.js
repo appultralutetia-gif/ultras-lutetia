@@ -633,6 +633,20 @@ async function refuserDemandeAdmin(membreId) {
   } catch(e) { toast('Impossible de refuser la demande', 'error'); }
 }
 
+// Bascule Bureau/Admin de la page "Mon (ré)abonnement" (Profil) — à
+// masquer en dehors de la période de campagne, cf. migration_
+// reabonnement_page.sql. Demande confirmation en rappelant l'état actuel
+// pour éviter un clic accidentel qui la couperait/rouvrirait pour tous.
+async function toggleReabonnementAdmin() {
+  try {
+    const ouvertActuel = await UL.getStatutReabonnement();
+    const action = ouvertActuel ? 'désactiver' : 'activer';
+    if (!confirm(`La page "Mon (ré)abonnement" est actuellement ${ouvertActuel ? 'ACTIVÉE' : 'DÉSACTIVÉE'} pour tous les membres.\nVeux-tu la ${action} ?`)) return;
+    await UL.setReabonnementOuvert(!ouvertActuel);
+    toast(`Page Réabonnement ${!ouvertActuel ? 'activée' : 'désactivée'} ✅`, 'success');
+  } catch(e) { toast(e.message || 'Impossible de changer ce paramètre', 'error'); }
+}
+
 // ─── CHARTE (Bureau+) ───────────────────────────────────────────
 async function loadGererCharte() {
   try {
