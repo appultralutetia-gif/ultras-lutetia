@@ -1148,19 +1148,12 @@ async function publierAnnonce(titre, contenu, categorie = 'info', celluleId = nu
 }
 
 // ============================================================
-// CODES DE RÉABONNEMENT (Cartage 26-27, activation depuis Profil)
+// CODES DE RÉABONNEMENT (Cartage 26-27, page "Mon (ré)abonnement")
 // ============================================================
-// Passe par la fonction Postgres redeem_code_reabonnement() (security
-// definer, cf. migration_codes_reabonnement.sql) plutôt que par une
-// requête directe sur la table codes_reabonnement : cette table contient
-// les emails/noms de TOUS les payeurs, jamais consultable en direct par
-// un membre — seule la fonction, qui vérifie le code contre l'email du
-// membre connecté et ne renvoie qu'un { success, error? }, y a accès.
-async function redeemCodeReabonnement(code) {
-  const { data, error } = await sb.rpc('redeem_code_reabonnement', { p_code: (code||'').trim() });
-  if (error) throw error;
-  return data; // { success: true } ou { success: false, error: '...' }
-}
+// Passe par des fonctions Postgres security definer (cf. migration_
+// reabonnement_page.sql) plutôt que par une requête directe sur la table
+// codes_reabonnement : cette table contient les emails/noms de TOUS les
+// payeurs, jamais consultable en direct par un membre.
 
 // Retrouve le(s) code(s) de réabonnement associé(s) à l'email du membre
 // connecté — remplace la saisie manuelle : l'app affiche directement le
@@ -2177,7 +2170,7 @@ window.UL = {
   // Annonces
   getAnnonces, publierAnnonce,
   // Codes de réabonnement
-  redeemCodeReabonnement, getMesCodesReabonnement, getStatutReabonnement, setReabonnementOuvert,
+  getMesCodesReabonnement, getStatutReabonnement, setReabonnementOuvert,
   // Stats
   getStats, getMesStats,
   // Matos
