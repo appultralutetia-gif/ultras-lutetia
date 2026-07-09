@@ -1,8 +1,22 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v48
+// ULTRAS LUTETIA — Service Worker v49
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v49 (09/07/2026) : CACHE_NAME bumpé (v48 → v49) — réorganisation du hub
+// ⚙️ Administration (demande Remi) : (1) sections Calendrier et Charte
+// fusionnées dans Membres (même garde isBureau) — un seul bloc avec
+// Gérer les membres / Créer un événement / Publier une annonce / Gérer
+// le calendrier / Gérer la charte / Gérer le cartage. (2) "Demandes
+// d'inscription en attente" déplacé de Membres vers Comité de passage
+// (public naturel de cette action). (3) Déplacements : bouton "Créer un
+// déplacement" retiré du hub — redondant avec "+ Nouveau déplacement"
+// déjà présent en haut de pageDeplacements. (4) Tifos : hub réduit à un
+// seul bouton "Gérer les tifos" ; "+ Nouveau tifo" (déjà là), "Modifier
+// une session" et "Évaluation membres" regroupés à l'intérieur de
+// pageTifos elle-même, sous la même garde hasCelluleTifo. Aucun
+// changement de logique métier, uniquement de placement des boutons.
 //
 // v48 (09/07/2026) : CACHE_NAME bumpé (v47 → v48) — Comité de passage
 // (page Membres → onglet Comité) : ajout d'un bouton "✏️ Modifier" sur
@@ -20,7 +34,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v48';
+const CACHE_NAME = 'ul-v49';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
