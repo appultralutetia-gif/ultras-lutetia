@@ -555,18 +555,56 @@ async function loadDemandesAdmin() {
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn btn-sm btn-secondary" onclick="validerDemandeAdmin('${m.id}','sympathisant')">💙 Sympa.</button>
-          <button class="btn btn-sm btn-success" onclick="validerDemandeAdmin('${m.id}','draft')">✅ Draft</button>
-          <button class="btn btn-sm btn-primary" onclick="validerDemandeAdmin('${m.id}','confirme')">⭐ Confirmé</button>
+          <button class="btn btn-sm btn-secondary" onclick="ouvrirValiderDemande('${m.id}','sympathisant','${esc(m.prenom)} ${esc(m.nom)}')">💙 Sympa.</button>
+          <button class="btn btn-sm btn-success" onclick="ouvrirValiderDemande('${m.id}','draft','${esc(m.prenom)} ${esc(m.nom)}')">✅ Draft</button>
+          <button class="btn btn-sm btn-primary" onclick="ouvrirValiderDemande('${m.id}','confirme','${esc(m.prenom)} ${esc(m.nom)}')">⭐ Confirmé</button>
           <button class="btn btn-sm btn-danger" onclick="refuserDemandeAdmin('${m.id}')">❌ Refuser</button>
         </div>
       </div>`).join('');
   } catch(e) { console.error('Erreur demandes admin:', e); }
 }
 
-async function validerDemandeAdmin(membreId, statut) {
+// Étape intermédiaire ajoutée le 09/07/2026 (demande Remi) : la section
+// est désormais demandée à la validation d'une demande d'inscription,
+// quel que soit le statut choisi — jusqu'ici un membre validé restait
+// sans section tant qu'un admin n'y repensait pas plus tard via "Modifier
+// le membre". _demandeEnCours mémorise le choix (membreId + statut) fait
+// dans la liste, le temps de choisir la section dans la petite modale.
+let _demandeEnCours = null;
+async function ouvrirValiderDemande(membreId, statut, nomAffiche) {
+  _demandeEnCours = { membreId, statut };
+  const LABEL_STATUT = { sympathisant: '💙 Sympathisant', draft: '✅ Draft', confirme: '⭐ Confirmé' };
+  document.getElementById('demandeValiderTitre').textContent =
+    `${nomAffiche || 'Ce membre'} → ${LABEL_STATUT[statut] || statut}`;
   try {
-    const membre = await UL.updateMembre(membreId, { statut, actif: true });
+    const sections = await UL.getSections();
+    const sel = document.getElementById('demandeValiderSection');
+    sel.innerHTML = '<option value="">-- Sélectionner une section --</option>' +
+      sections.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
+  } catch(e) {
+    document.getElementById('demandeValiderSection').innerHTML = '<option value="">Erreur chargement sections</option>';
+  }
+  showModal('modalValiderDemande');
+}
+
+async function confirmerValiderDemande(btn) {
+  if (!_demandeEnCours) return;
+  const sectionId = document.getElementById('demandeValiderSection').value;
+  if (!sectionId) return toast('Sélectionne une section', 'error');
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+  try {
+    await validerDemandeAdmin(_demandeEnCours.membreId, _demandeEnCours.statut, sectionId);
+    closeModal('modalValiderDemande');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+    _demandeEnCours = null;
+  }
+}
+
+async function validerDemandeAdmin(membreId, statut, sectionId) {
+  try {
+    const membre = await UL.updateMembre(membreId, { statut, actif: true, section_id: sectionId || null });
     toast(`Membre accepté → ${statut} ✅`, 'success');
     if (membre && membre.email) {
       UL.envoyerEmailValidation(membre).catch(() => {});
