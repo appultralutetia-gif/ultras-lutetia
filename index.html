@@ -563,6 +563,7 @@
           <button class="btn btn-secondary" onclick="showPage('pageGererCharte')">✏️ Gérer la charte</button>
           <button class="btn btn-secondary" onclick="showPage('pageGererCartage')">🗂️ Gérer le cartage</button>
           <button class="btn btn-secondary" onclick="toggleReabonnementAdmin()">🎫 Activer/désactiver Réabonnement</button>
+          <button class="btn btn-secondary" onclick="showPage('pageVerifCode')">🔍 Vérifier un code réabonnement</button>
         </div>
       </div>
     </div>
@@ -621,6 +622,7 @@
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button class="btn btn-secondary" onclick="showPage('pageMembresComite')">🌟 Évaluation des membres</button>
           <button class="btn btn-secondary" onclick="showPage('pageDemandesAdmin')">🔔 Demandes d'inscription en attente</button>
+          <button class="btn btn-secondary" onclick="showPage('pageVerifCode')">🔍 Vérifier un code réabonnement</button>
         </div>
       </div>
     </div>
@@ -676,6 +678,20 @@
       <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;">🎫 Mon (ré)abonnement</span>
     </div>
     <div id="reabonnementContainer"></div>
+  </div>
+
+  <!-- ── PAGE ADMIN — VÉRIFIER UN CODE RÉABONNEMENT (Bureau+) ──── -->
+  <div id="pageVerifCode" class="page">
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
+      <button class="btn btn-sm btn-secondary" onclick="showPage('pageAdmin')">← Retour</button>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;">🔍 Vérifier un code réabonnement</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <input type="text" id="verifCodeRecherche" placeholder="Nom, prénom, email ou code" style="flex:1;"
+        onkeydown="if(event.key==='Enter') chercherCodeReaboAdmin()">
+      <button class="btn btn-primary" onclick="chercherCodeReaboAdmin()">Chercher</button>
+    </div>
+    <div id="verifCodeResultats"></div>
   </div>
 
   <!-- ── PAGE GÉRER LE CARTAGE ────────────────────────────────── -->
