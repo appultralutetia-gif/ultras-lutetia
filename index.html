@@ -1139,12 +1139,15 @@
 <div class="modal-overlay" id="modalEditMembre" style="display:none;" onclick="closeModalOutside(event,'modalEditMembre')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
-    <h3 class="modal-title">Modifier le membre</h3>
+    <h3 class="modal-title" id="modalEditMembreTitre">Modifier le membre</h3>
     <input type="hidden" id="editMembreId">
-    <div class="form-group"><label>Prénom</label><input type="text" id="editPrenom"></div>
-    <div class="form-group"><label>Nom</label><input type="text" id="editNom"></div>
-    <div class="form-group"><label>Pseudo Telegram</label><input type="text" id="editTelegram"></div>
-    <div class="form-group"><label>Email</label><input type="email" id="editEmail" placeholder="email@exemple.fr"></div>
+    <!-- Champs d'identité — masqués en mode "comité" (cf. openEditMembreComite,
+         admin.js) : le Comité de passage peut modifier le statut, la section et
+         les rôles, jamais l'identité (nom/prénom/pseudo/email) du membre. -->
+    <div class="form-group champ-identite-membre"><label>Prénom</label><input type="text" id="editPrenom"></div>
+    <div class="form-group champ-identite-membre"><label>Nom</label><input type="text" id="editNom"></div>
+    <div class="form-group champ-identite-membre"><label>Pseudo Telegram</label><input type="text" id="editTelegram"></div>
+    <div class="form-group champ-identite-membre"><label>Email</label><input type="email" id="editEmail" placeholder="email@exemple.fr"></div>
 
     <!-- Statut UL (affichage membre) -->
     <div class="form-group">
