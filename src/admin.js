@@ -54,10 +54,41 @@ const ROLES_DEFS = [
   { key:'cellule_comite',  label:'🔔 Comité de Passage' },
 ];
 let _rolesActifs = new Set();
+// Mode d'ouverture du modal partagé modalEditMembre :
+// - 'complet' : page Membres (Bureau+) — tous les champs, tous les rôles.
+// - 'comite'  : page Comité de passage — identité en lecture seule
+//   (champs masqués), rôles Admin/Bureau exclus de la liste (un membre
+//   éligible au Comité — donc jamais protégé, cf. renderMembreComiteCard
+//   — ne les a de toute façon jamais ; les proposer ici permettrait au
+//   Comité de se créer un accès Admin/Bureau lui-même, jamais voulu).
+let _modalEditMembreMode = 'complet';
 
 async function openEditMembre(id) {
   const m = allMembres.find(x => x.id === id);
   if (!m) return;
+  await _ouvrirModalEditMembre(m, 'complet');
+}
+
+// Ouverture depuis la page Comité de passage — cf. demande Remi
+// 09/07/2026 : le Comité doit pouvoir modifier Statut UL, Section et
+// Rôles Fonctionnels (jusqu'ici : uniquement notation + blocage). Jamais
+// disponible pour un membre protégé (Bureau/Admin) — le bouton n'est de
+// toute façon affiché que pour les membres non-protégés, cf.
+// renderMembreComiteCard.
+async function openEditMembreComite(id) {
+  const m = _allMembresComite.find(x => x.id === id);
+  if (!m) return;
+  await _ouvrirModalEditMembre(m, 'comite');
+}
+
+async function _ouvrirModalEditMembre(m, mode) {
+  _modalEditMembreMode = mode;
+  document.getElementById('modalEditMembreTitre').textContent =
+    mode === 'comite' ? 'Modifier statut & accès' : 'Modifier le membre';
+  document.querySelectorAll('.champ-identite-membre').forEach(el => {
+    el.style.display = mode === 'comite' ? 'none' : '';
+  });
+
   document.getElementById('editMembreId').value = m.id;
   document.getElementById('editPrenom').value = m.prenom||'';
   document.getElementById('editNom').value = m.nom||'';
@@ -81,10 +112,14 @@ async function openEditMembre(id) {
     selSec.value = membreSectionId || (ulOption ? ulOption.id : (sections[0]?.id || ''));
   } catch(e) { document.getElementById('editSection').innerHTML = '<option value="">Ultra Lutetia</option>'; }
 
-  // Rôles fonctionnels
+  // Rôles fonctionnels — Admin/Bureau exclus de la liste en mode 'comite'
+  // (cf. commentaire sur _modalEditMembreMode ci-dessus).
   _rolesActifs = new Set(Array.isArray(m.roles_app) ? m.roles_app : []);
+  const rolesAffiches = mode === 'comite'
+    ? ROLES_DEFS.filter(r => r.key !== 'admin_app' && r.key !== 'bureau_app')
+    : ROLES_DEFS;
   const container = document.getElementById('rolesContainer');
-  container.innerHTML = ROLES_DEFS.map(r => {
+  container.innerHTML = rolesAffiches.map(r => {
     const actif = _rolesActifs.has(r.key);
     // role="checkbox" + aria-checked + tabindex : sans ces attributs, un
     // lecteur d'écran ne peut pas percevoir que cette ligne est une case à
@@ -158,7 +193,8 @@ async function doSauvegarderMembre(btn) {
     });
     toast('Membre mis à jour ✅', 'success');
     closeModal('modalEditMembre');
-    loadMembres();
+    if (_modalEditMembreMode === 'comite') loadMembresComite();
+    else loadMembres();
   } catch(e) {
     toast('Erreur: ' + (e.message||''), 'error');
   } finally {
@@ -769,7 +805,8 @@ function renderMembreComiteCard(m) {
       }).join('')}
     </div>` : ''}
     ${!protege ? `
-    <div style="margin-top:10px;">
+    <div style="margin-top:10px;display:flex;gap:8px;">
+      <button class="btn btn-sm btn-secondary" onclick="openEditMembreComite('${m.id}')">✏️ Modifier</button>
       <button class="btn btn-sm ${m.actif?'btn-danger':'btn-success'}" onclick="toggleMembreComite('${m.id}',${!m.actif})">
         ${m.actif?'⛔ Bloquer':'✅ Débloquer'}
       </button>
