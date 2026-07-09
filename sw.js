@@ -1,8 +1,31 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v52
+// ULTRAS LUTETIA — Service Worker v54
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v54 (09/07/2026) : CACHE_NAME bumpé (v53 → v54) — "🔍 Vérifier un code
+// réabonnement" ouvert au Comité de passage (demande Remi), pas
+// seulement Bureau/Admin : bouton ajouté dans la section Comité de
+// passage du hub Admin, en plus de Membres. La fonction Postgres
+// admin_rechercher_code_reabonnement() revérifiée pour accepter le rôle
+// cellule_comite en plus de admin_app/bureau_app (cf. migration_maj_role
+// _recherche_code.sql). ⚠️ Nécessite d'exécuter cette migration (après
+// migration_admin_recherche_code.sql) avant de déployer index.html.
+//
+// v53 (09/07/2026) : CACHE_NAME bumpé (v52 → v53) — nouvel outil Bureau/
+// Admin "🔍 Vérifier un code réabonnement" (Membres → pageVerifCode) :
+// recherche par nom/prénom/email/code dans codes_reabonnement, pour
+// confirmer qu'une personne a bien un code sans attendre qu'elle se
+// connecte elle-même sur "Mon (ré)abonnement". Passe par la fonction
+// Postgres security definer admin_rechercher_code_reabonnement()
+// (cf. migration_admin_recherche_code.sql) qui revérifie elle-même le
+// rôle Bureau/Admin côté serveur — un appel par un membre non autorisé
+// renvoie toujours un tableau vide, jamais une erreur qui confirmerait
+// l'existence de la fonction. ⚠️ Nécessite d'exécuter
+// migration_admin_recherche_code.sql (après migration_reabonnement_page
+// .sql, qui doit déjà avoir été passé) avant de déployer les fichiers
+// front.
 //
 // v52 (09/07/2026) : CACHE_NAME bumpé (v51 → v52) — retrait du bouton
 // "J'ai terminé mon (ré)abonnement" sur la page Mon (ré)abonnement
@@ -89,7 +112,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v52';
+const CACHE_NAME = 'ul-v54';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
