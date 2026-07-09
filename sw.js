@@ -1,8 +1,19 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v51
+// ULTRAS LUTETIA — Service Worker v52
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v52 (09/07/2026) : CACHE_NAME bumpé (v51 → v52) — retrait du bouton
+// "J'ai terminé mon (ré)abonnement" sur la page Mon (ré)abonnement
+// (demande Remi) : la page se limite maintenant à afficher le/les
+// code(s) du membre, sans action de confirmation déclarative. Code mort
+// retiré en conséquence : redeemCodeReabonnement (supabase-client.js,
+// plus appelée nulle part) et doConfirmerReabonnement (profil.js). La
+// fonction Postgres redeem_code_reabonnement() et les colonnes
+// utilise/utilise_par/utilise_at restent en base (inoffensives, non
+// utilisées) — pas de migration nécessaire pour ce changement, uniquement
+// front.
 //
 // v51 (09/07/2026) : CACHE_NAME bumpé (v50 → v51) — refonte de la
 // fonctionnalité "codes de réabonnement" (retour Remi : "je ne vois pas
@@ -78,7 +89,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v51';
+const CACHE_NAME = 'ul-v52';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
