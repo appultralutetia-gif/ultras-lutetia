@@ -86,7 +86,7 @@ const KNOWN_DYNAMIC = new Set([
   'evalTifoListe', 'evalTifoSearch',
   'evalComiteSympaListe', 'evalComiteDraftListe',
   'modalPropositionNotifs', // modale créée dynamiquement (cf. afficherModalePropositionNotifs, app.js) — jamais dans le HTML statique
-  'codeReaboInput', // input créé dynamiquement dans le template loadProfil() (profil.js) — jamais dans le HTML statique
+  'profilReabonnementBtn', // conteneur du bouton "Mon (ré)abonnement", injecté dynamiquement dans le template loadProfil() (profil.js) — jamais dans le HTML statique lui-même (c'est le DIV parent qui l'accueille qui y est, pas cet id)
 ]);
 
 // ── Validation d'un fichier ─────────────────────────────────────
