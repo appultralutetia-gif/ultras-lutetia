@@ -1132,6 +1132,22 @@
   </div>
 </div>
 
+<!-- Modal Admin — Choisir la section à la validation d'une demande -->
+<div class="modal-overlay" id="modalValiderDemande" style="display:none;" onclick="closeModalOutside(event,'modalValiderDemande')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title" id="demandeValiderTitre">Valider la demande</h3>
+    <div class="form-group">
+      <label>Section</label>
+      <select id="demandeValiderSection">
+        <option value="">Chargement...</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="confirmerValiderDemande(this)">Valider</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalValiderDemande')">Annuler</button>
+  </div>
+</div>
+
 <!-- Modal Admin — Modifier membre -->
 <div class="modal-overlay" id="modalEditMembre" style="display:none;" onclick="closeModalOutside(event,'modalEditMembre')">
   <div class="modal" onclick="event.stopPropagation()">
