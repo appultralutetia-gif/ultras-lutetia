@@ -1122,8 +1122,14 @@ async function getListeBusTelegram(deplacementId) {
 // ============================================================
 
 async function getAnnonces() {
+  // Explicite comme pour inscriptions_deplacement/commandes/sticks_distribution
+  // (cf. commentaire ligne ~26 plus haut) : dès qu'un embed membres(...) est
+  // ajouté sur une table, préciser la contrainte FK exacte évite l'erreur
+  // PGRST201 "relation ambiguë" si une 2e colonne référençant membres(id)
+  // est ajoutée un jour sur annonces (modération, etc.) — coût nul si elle
+  // n'existe pas encore, protège si elle apparaît plus tard.
   const { data, error } = await sb.from('annonces')
-    .select('*, publie_par:membres(nom, prenom)')
+    .select('*, publie_par:membres!annonces_publie_par_fkey(nom, prenom)')
     .eq('actif', true)
     .order('created_at', { ascending: false })
     .limit(10);
@@ -1139,6 +1145,21 @@ async function publierAnnonce(titre, contenu, categorie = 'info', celluleId = nu
   });
   if (error) throw error;
   return { success: true };
+}
+
+// ============================================================
+// CODES DE RÉABONNEMENT (Cartage 26-27, activation depuis Profil)
+// ============================================================
+// Passe par la fonction Postgres redeem_code_reabonnement() (security
+// definer, cf. migration_codes_reabonnement.sql) plutôt que par une
+// requête directe sur la table codes_reabonnement : cette table contient
+// les emails/noms de TOUS les payeurs, jamais consultable en direct par
+// un membre — seule la fonction, qui vérifie le code contre l'email du
+// membre connecté et ne renvoie qu'un { success, error? }, y a accès.
+async function redeemCodeReabonnement(code) {
+  const { data, error } = await sb.rpc('redeem_code_reabonnement', { p_code: (code||'').trim() });
+  if (error) throw error;
+  return data; // { success: true } ou { success: false, error: '...' }
 }
 
 // ============================================================
@@ -2129,6 +2150,8 @@ window.UL = {
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
   // Annonces
   getAnnonces, publierAnnonce,
+  // Codes de réabonnement
+  redeemCodeReabonnement,
   // Stats
   getStats, getMesStats,
   // Matos
