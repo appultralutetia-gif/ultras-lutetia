@@ -1181,6 +1181,28 @@ async function setReabonnementOuvert(ouvert) {
   return data;
 }
 
+// Recherche Bureau/Admin d'un code (par nom/prénom/email/code) — pour
+// vérifier qu'une personne a bien un code sans attendre qu'elle se
+// connecte elle-même sur "Mon (ré)abonnement". Le rôle est vérifié côté
+// serveur (cf. migration_admin_recherche_code.sql) : un membre non
+// Bureau/Admin obtient toujours un tableau vide.
+async function rechercherCodeReabonnementAdmin(recherche) {
+  const { data, error } = await sb.rpc('admin_rechercher_code_reabonnement', { p_recherche: (recherche||'').trim() });
+  if (error) throw error;
+  return data || [];
+}
+
+// Toute la table en un appel (Bureau/Admin/Comité) — pour affichage
+// direct du code sur chaque carte membre (page Comité de passage) au
+// lieu d'une recherche au cas par cas, cf. migration_liste_codes_
+// reabonnement.sql (retour Remi 09/07/2026, "il faudrait surtout avoir
+// le code ici").
+async function listerCodesReabonnementAdmin() {
+  const { data, error } = await sb.rpc('admin_lister_codes_reabonnement');
+  if (error) throw error;
+  return data || [];
+}
+
 // ============================================================
 // STATS
 // ============================================================
@@ -2170,7 +2192,7 @@ window.UL = {
   // Annonces
   getAnnonces, publierAnnonce,
   // Codes de réabonnement
-  getMesCodesReabonnement, getStatutReabonnement, setReabonnementOuvert,
+  getMesCodesReabonnement, getStatutReabonnement, setReabonnementOuvert, rechercherCodeReabonnementAdmin, listerCodesReabonnementAdmin,
   // Stats
   getStats, getMesStats,
   // Matos
