@@ -1,8 +1,33 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v49
+// ULTRAS LUTETIA — Service Worker v50
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v50 (09/07/2026) : CACHE_NAME bumpé (v49 → v50) — 3 sujets (demande
+// Remi) : (1) Correctif "Impossible de charger les annonces" sur
+// Accueil : getAnnonces() précise désormais la contrainte FK exacte
+// (membres!annonces_publie_par_fkey) au lieu d'un embed membres(...)
+// implicite, même correctif que celui déjà appliqué à
+// inscriptions_deplacement/commandes/sticks_distribution — erreur
+// PGRST201 "relation ambiguë" si une 2e colonne référençant membres(id)
+// existe sur annonces. (2) Demandes d'inscription en attente : valider
+// une demande (Sympathisant/Draft/Confirmé) demande maintenant la
+// section avant validation — nouvelle petite modale modalValiderDemande,
+// section obligatoire, sinon le membre restait sans section jusqu'à une
+// modification manuelle ultérieure. (3) Codes de réabonnement (Cartage
+// 26-27) : nouveau champ "Code de réabonnement" dans Profil, visible
+// uniquement si cotisation_a_jour = false — active le cartage d'un
+// membre ayant déjà payé hors app (liste externe de 364 codes,
+// cf. migration_codes_reabonnement.sql) sans passer par le flux HelloAsso
+// in-app. Vérification (email correspondant, code non déjà utilisé)
+// entièrement côté serveur via la fonction Postgres security definer
+// redeem_code_reabonnement() — le membre n'a jamais un accès direct à la
+// table codes_reabonnement (RLS activé, aucune policy publique, comme
+// helloasso_tokens), qui contient les emails de tous les payeurs.
+// ⚠️ Nécessite d'exécuter migration_codes_reabonnement.sql AVANT de
+// déployer les fichiers front (sinon l'appel RPC échoue, fonction
+// inexistante).
 //
 // v49 (09/07/2026) : CACHE_NAME bumpé (v48 → v49) — réorganisation du hub
 // ⚙️ Administration (demande Remi) : (1) sections Calendrier et Charte
@@ -34,7 +59,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v49';
+const CACHE_NAME = 'ul-v50';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
