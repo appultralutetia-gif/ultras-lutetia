@@ -1,8 +1,27 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v50
+// ULTRAS LUTETIA — Service Worker v51
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v51 (09/07/2026) : CACHE_NAME bumpé (v50 → v51) — refonte de la
+// fonctionnalité "codes de réabonnement" (retour Remi : "je ne vois pas
+// les codes") : ce n'est plus au membre de saisir son code — l'app le
+// retrouve elle-même (via son email, fonction Postgres security definer
+// get_mes_codes_reabonnement) et l'affiche sur une page dédiée "🎫 Mon
+// (ré)abonnement", accessible depuis Profil, avec : le lien vers
+// https://billetterie.parisfc.fr/fr/access/activation-code (site externe
+// où le code sert réellement), le guide PDF fourni par le club
+// (guide-code-activation.pdf, nouvel asset statique), et un bouton
+// déclaratif "J'ai terminé" qui marque cotisation_a_jour = true (aucune
+// vérification automatique possible, pas de connexion à la billetterie
+// PFC depuis l'app). Cette page est masquable pour tous en une fois par
+// le Bureau/Admin (nouveau bouton dans Membres → "Activer/désactiver
+// Réabonnement", table à une ligne parametres_reabonnement) — utile en
+// dehors de la période de campagne. ⚠️ Nécessite d'exécuter
+// migration_reabonnement_page.sql (après migration_codes_reabonnement
+// [_TEST].sql, qui doit déjà avoir été passé) avant de déployer les
+// fichiers front.
 //
 // v50 (09/07/2026) : CACHE_NAME bumpé (v49 → v50) — 3 sujets (demande
 // Remi) : (1) Correctif "Impossible de charger les annonces" sur
@@ -59,7 +78,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v50';
+const CACHE_NAME = 'ul-v51';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
