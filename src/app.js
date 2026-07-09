@@ -710,11 +710,10 @@ function applyRights(membre) {
     document.getElementById('nav6').style.display = 'flex';
   }
 
-  // Sections Admin page
+  // Sections Admin page — Calendrier et Charte fusionnées dans Membres
+  // (même garde isBureau), cf. index.html (demande Remi 09/07/2026).
   if (isBureau(membre)) {
     el('adminSectionMembres').style.display = 'block';
-    el('adminSectionCalendrier').style.display = 'block';
-    el('adminSectionCharte').style.display = 'block';
   }
   if (hasCelluleDepl(membre))   el('adminSectionDepl').style.display = 'block';
   if (hasCelluleTifo(membre))   el('adminSectionTifos').style.display = 'block';
