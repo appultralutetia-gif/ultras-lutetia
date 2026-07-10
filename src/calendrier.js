@@ -88,7 +88,7 @@ function filtrerCalendrier(filtre) {
   }).join('');
 }
 
-function renderMatchCard(match, membre) {
+function renderMatchCard(match, membre, avecPresence = false) {
   const date = formatDateCourte(match.date) || '—';
   const heure = formatHeureCourte(match.horaire);
   const isPasse = match.date && new Date(match.date) < new Date();
@@ -149,6 +149,7 @@ function renderMatchCard(match, membre) {
     </div>
     ${saisieScore}
     ${deplBtn}
+    ${avecPresence && match.type === 'domicile' ? `<div id="presenceMatch_${match.id}" style="margin-top:8px;"></div>` : ''}
   </div>`;
 }
 
@@ -156,6 +157,34 @@ function renderMatchCard(match, membre) {
 // en même temps que le bouton "Modifier le match" de renderMatchCard —
 // la modification d'un match n'est plus accessible depuis l'accueil ni le
 // calendrier, uniquement via Admin → "Gérer le calendrier (matchs)".
+
+// Bouton "Présent" gratuit pour un match à domicile (demande Remi
+// 09/07/2026) — contrairement à un déplacement (extérieur, payant), rien
+// n'engage financièrement ici, donc désinscription possible à tout
+// moment. Peuplé après coup (pas dans renderMatchCard elle-même, qui
+// reste synchrone) puisqu'il faut interroger la base pour savoir si le
+// membre a déjà déclaré sa présence — appelé uniquement là où la carte a
+// été rendue avec avecPresence=true (cf. renderMatchCard).
+async function afficherPresenceMatch(matchId) {
+  const el = document.getElementById(`presenceMatch_${matchId}`);
+  if (!el) return;
+  try {
+    const present = await UL.getMaPresenceMatch(matchId);
+    el.innerHTML = present
+      ? `<button class="btn btn-sm btn-secondary" style="width:100%;" onclick="doAnnulerPresenceMatch('${matchId}')">✅ Présent — Se désinscrire</button>`
+      : `<button class="btn btn-sm btn-success" style="width:100%;" onclick="doDeclarerPresenceMatch('${matchId}')">✅ Présent au match</button>`;
+  } catch(e) { /* silencieux — pas critique pour l'affichage du reste de la carte */ }
+}
+
+async function doDeclarerPresenceMatch(matchId) {
+  try { await UL.declarerPresenceMatch(matchId); toast('Présence confirmée ✅', 'success'); afficherPresenceMatch(matchId); }
+  catch(e) { toast(e.message || 'Impossible de confirmer ta présence', 'error'); }
+}
+
+async function doAnnulerPresenceMatch(matchId) {
+  try { await UL.annulerPresenceMatch(matchId); toast('Présence annulée', 'success'); afficherPresenceMatch(matchId); }
+  catch(e) { toast(e.message || "Impossible d'annuler ta présence", 'error'); }
+}
 
 function renderEvenementCard(ev) {
   const types = { reunion:'🤝', bbq:'🍖', fete:'🎊', autre:'🎉' };
