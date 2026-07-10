@@ -1425,20 +1425,50 @@ async function getStats() {
   };
 }
 
+// ⚠️ Refonte 09/07/2026 (demande Remi) : anciennes stats (sessionsInscrites,
+// deplacements = tout compté, payé ou non) remplacées par 4 compteurs plus
+// parlants : matchs total (toute la saison), présences déclarées à
+// domicile (presences_matchs_domicile), présences confirmées à
+// l'extérieur (déplacements où present_at est renseigné — scanné le jour
+// J, pas juste inscrit/payé), et sessions tifo réalisées (inchangé, déjà
+// basé sur statut='present').
 async function getMesStats() {
-  const [inscriptions, presences, depls] = await Promise.all([
-    sb.from('inscriptions_session').select('statut').eq('membre_id', currentUser.id),
-    sb.from('inscriptions_session').select('id').eq('membre_id', currentUser.id).eq('statut','present'),
-    sb.from('inscriptions_deplacement').select('statut_paiement').eq('membre_id', currentUser.id),
+  const [matchsTotal, presencesTifo, presencesDomicile, presencesExterieur] = await Promise.all([
+    sb.from('matchs').select('id', { count: 'exact', head: true }),
+    sb.from('inscriptions_session').select('id', { count: 'exact', head: true }).eq('membre_id', currentUser.id).eq('statut','present'),
+    sb.from('presences_matchs_domicile').select('id', { count: 'exact', head: true }).eq('membre_id', currentUser.id),
+    sb.from('inscriptions_deplacement').select('id', { count: 'exact', head: true }).eq('membre_id', currentUser.id).not('present_at', 'is', null),
   ]);
-  const totalInscrits = inscriptions.data?.length || 0;
-  const totalPresents = presences.data?.length || 0;
   return {
-    sessionsInscrites: totalInscrits,
-    sessionsPresent: totalPresents,
-    tauxPresence: totalInscrits > 0 ? Math.round((totalPresents / totalInscrits) * 100) : 0,
-    deplacements: depls.data?.length || 0,
+    matchsTotal: matchsTotal.count || 0,
+    sessionsPresent: presencesTifo.count || 0,
+    presencesDomicile: presencesDomicile.count || 0,
+    presencesExterieur: presencesExterieur.count || 0,
   };
+}
+
+// ============================================================
+// PRÉSENCE MATCHS DOMICILE (déclarative, gratuite) — 09/07/2026
+// ============================================================
+async function getMaPresenceMatch(matchId) {
+  const { data, error } = await sb.from('presences_matchs_domicile')
+    .select('id').eq('match_id', matchId).eq('membre_id', currentUser.id).maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
+
+async function declarerPresenceMatch(matchId) {
+  const { error } = await sb.from('presences_matchs_domicile')
+    .insert({ match_id: matchId, membre_id: currentUser.id });
+  if (error) throw error;
+  return { success: true };
+}
+
+async function annulerPresenceMatch(matchId) {
+  const { error } = await sb.from('presences_matchs_domicile')
+    .delete().eq('match_id', matchId).eq('membre_id', currentUser.id);
+  if (error) throw error;
+  return { success: true };
 }
 
 // ============================================================
@@ -2402,6 +2432,7 @@ window.UL = {
   genererLienConnexionAdmin,
   // Stats
   getStats, getMesStats,
+  getMaPresenceMatch, declarerPresenceMatch, annulerPresenceMatch,
   // Matos
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
   passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande, marquerCommandePreparee, distribuerProduitAdmin,
