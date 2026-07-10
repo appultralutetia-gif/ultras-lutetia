@@ -33,6 +33,7 @@ function renderMembres(membres) {
       <div class="membre-card-actions">
         <button class="btn btn-sm btn-secondary" onclick="openEditMembre('${m.id}')">✏️ Modifier</button>
         <button class="btn btn-sm btn-secondary" onclick="adminResetMdp('${m.id}','${esc(m.email||'')}','${esc(m.prenom||'')}')">🔑 MDP</button>
+        ${isAdmin(UL.getCurrentMembre()) ? `<button class="btn btn-sm btn-secondary" onclick="doConnexionEnTantQue('${m.id}','${esc(m.prenom||'')} ${esc(m.nom||'')}')">🕵️ Se connecter en tant que</button>` : ''}
         <button class="btn btn-sm ${m.actif?'btn-danger':'btn-success'}" onclick="toggleMembre('${m.id}',${!m.actif})">
           ${m.actif?'Bloquer':'Débloquer'}
         </button>
@@ -214,6 +215,26 @@ async function adminResetMdp(membreId, email, prenom) {
     await UL.updateMembreMdp(membreId);
     toast(`Email de réinitialisation envoyé à ${prenom} ✅`, 'success');
   } catch(e) { toast(e.message || 'Impossible d\'envoyer le reset', 'error'); }
+}
+
+// Connexion en tant que (Admin uniquement, cf. bouton conditionné à
+// isAdmin dans renderMembres — même vérification refaite côté serveur
+// dans l'Edge Function, qui ne fait pas confiance à l'UI). Le lien
+// généré REMPLACE la session actuelle si ouvert dans le même navigateur
+// (stockage de session partagé par origine, pas par onglet) — d'où
+// l'avertissement explicite avant de l'ouvrir, et l'ouverture dans un
+// nouvel onglet plutôt qu'en redirigeant celui-ci.
+async function doConnexionEnTantQue(membreId, nomAffiche) {
+  if (!confirm(
+    `Générer un lien de connexion pour ${nomAffiche} ?\n\n` +
+    `⚠️ Si tu l'ouvres dans ce même navigateur, ça remplacera TA session Admin actuelle par la sienne (la session est partagée par le navigateur, pas par onglet).\n\n` +
+    `Pour garder ta session Admin active en parallèle, ouvre le lien dans une fenêtre de navigation privée.`
+  )) return;
+  try {
+    const res = await UL.genererLienConnexionAdmin(membreId);
+    window.open(res.lien, '_blank');
+    toast(`Lien généré pour ${nomAffiche} ✅ — ouvre-le en navigation privée pour garder ta session Admin`, 'success');
+  } catch(e) { toast(e.message || 'Impossible de générer le lien', 'error'); }
 }
 
 async function supprimerMembre(membreId, nom) {
