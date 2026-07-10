@@ -1,8 +1,20 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v67
+// ULTRAS LUTETIA — Service Worker v68
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v68 (09/07/2026) : CACHE_NAME bumpé (v67 → v68) — l'email + notification
+// de validation de compte (déjà existants, cf. envoyerEmailValidation)
+// n'étaient envoyés QUE depuis "Demandes d'inscription en attente"
+// (validerDemandeAdmin) — jamais depuis le modal "Modifier le membre" /
+// "Modifier statut & accès", pourtant le chemin emprunté par le Comité de
+// passage pour valider (cf. openEditMembreComite). doSauvegarderMembre
+// envoie désormais aussi l'email + la notif, mais seulement pour une
+// VRAIE première validation (statut sympathisant → draft/confirmé,
+// détecté via _statutAvantEditionMembre mémorisé à l'ouverture du modal)
+// — jamais pour un changement de statut ultérieur ou une simple
+// correction de nom, qui enverraient un "bienvenue" hors de propos.
 //
 // v67 (09/07/2026) : CACHE_NAME bumpé (v66 → v67) — 2 correctifs :
 // (1) Annonces enfin résolu — vraie erreur obtenue cette fois : "column
@@ -330,7 +342,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v67';
+const CACHE_NAME = 'ul-v68';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
