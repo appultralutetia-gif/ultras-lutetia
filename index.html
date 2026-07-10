@@ -887,6 +887,44 @@
   </div>
 </div>
 
+<!-- Modal inscription multi-personnes (soi + amis app + invités hors app)
+     — demande Remi 09/07/2026. Remplace l'ancien clic direct "M'inscrire"
+     par une étape de sélection quand au moins une des deux options
+     (amis/invités) existe pour ce déplacement. -->
+<div class="modal-overlay" id="modalInscritDepl" style="display:none;" onclick="closeModalOutside(event,'modalInscritDepl')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title">S'inscrire au déplacement</h3>
+    <div id="inscritDeplQuotaInfo"></div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
+        <input type="checkbox" id="idAvecAmis" onchange="toggleAmisDepl()" style="width:20px;height:20px;accent-color:#1A56DB;">
+        <span style="font-size:14px;">👨‍👩‍👧 Inscrire des amis de l'app</span>
+      </label>
+    </div>
+    <div id="blocAmisDepl" style="display:none;margin-bottom:10px;">
+      <input type="text" id="idRechercheAmis" placeholder="🔎 Rechercher un membre…" oninput="filtrerAmisDepl()">
+      <div id="listeAmisDepl" style="max-height:220px;overflow-y:auto;margin-top:8px;"></div>
+    </div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
+        <input type="checkbox" id="idAvecInvites" onchange="toggleInvitesDepl()" style="width:20px;height:20px;accent-color:#1A56DB;">
+        <span style="font-size:14px;">➕ Ajouter des amis hors app</span>
+      </label>
+    </div>
+    <div id="blocInvitesDepl" style="display:none;margin-bottom:10px;">
+      <div id="listeInvitesDepl"></div>
+      <button class="btn btn-sm btn-secondary" style="width:100%;margin-top:4px;" onclick="ajouterLigneInviteDepl()">+ Ajouter un ami</button>
+    </div>
+
+    <div id="inscritDeplRecap" style="margin:14px 0;font-size:14px;font-weight:600;"></div>
+    <button class="btn btn-primary" onclick="doInscritDeplMulti(this)">Payer</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalInscritDepl')">Annuler</button>
+  </div>
+</div>
+
 <!-- Modal Scan Membre (réutilisée pour Déplacement / Matos / Stick — cf.
      ouvrirScanMembre(contexte) dans scan.js). Coupe la caméra à la fermeture
      (onclick sur l'overlay ET sur le bouton de fermeture dans le contenu
@@ -1079,6 +1117,20 @@
     <div class="form-group"><label>Prix total (€)</label><input type="number" id="dPrix" placeholder="55"></div>
     <div class="form-group"><label>Places max</label><input type="number" id="dPlaces" placeholder="40"></div>
     <div class="form-group"><label>Date limite inscription</label><input type="date" id="dLimite"></div>
+    <div class="form-group"><label>Quota par membre (places, optionnel)</label><input type="number" id="dQuota" placeholder="Illimité"></div>
+    <div class="form-group">
+      <label>Ouverture inscriptions — Confirmés</label>
+      <input type="datetime-local" id="dOuvConfirme">
+    </div>
+    <div class="form-group">
+      <label>Ouverture inscriptions — Draft</label>
+      <input type="datetime-local" id="dOuvDraft">
+    </div>
+    <div class="form-group">
+      <label>Ouverture inscriptions — Sympathisants</label>
+      <input type="datetime-local" id="dOuvSympa">
+      <div style="font-size:12px;color:var(--gris);margin-top:4px;">Laisse un champ vide pour ouvrir ce statut sans restriction dès la création.</div>
+    </div>
     <div class="form-group"><label>Notes</label><textarea id="dNotes" rows="2" placeholder="Infos complémentaires..."></textarea></div>
     <div class="form-group">
       <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
@@ -1135,6 +1187,19 @@
     <div class="form-group"><label>Prix total (€)</label><input type="number" id="dmPrix" placeholder="55"></div>
     <div class="form-group"><label>Places max</label><input type="number" id="dmPlaces" placeholder="40"></div>
     <div class="form-group"><label>Date limite inscription</label><input type="date" id="dmLimite"></div>
+    <div class="form-group"><label>Quota par membre (places, optionnel)</label><input type="number" id="dmQuota" placeholder="Illimité"></div>
+    <div class="form-group">
+      <label>Ouverture inscriptions — Confirmés</label>
+      <input type="datetime-local" id="dmOuvConfirme">
+    </div>
+    <div class="form-group">
+      <label>Ouverture inscriptions — Draft</label>
+      <input type="datetime-local" id="dmOuvDraft">
+    </div>
+    <div class="form-group">
+      <label>Ouverture inscriptions — Sympathisants</label>
+      <input type="datetime-local" id="dmOuvSympa">
+    </div>
     <div class="form-group"><label>Notes</label><textarea id="dmNotes" rows="2" placeholder="Infos complémentaires..."></textarea></div>
     <div class="form-group">
       <label>Statut</label>
