@@ -1,8 +1,19 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v62
+// ULTRAS LUTETIA — Service Worker v63
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v63 (09/07/2026) : CACHE_NAME bumpé (v62 → v63) — 2 demandes Remi sur la
+// liste Déplacements : (1) tri : ouverts en premier, fermés/complets/
+// annulés ensuite, chronologique dans chaque groupe. (2) Un déplacement
+// resté "ouvert" en base dont la date du match est déjà passée se
+// comporte désormais comme "fermé" à l'affichage (badge + tri) — calculé
+// à la volée (statutEffectifDepl), rien de modifié en base, jamais
+// appliqué à un statut déjà "complet"/"annulé". Annonces : bug "Impossible
+// de charger" toujours signalé malgré le correctif v57 (embeds déjà
+// retirés) — en attente du message d'erreur exact ou confirmation que
+// v57 est bien déployé avant nouvelle investigation.
 //
 // v62 (09/07/2026) : CACHE_NAME bumpé (v61 → v62) — suite retour Remi sur
 // le multi-personnes Déplacements :
@@ -264,7 +275,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v62';
+const CACHE_NAME = 'ul-v63';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
