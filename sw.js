@@ -1,8 +1,19 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v69
+// ULTRAS LUTETIA — Service Worker v70
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v70 (09/07/2026) : CACHE_NAME bumpé (v69 → v70) — bug rapporté par
+// Remi à l'inscription : "insert or update on table 'membres' violates
+// foreign key constraint 'membres_id_fkey'". Cause : latence de
+// réplication interne à Supabase entre la création de la ligne
+// auth.users (par signUp()) et sa visibilité côté API REST/Postgres —
+// l'insert dans membres qui suit immédiatement tombait parfois dans
+// cette fenêtre de quelques centaines de ms. Corrigé avec une nouvelle
+// tentative automatique (jusqu'à 3, délai croissant), déclenchée
+// uniquement sur ce code d'erreur précis (23503) — toute autre erreur
+// (pseudo déjà pris, etc.) échoue immédiatement sans attente inutile.
 //
 // v69 (09/07/2026) : CACHE_NAME bumpé (v68 → v69) — les deux appels à
 // envoyerEmailValidation (validerDemandeAdmin et doSauvegarderMembre)
@@ -350,7 +361,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v69';
+const CACHE_NAME = 'ul-v70';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
