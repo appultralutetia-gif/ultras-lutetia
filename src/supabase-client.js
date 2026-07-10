@@ -1122,25 +1122,40 @@ async function getListeBusTelegram(deplacementId) {
 // ============================================================
 
 async function getAnnonces() {
-  // Explicite comme pour inscriptions_deplacement/commandes/sticks_distribution
-  // (cf. commentaire ligne ~26 plus haut) : dès qu'un embed membres(...) est
-  // ajouté sur une table, préciser la contrainte FK exacte évite l'erreur
-  // PGRST201 "relation ambiguë" si une 2e colonne référençant membres(id)
-  // est ajoutée un jour sur annonces (modération, etc.) — coût nul si elle
-  // n'existe pas encore, protège si elle apparaît plus tard.
+  // Ne passe plus par un embed PostgREST membres(...) — deviner le nom de
+  // la contrainte FK (annonces_publie_par_fkey) s'est révélé faux : la
+  // vraie erreur ("Impossible de charger les annonces") vient du fait que
+  // cette table a un schéma différent de ce que le code supposait (cf.
+  // aussi cellule_id ci-dessous, colonne qui n'existe pas du tout). Pour
+  // ne plus dépendre de suppositions sur le schéma exact, on sépare en
+  // deux requêtes simples : les annonces telles quelles, puis les noms
+  // des auteurs récupérés à part et recollés en JS.
   const { data, error } = await sb.from('annonces')
-    .select('*, publie_par:membres!annonces_publie_par_fkey(nom, prenom)')
+    .select('*')
     .eq('actif', true)
     .order('created_at', { ascending: false })
     .limit(10);
   if (error) throw error;
-  return data || [];
+  if (!data || !data.length) return data || [];
+
+  const auteurIds = [...new Set(data.map(a => a.publie_par).filter(Boolean))];
+  if (auteurIds.length) {
+    const { data: auteurs } = await sb.from('membres').select('id, nom, prenom').in('id', auteurIds);
+    const parId = {};
+    (auteurs || []).forEach(m => { parId[m.id] = m; });
+    data.forEach(a => { a.publie_par = parId[a.publie_par] || null; });
+  }
+  return data;
 }
 
-async function publierAnnonce(titre, contenu, categorie = 'info', celluleId = null) {
+async function publierAnnonce(titre, contenu, categorie = 'info') {
+  // cellule_id retiré (09/07/2026) : cette colonne n'existe pas dans la
+  // vraie table annonces ("Could not find the 'cellule_id' column of
+  // 'annonces' in the schema cache") — le paramètre n'était de toute
+  // façon jamais renseigné par l'UI (doPublierAnnonce ne l'appelait
+  // jamais avec une valeur), donc rien perdu à le retirer.
   const { error } = await sb.from('annonces').insert({
     titre, contenu, categorie,
-    cellule_id: celluleId,
     publie_par: currentUser.id,
   });
   if (error) throw error;
@@ -1201,6 +1216,23 @@ async function listerCodesReabonnementAdmin() {
   const { data, error } = await sb.rpc('admin_lister_codes_reabonnement');
   if (error) throw error;
   return data || [];
+}
+
+// ============================================================
+// CONNEXION EN TANT QUE (Admin uniquement)
+// ============================================================
+// Passe par l'Edge Function admin-generer-lien-connexion (service_role,
+// seule habilitée à générer un vrai lien de connexion pour n'importe quel
+// compte) — jamais de service_role côté client. Le rôle admin_app est
+// revérifié côté serveur, indépendamment de ce que montre l'UI.
+async function genererLienConnexionAdmin(membreId) {
+  const { data, error } = await sb.functions.invoke('admin-generer-lien-connexion', {
+    body: { membreId },
+  });
+  if (error) throw new Error(error.message || 'Impossible de générer le lien');
+  if (data?.error) throw new Error(data.error);
+  if (!data?.lien) throw new Error('Réponse invalide du serveur');
+  return data; // { success, lien, cible: { prenom, nom, email } }
 }
 
 // ============================================================
@@ -2193,6 +2225,8 @@ window.UL = {
   getAnnonces, publierAnnonce,
   // Codes de réabonnement
   getMesCodesReabonnement, getStatutReabonnement, setReabonnementOuvert, rechercherCodeReabonnementAdmin, listerCodesReabonnementAdmin,
+  // Connexion en tant que (Admin)
+  genererLienConnexionAdmin,
   // Stats
   getStats, getMesStats,
   // Matos
