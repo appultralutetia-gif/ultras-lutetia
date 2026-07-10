@@ -152,59 +152,79 @@ function relancerCameraSiPossible() {
 }
 
 // ─── Contexte Déplacement ───────────────────────────────────
-async function afficherActionsDeplacement(membre) {
+// Refonte 09/07/2026 (demande Remi, multi-personnes) : on scanne
+// désormais le QR du PAYEUR, pas celui de chaque participant — un seul
+// scan peut couvrir plusieurs places (soi + amis + invités payés
+// ensemble). L'admin coche qui est physiquement présent parmi les
+// personnes que ce payeur a réglées, puis confirme en un seul geste.
+let _inscriptionsScanCourant = [];
+
+async function afficherActionsDeplacement(payeur) {
   const resultatEl = document.getElementById('scanResultat');
   if (!scanDeplacementChoisi) {
     resultatEl.innerHTML = '<div class="info-box error">Aucun déplacement sélectionné</div>';
     return;
   }
-  const nomComplet = `${membre.prenom || ''} ${membre.nom || ''}`.trim();
-  resultatEl.innerHTML = `<div style="font-size:13px;color:var(--gris);">Vérification pour ${esc(nomComplet)}…</div>`;
+  const nomPayeur = `${payeur.prenom || ''} ${payeur.nom || ''}`.trim();
+  resultatEl.innerHTML = `<div style="font-size:13px;color:var(--gris);">Recherche des places payées par ${esc(nomPayeur)}…</div>`;
 
   try {
     const { inscrits } = await UL.getDeplacement(scanDeplacementChoisi);
-    const inscription = (inscrits || []).find(i => i.membre_id === membre.id);
+    const mesInscriptions = (inscrits || []).filter(i => i.payeur_id === payeur.id);
 
-    if (!inscription) {
-      resultatEl.innerHTML = `
-        <div class="info-box error">❌ ${esc(nomComplet)} n'est pas inscrit à ce déplacement</div>`;
+    if (!mesInscriptions.length) {
+      resultatEl.innerHTML = `<div class="info-box error">❌ ${esc(nomPayeur)} n'a inscrit personne à ce déplacement</div>`;
       relancerCameraSiPossible();
       return;
     }
 
-    const estPaye = inscription.statut_paiement === 'paye_cash' || inscription.statut_paiement === 'paye_ha';
-
-    if (inscription.present_at) {
-      const heure = new Date(inscription.present_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      resultatEl.innerHTML = `
-        <div class="info-box success">✅ ${esc(nomComplet)} — déjà confirmé présent à ${heure}</div>`;
-      relancerCameraSiPossible();
-      return;
-    }
-
-    if (!estPaye) {
-      resultatEl.innerHTML = `
-        <div class="info-box error">⚠️ ${esc(nomComplet)} — paiement non confirmé (${esc(inscription.statut_paiement)})</div>
-        <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="doConfirmerPresence('${membre.id}', true)">Valider quand même</button>`;
-      return;
-    }
+    _inscriptionsScanCourant = mesInscriptions;
 
     resultatEl.innerHTML = `
-      <div class="info-box">${esc(nomComplet)} — paiement confirmé (${esc(inscription.statut_paiement)})</div>
-      <button class="btn btn-success" style="width:100%;margin-top:8px;" onclick="doConfirmerPresence('${membre.id}', false)">✅ Confirmer présence</button>`;
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Payé par ${esc(nomPayeur)} — coche les personnes présentes :</div>
+      ${mesInscriptions.map(i => {
+        const nomParticipant = i.membre_id
+          ? (`${i.membre?.prenom||''} ${i.membre?.nom||''}`.trim() || `@${i.membre?.pseudo_telegram||'?'}`)
+          : `${i.invite_prenom||''} ${i.invite_nom||''} (hors app)`.trim();
+        const estPaye = i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha';
+        const dejaPresent = !!i.present_at;
+        return `
+          <label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
+            <input type="checkbox" class="scan-depl-check" value="${i.id}" ${dejaPresent?'checked disabled':''} style="width:20px;height:20px;flex-shrink:0;">
+            <span style="flex:1;font-size:14px;">${esc(nomParticipant)}</span>
+            ${dejaPresent
+              ? '<span class="badge badge-vert" style="flex-shrink:0;">✅ Présent</span>'
+              : estPaye
+                ? '<span class="badge badge-vert" style="flex-shrink:0;">✅ Payé</span>'
+                : `<span class="badge badge-orange" style="flex-shrink:0;">⚠️ ${esc(i.statut_paiement)}</span>`}
+          </label>`;
+      }).join('')}
+      <button class="btn btn-success" style="width:100%;margin-top:12px;" onclick="doConfirmerPresence(false)">✅ Confirmer présence des personnes cochées</button>
+    `;
   } catch (e) {
     resultatEl.innerHTML = '<div class="info-box error">Erreur vérification déplacement</div>';
     relancerCameraSiPossible();
   }
 }
 
-async function doConfirmerPresence(membreId, force) {
+// force=true reproposé automatiquement (confirm()) si des places cochées
+// ne sont pas encore payées — évite de multiplier les boutons "Valider
+// quand même" ligne par ligne pour un cas qui reste rare en pratique.
+async function doConfirmerPresence(force) {
+  const ids = [...document.querySelectorAll('.scan-depl-check:checked:not(:disabled)')].map(el => el.value);
+  if (!ids.length) return toast('Coche au moins une personne présente', 'error');
   try {
-    await UL.confirmerPresenceDeplacement(scanDeplacementChoisi, membreId, force);
-    toast('Présence confirmée ✅', 'success');
+    const res = await UL.confirmerPresencesDeplacement(ids, force);
+    toast(`Présence confirmée ✅ (${res.nb})`, 'success');
     document.getElementById('scanResultat').innerHTML = '<div class="info-box success">✅ Présence confirmée</div>';
     relancerCameraSiPossible();
   } catch (e) {
+    if (e.code === 'PAIEMENT_NON_CONFIRME' && !force) {
+      if (confirm(`${e.message} — valider quand même la présence pour les personnes cochées ?`)) {
+        return doConfirmerPresence(true);
+      }
+      return;
+    }
     toast(e.message || 'Impossible de confirmer la présence', 'error');
   }
 }
