@@ -982,23 +982,11 @@ async function getDeplacements(upcoming = true) {
   return await _enrichirDeplacements(data || []);
 }
 
-// Historique (demande Remi 09/07/2026 — page Déplacements réorganisée en
-// "À venir" / "Historique", comme la page Sessions Tifo) : les 20 derniers
-// déplacements passés, même limite raisonnable que getPastSessions.
-async function getDeplacementsHistorique() {
-  const today = new Date().toISOString().split('T')[0];
-  const { data, error } = await sb.from('deplacements')
-    .select('*, match:matchs(*)')
-    .lt('date_match', today)
-    .order('date_match', { ascending: false })
-    .limit(20);
-  if (error) throw error;
-  return await _enrichirDeplacements(data || []);
-}
-
-// Factorise l'enrichissement _inscrits/monInscrit, commun à getDeplacements
-// et getDeplacementsHistorique — un seul appel réseau pour les inscriptions
-// du lot entier plutôt qu'un aller-retour par déplacement.
+// Factorise l'enrichissement _inscrits/monInscrit pour getDeplacements —
+// (l'ancienne getDeplacementsHistorique, retirée le 09/07/2026 : le
+// découpage à venir/historique se fait désormais côté front par statut
+// effectif — cf. estHistoriqueDepl, deplacements.js — plus par date côté
+// serveur, donc plus besoin d'une requête "historique" séparée ici).
 async function _enrichirDeplacements(depls) {
   if (!depls.length) return depls;
   const { data: inscriptions } = await sb.from('inscriptions_deplacement')
@@ -1309,17 +1297,13 @@ async function getListeBusTelegram(deplacementId) {
 // ============================================================
 
 async function getAnnonces() {
-  // Ne passe plus par un embed PostgREST membres(...) — deviner le nom de
-  // la contrainte FK (annonces_publie_par_fkey) s'est révélé faux : la
-  // vraie erreur ("Impossible de charger les annonces") vient du fait que
-  // cette table a un schéma différent de ce que le code supposait (cf.
-  // aussi cellule_id ci-dessous, colonne qui n'existe pas du tout). Pour
-  // ne plus dépendre de suppositions sur le schéma exact, on sépare en
-  // deux requêtes simples : les annonces telles quelles, puis les noms
-  // des auteurs récupérés à part et recollés en JS.
+  // ⚠️ Corrigé le 09/07/2026 : erreur exacte enfin obtenue ("column
+  // annonces.actif does not exist") — cette colonne n'existe pas du tout
+  // sur la vraie table. Filtre retiré ; si un jour un concept d'annonce
+  // masquée/archivée existe, il faudra que Remi précise le vrai nom de
+  // colonne plutôt que de re-deviner.
   const { data, error } = await sb.from('annonces')
     .select('*')
-    .eq('actif', true)
     .order('created_at', { ascending: false })
     .limit(10);
   if (error) throw error;
@@ -2435,7 +2419,7 @@ window.UL = {
   createSession, openSession, closeSession, deleteSession,
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   // Déplacements
-  getDeplacements, getDeplacementsHistorique, getDeplacement, getStatutInscriptionDepl,
+  getDeplacements, getDeplacement, getStatutInscriptionDepl,
   getMonQuotaDepl, getMembresPourAmisDepl, relancerPaiementDeplacement, demanderInscriptionDeplacementHelloAsso,
   // Amitiés
   getMesAmis, getDemandesAmitieRecues, getDemandesAmitieEnvoyees, repondreDemandeAmitie, annulerDemandeAmitie,
