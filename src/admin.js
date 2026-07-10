@@ -270,8 +270,8 @@ async function loadStats() {
       <div class="card">
         <div class="card-label">Mes stats perso</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="stat-card"><div class="stat-value">${mesStats.sessionsPresent}</div><div class="stat-label">Présences</div></div>
-          <div class="stat-card"><div class="stat-value">${mesStats.tauxPresence}%</div><div class="stat-label">Assiduité</div></div>
+          <div class="stat-card"><div class="stat-value">${mesStats.presencesDomicile}</div><div class="stat-label">Présent domicile</div></div>
+          <div class="stat-card"><div class="stat-value">${mesStats.presencesExterieur}</div><div class="stat-label">Présent extérieur</div></div>
         </div>
       </div>`;
   } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
