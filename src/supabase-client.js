@@ -979,13 +979,31 @@ async function getDeplacements(upcoming = true) {
   if (upcoming) query = query.gte('date_match', today);
   const { data, error } = await query;
   if (error) throw error;
-  const depls = data || [];
-  if (!depls.length) return depls;
+  return await _enrichirDeplacements(data || []);
+}
 
+// Historique (demande Remi 09/07/2026 — page Déplacements réorganisée en
+// "À venir" / "Historique", comme la page Sessions Tifo) : les 20 derniers
+// déplacements passés, même limite raisonnable que getPastSessions.
+async function getDeplacementsHistorique() {
+  const today = new Date().toISOString().split('T')[0];
+  const { data, error } = await sb.from('deplacements')
+    .select('*, match:matchs(*)')
+    .lt('date_match', today)
+    .order('date_match', { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return await _enrichirDeplacements(data || []);
+}
+
+// Factorise l'enrichissement _inscrits/monInscrit, commun à getDeplacements
+// et getDeplacementsHistorique — un seul appel réseau pour les inscriptions
+// du lot entier plutôt qu'un aller-retour par déplacement.
+async function _enrichirDeplacements(depls) {
+  if (!depls.length) return depls;
   const { data: inscriptions } = await sb.from('inscriptions_deplacement')
     .select('*')
     .in('deplacement_id', depls.map(d => d.id));
-
   return depls.map(d => {
     const inscritsDuDepl = (inscriptions || []).filter(i => i.deplacement_id === d.id);
     return {
@@ -1425,25 +1443,24 @@ async function getStats() {
   };
 }
 
-// ⚠️ Refonte 09/07/2026 (demande Remi) : anciennes stats (sessionsInscrites,
-// deplacements = tout compté, payé ou non) remplacées par 4 compteurs plus
-// parlants : matchs total (toute la saison), présences déclarées à
-// domicile (presences_matchs_domicile), présences confirmées à
-// l'extérieur (déplacements où present_at est renseigné — scanné le jour
-// J, pas juste inscrit/payé), et sessions tifo réalisées (inchangé, déjà
-// basé sur statut='present').
+// ⚠️ Refonte 09/07/2026 (demande Remi) : "Matchs (saison)" doit être le
+// total de présences PERSONNELLES (domicile + extérieur), pas le nombre
+// de matchs au calendrier de la saison — corrigé après un premier essai
+// qui comptait tous les matchs programmés, sans rapport avec l'assiduité
+// du membre.
 async function getMesStats() {
-  const [matchsTotal, presencesTifo, presencesDomicile, presencesExterieur] = await Promise.all([
-    sb.from('matchs').select('id', { count: 'exact', head: true }),
+  const [presencesTifo, presencesDomicile, presencesExterieur] = await Promise.all([
     sb.from('inscriptions_session').select('id', { count: 'exact', head: true }).eq('membre_id', currentUser.id).eq('statut','present'),
     sb.from('presences_matchs_domicile').select('id', { count: 'exact', head: true }).eq('membre_id', currentUser.id),
     sb.from('inscriptions_deplacement').select('id', { count: 'exact', head: true }).eq('membre_id', currentUser.id).not('present_at', 'is', null),
   ]);
+  const nbDomicile = presencesDomicile.count || 0;
+  const nbExterieur = presencesExterieur.count || 0;
   return {
-    matchsTotal: matchsTotal.count || 0,
+    matchsTotal: nbDomicile + nbExterieur,
     sessionsPresent: presencesTifo.count || 0,
-    presencesDomicile: presencesDomicile.count || 0,
-    presencesExterieur: presencesExterieur.count || 0,
+    presencesDomicile: nbDomicile,
+    presencesExterieur: nbExterieur,
   };
 }
 
@@ -2418,7 +2435,7 @@ window.UL = {
   createSession, openSession, closeSession, deleteSession,
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   // Déplacements
-  getDeplacements, getDeplacement, getStatutInscriptionDepl,
+  getDeplacements, getDeplacementsHistorique, getDeplacement, getStatutInscriptionDepl,
   getMonQuotaDepl, getMembresPourAmisDepl, relancerPaiementDeplacement, demanderInscriptionDeplacementHelloAsso,
   // Amitiés
   getMesAmis, getDemandesAmitieRecues, getDemandesAmitieEnvoyees, repondreDemandeAmitie, annulerDemandeAmitie,
