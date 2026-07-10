@@ -2,25 +2,27 @@
 async function loadDeplacements() {
   document.getElementById('deplacementsListe').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
-    const [depls, historique] = await Promise.all([
-      UL.getDeplacements(true),
-      UL.getDeplacementsHistorique(),
-    ]);
-    // Tri (demande Remi 09/07/2026) : les déplacements ouverts en premier,
-    // les fermés/complets/annulés ensuite — chaque groupe conservant le tri
-    // chronologique déjà fait côté serveur (getDeplacements ORDER BY
-    // date_match). Le statut EFFECTIF (statutEffectifDepl) est utilisé
-    // pour le tri, pas le statut brut : un déplacement resté "ouvert" en
-    // base alors que la date du match est passée doit se comporter comme
-    // fermé, y compris pour le tri.
-    const tries = [...depls].sort((a, b) => {
+    // ⚠️ Refonte 09/07/2026 (demande Remi) : le découpage à venir/historique
+    // se fait par STATUT effectif, pas par date — un déplacement "Fermé"
+    // (ou "Annulé") va dans l'historique même si sa date est encore dans
+    // le futur (ex: fermé manuellement en avance). Un seul appel (tous,
+    // sans filtre de date), partitionné ensuite en JS.
+    const tous = await UL.getDeplacements(false);
+    const aVenir = tous.filter(d => !estHistoriqueDepl(d));
+    const historique = tous.filter(estHistoriqueDepl);
+
+    // Ouverts en premier dans "à venir" (le seul groupe qui peut encore
+    // contenir un mélange ouvert/complet), chronologique dans chaque cas.
+    aVenir.sort((a, b) => {
       const ao = statutEffectifDepl(a) === 'ouvert' ? 0 : 1;
       const bo = statutEffectifDepl(b) === 'ouvert' ? 0 : 1;
       if (ao !== bo) return ao - bo;
       return (a.date_match || '').localeCompare(b.date_match || '');
     });
-    document.getElementById('deplacementsListe').innerHTML = tries.length
-      ? tries.map(d => renderDeplCard(d)).join('')
+    historique.sort((a, b) => (b.date_match || '').localeCompare(a.date_match || '')); // plus récent d'abord
+
+    document.getElementById('deplacementsListe').innerHTML = aVenir.length
+      ? aVenir.map(d => renderDeplCard(d)).join('')
       : '<div class="empty-state"><div>✈️</div>Aucun déplacement à venir</div>';
     document.getElementById('deplacementsHistorique').innerHTML = historique.length
       ? historique.map(d => renderDeplCard(d)).join('')
@@ -30,15 +32,26 @@ async function loadDeplacements() {
 
 // Statut EFFECTIF d'un déplacement (demande Remi 09/07/2026) : une fois
 // la date du match échue, le déplacement doit se comporter comme "fermé"
-// même si le champ statut est resté à "ouvert" en base (personne n'a
-// pensé à le changer manuellement) — jamais l'inverse (un statut déjà
-// "complet"/"annulé" reste tel quel, la date ne le "rouvre" jamais).
-// Purement calculé à l'affichage : ne modifie rien en base.
+// même si le champ statut est resté à "ouvert" OU "complet" en base —
+// jamais appliqué à "annulé" (un déplacement annulé reste annulé, la
+// date ne change rien à ça). Purement calculé à l'affichage : ne modifie
+// rien en base.
 function statutEffectifDepl(d) {
-  if (d.statut === 'ouvert' && d.date_match && d.date_match < new Date().toISOString().split('T')[0]) {
+  const matchPasse = !!d.date_match && d.date_match < new Date().toISOString().split('T')[0];
+  if (matchPasse && (d.statut === 'ouvert' || d.statut === 'complet')) {
     return 'ferme';
   }
   return d.statut;
+}
+
+// Un déplacement va dans "Historique" dès que son statut effectif est
+// "fermé" ou "annulé" — qu'importe si sa date est encore dans le futur
+// (ex: fermé manuellement en avance par le Bureau) ou déjà passée.
+// "Ouvert" et "complet" (tant que la date n'est pas dépassée) restent
+// dans "À venir".
+function estHistoriqueDepl(d) {
+  const s = statutEffectifDepl(d);
+  return s === 'ferme' || s === 'annule';
 }
 
 // Calcule le statut de paiement du membre courant pour un déplacement, à
@@ -64,7 +77,7 @@ function calculerStatutPaiementDepl(monInscrit) {
 // limite reste ouvert sans limite, comportement inchangé.
 // ⚠️ Complété le 09/07/2026 : ferme aussi une fois la date du MATCH elle-
 // même dépassée, même sans date_limite_inscription renseignée — sinon un
-// déplacement passé, affiché dans l'historique (cf. getDeplacementsHistorique),
+// déplacement passé, affiché dans l'historique (cf. estHistoriqueDepl),
 // montrerait encore un bouton "M'inscrire" pour un bus déjà parti.
 function inscriptionsDeplFermees(d) {
   const dateLimitePassee = !!d.date_limite_inscription && new Date() > new Date(d.date_limite_inscription);
