@@ -269,11 +269,11 @@ function filtrerAmisDepl() {
 
 function renderListeAmisDepl(liste) {
   const el = document.getElementById('listeAmisDepl');
-  if (!liste.length) { el.innerHTML = '<div style="font-size:13px;color:var(--gris);">Aucun résultat</div>'; return; }
+  if (!liste.length) { el.innerHTML = '<div style="font-size:13px;color:var(--gris);">Aucun ami confirmé pour l\'instant — ajoute des amis depuis Profil.</div>'; return; }
   el.innerHTML = liste.map(m => `
     <label style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;">
       <input type="checkbox" ${_amisDeplSelectionnes.has(m.id)?'checked':''} onchange="toggleAmiDeplSelectionne('${m.id}',this.checked)" style="width:18px;height:18px;accent-color:#1A56DB;flex-shrink:0;">
-      <span style="font-size:14px;">${esc(m.prenom)} ${esc(m.nom)} <span style="color:var(--gris);font-size:12px;">@${esc(m.pseudo_telegram)}</span></span>
+      <span style="font-size:14px;">${esc(nomAfficheMembre(m))}</span>
     </label>`).join('');
 }
 
