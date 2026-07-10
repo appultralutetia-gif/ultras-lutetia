@@ -404,11 +404,26 @@ function renderListeInscritsDepl() {
       ${filtreBtn('presents', '✅ Présents')}
       ${filtreBtn('absents', '⏳ Absents')}
     </div>
-    ${!liste.length ? '<p style="color:var(--gris);font-size:13px;">Aucun inscrit pour ce filtre</p>' : liste.map(i => `
+    ${!liste.length ? '<p style="color:var(--gris);font-size:13px;">Aucun inscrit pour ce filtre</p>' : liste.map(i => {
+      // Participant : membre de l'app (pseudo + nom) ou invité hors app
+      // (nom/prénom saisis à l'inscription, jamais de pseudo) — cf.
+      // migration_deplacements_avance.sql.
+      const estInvite = !i.membre_id;
+      const ligneParticipant = estInvite
+        ? `<div style="font-weight:600;">${esc(i.invite_prenom||'')} ${esc(i.invite_nom||'')}</div><div style="color:var(--gris);">👤 Invité hors app</div>`
+        : `<div style="font-weight:600;">@${esc(i.membre?.pseudo_telegram||'?')}</div><div style="color:var(--gris);">${esc(i.membre?.prenom||'')} ${esc(i.membre?.nom||'')}</div>`;
+      // Payeur affiché seulement s'il diffère du participant lui-même —
+      // sinon "Payé par @toi-même" n'apporte rien (demande Remi
+      // 09/07/2026 : savoir qui a payé pour un ami/invité).
+      const payeurDiffere = i.payeur_id && i.payeur_id !== i.membre_id;
+      const ligneNaP = payeurDiffere
+        ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:2px;">💳 Payé par @${esc(i.payeur?.pseudo_telegram||'?')}</div>`
+        : '';
+      return `
       <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
         <div style="flex:1;">
-          <div style="font-weight:600;">@${i.membre?.pseudo_telegram||'?'}</div>
-          <div style="color:var(--gris);">${i.membre?.prenom||''} ${i.membre?.nom||''}</div>
+          ${ligneParticipant}
+          ${ligneNaP}
         </div>
         <span class="badge ${i.statut_paiement==='en_attente'?'badge-orange':i.statut_paiement.includes('paye')?'badge-vert':'badge-gris'}">
           ${i.statut_paiement==='en_attente'?'⏳':i.statut_paiement==='paye_cash'?'Cash ✅':'HA ✅'}
@@ -416,13 +431,14 @@ function renderListeInscritsDepl() {
         ${(i.statut_paiement==='paye_cash'||i.statut_paiement==='paye_ha') ? `
           <span class="badge ${i.present_at?'badge-vert':'badge-orange'}">${i.present_at?'✅ Présent':'⏳ Absent'}</span>` : ''}
         ${i.statut_paiement==='en_attente' ? `
-          <button class="btn btn-sm btn-success" onclick="validerCash('${d.id}','${i.membre_id}')">Cash</button>` : ''}
-      </div>`).join('')}
+          <button class="btn btn-sm btn-success" onclick="validerCash('${d.id}','${i.id}')">Cash</button>` : ''}
+      </div>`;
+    }).join('')}
   `;
 }
 
-async function validerCash(deplId, membreId) {
-  try { await UL.validerPaiementCash(deplId, membreId); toast('Paiement cash validé ✅', 'success'); voirInscritsDepl(deplId); }
+async function validerCash(deplId, inscriptionId) {
+  try { await UL.validerPaiementCash(inscriptionId); toast('Paiement cash validé ✅', 'success'); voirInscritsDepl(deplId); }
   catch(e) { toast('Impossible de valider le paiement cash', 'error'); }
 }
 async function copierListeBus(deplId) {
