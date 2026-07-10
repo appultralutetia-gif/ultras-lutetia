@@ -1,8 +1,31 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v60
+// ULTRAS LUTETIA — Service Worker v61
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v61 (09/07/2026) : CACHE_NAME bumpé (v60 → v61) — 2 demandes Remi liées
+// aux amis sur Déplacements :
+// (1) Système de demandes d'amitié (nouvelle page "👥 Mes amis" depuis
+// Profil) : recherche par pseudo, envoi de demande, acceptation/refus,
+// liste des amis confirmés. Table amities (2 FK vers membres, contrainte
+// explicite sur les embeds comme pour inscriptions_deplacement). La liste
+// "amis" utilisable pour inscrire plusieurs personnes à un déplacement
+// (getMembresPourAmisDepl) ne renvoie désormais QUE les amitiés
+// confirmées, plus tous les membres actifs comme dans la version
+// précédente.
+// (2) Confidentialité : nouvelle fonction nomAfficheMembre (app.js) — un
+// membre simple ne voit jamais le nom/prénom d'un autre membre simple,
+// seulement son pseudo (@handle) ; seuls Bureau/Admin (roles_app
+// admin_app/bureau_app) voient le nom complet. Appliqué à la recherche
+// d'amis, aux demandes reçues/envoyées, à la liste d'amis, et au
+// sélecteur "amis" sur Déplacements. ⚠️ Cette règle n'a PAS été
+// rétro-appliquée aux pages de gestion existantes (Gérer les membres,
+// Comité de passage) qui restent inchangées — ces cellules ont besoin de
+// voir les vraies identités pour leur travail ; à confirmer avec Remi si
+// la confidentialité doit aller plus loin.
+// ⚠️ Nécessite d'exécuter migration_amities.sql avant de déployer les
+// fichiers front.
 //
 // v60 (09/07/2026) : CACHE_NAME bumpé (v59 → v60) — Déplacements
 // multi-personnes désormais COMPLET (partie serveur reçue de Remi) :
@@ -218,7 +241,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v60';
+const CACHE_NAME = 'ul-v61';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
