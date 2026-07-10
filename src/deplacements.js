@@ -3,10 +3,36 @@ async function loadDeplacements() {
   document.getElementById('deplacementsListe').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
     const depls = await UL.getDeplacements(true);
-    document.getElementById('deplacementsListe').innerHTML = depls.length
-      ? depls.map(d => renderDeplCard(d)).join('')
+    // Tri (demande Remi 09/07/2026) : les déplacements ouverts en premier,
+    // les fermés/complets/annulés ensuite — chaque groupe conservant le tri
+    // chronologique déjà fait côté serveur (getDeplacements ORDER BY
+    // date_match). Le statut EFFECTIF (statutEffectifDepl) est utilisé
+    // pour le tri, pas le statut brut : un déplacement resté "ouvert" en
+    // base alors que la date du match est passée doit se comporter comme
+    // fermé, y compris pour le tri.
+    const tries = [...depls].sort((a, b) => {
+      const ao = statutEffectifDepl(a) === 'ouvert' ? 0 : 1;
+      const bo = statutEffectifDepl(b) === 'ouvert' ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      return (a.date_match || '').localeCompare(b.date_match || '');
+    });
+    document.getElementById('deplacementsListe').innerHTML = tries.length
+      ? tries.map(d => renderDeplCard(d)).join('')
       : '<div class="empty-state"><div>✈️</div>Aucun déplacement à venir</div>';
   } catch(e) { toast('Erreur chargement déplacements', 'error'); }
+}
+
+// Statut EFFECTIF d'un déplacement (demande Remi 09/07/2026) : une fois
+// la date du match échue, le déplacement doit se comporter comme "fermé"
+// même si le champ statut est resté à "ouvert" en base (personne n'a
+// pensé à le changer manuellement) — jamais l'inverse (un statut déjà
+// "complet"/"annulé" reste tel quel, la date ne le "rouvre" jamais).
+// Purement calculé à l'affichage : ne modifie rien en base.
+function statutEffectifDepl(d) {
+  if (d.statut === 'ouvert' && d.date_match && d.date_match < new Date().toISOString().split('T')[0]) {
+    return 'ferme';
+  }
+  return d.statut;
 }
 
 // Calcule le statut de paiement du membre courant pour un déplacement, à
@@ -104,8 +130,8 @@ function renderDeplCard(d) {
           ${d.places_max ? `<span>🪑 ${d.places_max} places</span>` : ''}
         </div>
       </div>
-      <span class="badge ${d.statut==='ouvert'?'badge-vert':d.statut==='complet'?'badge-rouge':'badge-gris'}" style="flex-shrink:0;margin-top:2px;">
-        ${d.statut==='ouvert'?'Ouvert':d.statut==='complet'?'Complet':d.statut==='ferme'?'Fermé':'Annulé'}
+      <span class="badge ${statutEffectifDepl(d)==='ouvert'?'badge-vert':statutEffectifDepl(d)==='complet'?'badge-rouge':'badge-gris'}" style="flex-shrink:0;margin-top:2px;">
+        ${statutEffectifDepl(d)==='ouvert'?'Ouvert':statutEffectifDepl(d)==='complet'?'Complet':statutEffectifDepl(d)==='ferme'?'Fermé':'Annulé'}
       </span>
     </div>
     ${d.places_max ? `
