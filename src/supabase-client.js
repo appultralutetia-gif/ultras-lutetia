@@ -473,33 +473,44 @@ async function getMembreParQrCode(code) {
   return data || null;
 }
 
-// Confirme la présence physique d'un membre à un déplacement (scan le
-// jour J), distincte du statut de paiement. Par défaut, bloque si le
-// paiement n'est pas confirmé (statut 'en_attente' ou 'refuse') — passer
-// force=true pour le cas réel "paiement cash collecté sur le quai au
-// dernier moment", décision laissée à la personne qui scanne plutôt
-// qu'un blocage strict sans recours.
-async function confirmerPresenceDeplacement(deplacementId, membreId, force = false) {
-  const { data: inscription, error: fetchError } = await sb.from('inscriptions_deplacement')
-    .select('id, statut_paiement, present_at')
-    .eq('deplacement_id', deplacementId)
-    .eq('membre_id', membreId)
-    .maybeSingle();
-  if (fetchError) throw fetchError;
-  if (!inscription) {
-    throw new Error("Ce membre n'est pas inscrit à ce déplacement");
+// Confirme la présence physique d'un ou plusieurs participants à un
+// déplacement (scan le jour J), distincte du statut de paiement.
+//
+// ⚠️ Refonte 09/07/2026 (demande Remi) : depuis l'inscription multi-
+// personnes, on ne scanne plus le QR du PARTICIPANT lui-même mais celui
+// du PAYEUR — un seul scan peut donc concerner plusieurs lignes
+// inscriptions_deplacement d'un coup (soi + amis + invités payés
+// ensemble). Cette fonction prend directement une liste d'inscriptionIds
+// (résolue côté scan.js à partir du payeur_id scanné) plutôt qu'un
+// membre_id unique — un invité hors app n'a de toute façon pas de
+// membre_id sur lequel chercher.
+//
+// Par défaut, bloque si le paiement n'est pas confirmé (statut
+// 'en_attente' ou 'refuse') — passer force=true pour le cas réel
+// "paiement cash collecté sur le quai au dernier moment", décision
+// laissée à la personne qui scanne plutôt qu'un blocage strict sans
+// recours.
+async function confirmerPresencesDeplacement(inscriptionIds, force = false) {
+  if (!Array.isArray(inscriptionIds) || !inscriptionIds.length) {
+    throw new Error('Aucune personne sélectionnée');
   }
-  const estPaye = inscription.statut_paiement === 'paye_cash' || inscription.statut_paiement === 'paye_ha';
-  if (!estPaye && !force) {
-    const err = new Error(`Paiement non confirmé (${inscription.statut_paiement})`);
+  const { data: inscriptions, error: fetchError } = await sb.from('inscriptions_deplacement')
+    .select('id, statut_paiement, present_at')
+    .in('id', inscriptionIds);
+  if (fetchError) throw fetchError;
+
+  const nonPayees = inscriptions.filter(i => i.statut_paiement !== 'paye_cash' && i.statut_paiement !== 'paye_ha');
+  if (nonPayees.length && !force) {
+    const err = new Error(`${nonPayees.length} place(s) sélectionnée(s) avec un paiement non confirmé`);
     err.code = 'PAIEMENT_NON_CONFIRME';
     throw err;
   }
+
   const { error: updateError } = await sb.from('inscriptions_deplacement')
     .update({ present_at: new Date().toISOString() })
-    .eq('id', inscription.id);
+    .in('id', inscriptionIds);
   if (updateError) throw updateError;
-  return { success: true };
+  return { success: true, nb: inscriptionIds.length };
 }
 
 // Régénère le QR d'un membre (perte/partage accidentel) — invalide
@@ -1011,7 +1022,11 @@ async function getDeplacement(id) {
     .eq('id', id).single();
   if (error) throw error;
   const { data: inscrits, error: inscritsError } = await sb.from('inscriptions_deplacement')
-    .select('*, membre:membres!inscriptions_deplacement_membre_id_fkey(nom, prenom, pseudo_telegram)')
+    .select(`
+      *,
+      membre:membres!inscriptions_deplacement_membre_id_fkey(nom, prenom, pseudo_telegram),
+      payeur:membres!inscriptions_deplacement_payeur_id_fkey(nom, prenom, pseudo_telegram)
+    `)
     .eq('deplacement_id', id);
   if (inscritsError) console.error('[UL] getDeplacement — erreur chargement inscrits:', inscritsError.message);
   const monInscrit = (inscrits || []).find(i => i.membre_id === currentUser?.id);
@@ -1167,8 +1182,14 @@ async function demanderInscriptionDeplacementHelloAsso(deplacementId, participan
   return data;
 }
 
-async function validerPaiementCash(deplacementId, membreId) {
-  const qrCode = `UL-${Date.now()}-${membreId.slice(0,6).toUpperCase()}`;
+// ⚠️ Changé le 09/07/2026 (demande Remi, multi-personnes) : prenait avant
+// (deplacementId, membreId) — ne fonctionne plus pour un invité hors app
+// (pas de membre_id). Identifie directement la ligne par inscriptionId.
+async function validerPaiementCash(inscriptionId) {
+  const { data: inscription, error: fetchError } = await sb.from('inscriptions_deplacement')
+    .select('id, membre_id').eq('id', inscriptionId).single();
+  if (fetchError) throw fetchError;
+  const qrCode = `UL-${Date.now()}-${inscriptionId.slice(0,6).toUpperCase()}`;
   const { error } = await sb.from('inscriptions_deplacement')
     .update({
       statut_paiement: 'paye_cash',
@@ -1176,10 +1197,10 @@ async function validerPaiementCash(deplacementId, membreId) {
       valide_at: new Date().toISOString(),
       qr_code: qrCode,
     })
-    .eq('deplacement_id', deplacementId)
-    .eq('membre_id', membreId);
+    .eq('id', inscriptionId);
   if (error) throw error;
-  recalculerEvaluationDeplacement(membreId); // best-effort, ne bloque pas la validation
+  // Pas d'évaluation à recalculer pour un invité hors app (pas de compte).
+  if (inscription.membre_id) recalculerEvaluationDeplacement(inscription.membre_id);
   return { success: true, qrCode };
 }
 
@@ -2352,7 +2373,7 @@ window.UL = {
   getParticipationBatch,
   adminResetPassword, updateMembreMdp, supprimerMembre,
   // QR Code Membre
-  getOrCreateQrCodeMembre, getMembreParQrCode, confirmerPresenceDeplacement, regenererQrCodeMembre,
+  getOrCreateQrCodeMembre, getMembreParQrCode, confirmerPresencesDeplacement, regenererQrCodeMembre,
   // Référentiels
   getSections,
   // Calendrier
