@@ -59,10 +59,10 @@ async function loadProfil() {
   try {
     const stats = await UL.getMesStats();
     document.getElementById('profilStats').innerHTML = `
-      <div class="stat-card"><div class="stat-value">${stats.sessionsPresent}</div><div class="stat-label">Présences</div></div>
-      <div class="stat-card"><div class="stat-value">${stats.tauxPresence}%</div><div class="stat-label">Assiduité</div></div>
-      <div class="stat-card"><div class="stat-value">${stats.deplacements}</div><div class="stat-label">Déplacements</div></div>
-      <div class="stat-card"><div class="stat-value">${stats.sessionsInscrites}</div><div class="stat-label">Inscriptions</div></div>`;
+      <div class="stat-card"><div class="stat-value">${stats.matchsTotal}</div><div class="stat-label">Matchs (saison)</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.presencesDomicile}</div><div class="stat-label">Présent domicile</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.presencesExterieur}</div><div class="stat-label">Présent extérieur</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.sessionsPresent}</div><div class="stat-label">Sessions tifo</div></div>`;
   } catch(e) {}
 
   // QR code membre — généré à la demande (lazy) au premier chargement,
