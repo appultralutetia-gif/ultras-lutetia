@@ -167,7 +167,7 @@ async function inscription(data) {
   });
   if (authError) throw new Error(authError.message);
 
-  const { error: membreError } = await sb.from('membres').insert({
+  const payload = {
     id: authData.user.id,
     pseudo_telegram: normalizePseudo(data.pseudoTelegram),
     nom: data.nom,
@@ -176,9 +176,28 @@ async function inscription(data) {
     ville: data.ville || null,
     code_postal: data.codePostal || null,
     statut: 'sympathisant',
-  });
-  if (membreError) throw new Error(membreError.message);
-  return { success: true };
+  };
+
+  // ⚠️ Corrigé 09/07/2026 (bug rapporté par Remi : "insert or update on
+  // table 'membres' violates foreign key constraint 'membres_id_fkey'"
+  // juste après l'inscription). Cause connue côté Supabase : la ligne
+  // auth.users vient tout juste d'être créée par le service Auth, mais
+  // elle n'est pas toujours immédiatement visible côté API REST/Postgres
+  // au moment de cet insert suivant (latence de réplication interne,
+  // quelques centaines de ms) — un problème de timing, pas de données.
+  // Réessayé automatiquement (jusqu'à 3 fois, délai croissant) UNIQUEMENT
+  // pour ce code d'erreur précis (23503 = violation de clé étrangère) —
+  // toute autre erreur (ex: pseudo déjà pris) échoue immédiatement, sans
+  // attente inutile.
+  let dernierError = null;
+  for (let tentative = 0; tentative < 3; tentative++) {
+    const { error: membreError } = await sb.from('membres').insert(payload);
+    if (!membreError) return { success: true };
+    dernierError = membreError;
+    if (membreError.code !== '23503') break;
+    await new Promise(r => setTimeout(r, 500 * (tentative + 1)));
+  }
+  throw new Error(dernierError?.message || 'Impossible de créer le compte');
 }
 
 // Vérifie le code reçu par email à l'inscription (8 chiffres par défaut
