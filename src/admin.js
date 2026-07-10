@@ -63,6 +63,13 @@ let _rolesActifs = new Set();
 //   — ne les a de toute façon jamais ; les proposer ici permettrait au
 //   Comité de se créer un accès Admin/Bureau lui-même, jamais voulu).
 let _modalEditMembreMode = 'complet';
+// Statut du membre AVANT ouverture du modal — comparé au nouveau statut
+// dans doSauvegarderMembre pour détecter une vraie première validation
+// (sympathisant → draft/confirmé) et déclencher l'email + la notification
+// (demande Remi 09/07/2026 : jusqu'ici, seul le flux dédié "Demandes
+// d'inscription en attente" envoyait cet email — pas ce modal-ci, alors
+// que le Comité de passage valide justement par ce chemin).
+let _statutAvantEditionMembre = null;
 
 async function openEditMembre(id) {
   const m = allMembres.find(x => x.id === id);
@@ -84,6 +91,7 @@ async function openEditMembreComite(id) {
 
 async function _ouvrirModalEditMembre(m, mode) {
   _modalEditMembreMode = mode;
+  _statutAvantEditionMembre = m.statut;
   document.getElementById('modalEditMembreTitre').textContent =
     mode === 'comite' ? 'Modifier statut & accès' : 'Modifier le membre';
   document.querySelectorAll('.champ-identite-membre').forEach(el => {
@@ -179,20 +187,40 @@ function toggleRole(key, rowEl) {
 }
 async function doSauvegarderMembre(btn) {
   const id = document.getElementById('editMembreId').value;
+  const nouveauStatut = document.getElementById('editStatut').value;
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    await UL.updateMembre(id, {
+    const membre = await UL.updateMembre(id, {
       prenom: document.getElementById('editPrenom').value.trim(),
       nom: document.getElementById('editNom').value.trim(),
       pseudo_telegram: document.getElementById('editTelegram').value.trim(),
       email: document.getElementById('editEmail').value.trim() || null,
-      statut: document.getElementById('editStatut').value,
+      statut: nouveauStatut,
       valide_tifo: document.getElementById('editValideTifo').checked,
       section_id: document.getElementById('editSection').value || null,
       roles_app: Array.from(_rolesActifs),
     });
     toast('Membre mis à jour ✅', 'success');
+
+    // Email + notification de validation — seulement pour une vraie
+    // PREMIÈRE validation (sympathisant → draft/confirmé), jamais pour un
+    // simple changement ultérieur (ex: draft → confirmé plus tard, ou une
+    // correction de nom) qui enverrait un "bienvenue" hors de propos.
+    // Complète validerDemandeAdmin (pageDemandesAdmin), qui couvrait déjà
+    // ce cas mais uniquement depuis ce flux-là — pas depuis ce modal-ci,
+    // pourtant emprunté par le Comité de passage pour valider (demande
+    // Remi 09/07/2026).
+    if (_statutAvantEditionMembre === 'sympathisant' && nouveauStatut !== 'sympathisant') {
+      if (membre?.email) UL.envoyerEmailValidation(membre).catch(() => {});
+      UL.envoyerNotificationPush(
+        id,
+        '✅ Compte activé !',
+        'Ton compte Ultras Lutetia a été validé — tu peux te connecter.',
+        '/ultras-lutetia/',
+      );
+    }
+
     closeModal('modalEditMembre');
     if (_modalEditMembreMode === 'comite') loadMembresComite();
     else loadMembres();
