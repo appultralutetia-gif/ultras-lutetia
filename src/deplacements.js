@@ -34,6 +34,24 @@ function inscriptionsDeplFermees(d) {
   return !!d.date_limite_inscription && new Date() > new Date(d.date_limite_inscription);
 }
 
+// Accès échelonné par statut (demande Remi 09/07/2026) : un Confirmé peut
+// avoir accès en avance par rapport à un Draft, lui-même avant un
+// Sympathisant. Un déplacement sans date configurée pour un statut donné
+// reste ouvert sans restriction pour ce statut (comportement par défaut
+// inchangé si Remi ne remplit rien) — seule une date FUTURE bloque.
+function champOuverturePourStatut(statut) {
+  if (statut === 'confirme') return 'ouverture_confirme';
+  if (statut === 'draft') return 'ouverture_draft';
+  return 'ouverture_sympathisant'; // sympathisant, ou tout statut non prioritaire
+}
+function inscriptionPasEncoreOuvertePourMoi(d) {
+  const m = UL.getCurrentMembre();
+  const champ = champOuverturePourStatut(m?.statut);
+  const dateOuverture = d[champ];
+  if (!dateOuverture) return false; // pas de restriction configurée pour ce statut
+  return new Date() < new Date(dateOuverture);
+}
+
 function renderDeplCard(d) {
   const m = UL.getCurrentMembre();
   const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}) : '';
@@ -47,9 +65,14 @@ function renderDeplCard(d) {
   // l'ouverture de la modal (la carte entière reste cliquable pour le détail).
   let boutonAction;
   if (!estInscrit) {
-    boutonAction = inscriptionsDeplFermees(d)
-      ? `<span class="badge badge-gris">⏳ Inscriptions terminées</span>`
-      : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">M'inscrire</button>`;
+    if (inscriptionsDeplFermees(d)) {
+      boutonAction = `<span class="badge badge-gris">⏳ Inscriptions terminées</span>`;
+    } else if (inscriptionPasEncoreOuvertePourMoi(d)) {
+      const dateOuv = d[champOuverturePourStatut(m?.statut)];
+      boutonAction = `<span class="badge badge-gris">🔒 Ouverture le ${new Date(dateOuv).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>`;
+    } else {
+      boutonAction = `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">M'inscrire</button>`;
+    }
   } else if (estRefuse) {
     boutonAction = `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">❌ Réessayer le paiement</button>`;
   } else if (!estPaye) {
@@ -116,9 +139,14 @@ async function openDepl(deplId) {
       <div style="font-size:14px;margin-bottom:16px;font-weight:600;">👥 ${nbInscrits} inscrit${nbInscrits>1?'s':''}${d.places_max?' / '+d.places_max+' places':''}</div>`;
 
     if (!estInscrit) {
-      html += inscriptionsDeplFermees(d)
-        ? `<div class="info-box">⏳ Les inscriptions sont terminées pour ce déplacement.</div>`
-        : `<button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">M'inscrire</button>`;
+      if (inscriptionsDeplFermees(d)) {
+        html += `<div class="info-box">⏳ Les inscriptions sont terminées pour ce déplacement.</div>`;
+      } else if (inscriptionPasEncoreOuvertePourMoi(d)) {
+        const dateOuv = d[champOuverturePourStatut(m?.statut)];
+        html += `<div class="info-box">🔒 Ouverture de tes inscriptions le ${new Date(dateOuv).toLocaleDateString('fr-FR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})}</div>`;
+      } else {
+        html += `<button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">M'inscrire</button>`;
+      }
     } else if (estRefuse) {
       html += `<div class="info-box error">❌ Paiement refusé</div>
         <button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">Réessayer le paiement</button>`;
@@ -158,30 +186,170 @@ async function openDepl(deplId) {
   } catch(e) { toast('Erreur chargement déplacement', 'error'); }
 }
 
-// Fusionne "s'inscrire" et "déclencher le paiement HelloAsso" en une seule
-// action : Déplacements n'a aujourd'hui aucun mode cash actif, HelloAsso
-// est donc le seul chemin — pas besoin de proposer un choix de mode de
-// paiement à l'utilisateur ici.
-// btn (optionnel) : le bouton cliqué, désactivé pendant l'appel réseau pour
-// empêcher un double-tap de déclencher deux fois la création du checkout
-// HelloAsso (cf. point d'audit ergonomique — seul flux de paiement réel de
-// l'app, donc le plus sensible à un double déclenchement).
+// Ouvre le choix "seul / avec des amis" avant de lancer le paiement —
+// remplace l'ancien clic direct sur "M'inscrire" qui appelait le checkout
+// HelloAsso immédiatement (demande Remi 09/07/2026 : inscrire plusieurs
+// personnes — membres de l'app ou invités hors app — en une seule fois).
+//
+// ⚠️ Cas "Réessayer/Relancer le paiement" (une inscription existe déjà
+// pour soi, statut refuse ou en_attente) : on NE PASSE PAS par le modal
+// multi-personnes — ça relancerait un paiement pour un tout nouveau
+// participant "moi" au lieu de reprendre l'inscription existante, donc
+// un doublon. Dans ce cas, on garde l'appel direct à un seul participant,
+// identique à l'ancien comportement d'avant cette évolution.
+let _deplIdCourantInscription = null;
 async function doInscritDepl(id, btn) {
+  const texteOriginal = btn ? btn.textContent : '';
+  try {
+    const { deplacement: d, monInscrit } = await UL.getDeplacement(id);
+
+    if (monInscrit) {
+      // Relance de paiement pour une inscription déjà existante — appel
+      // strictement inchangé par rapport à avant (cf. relancerPaiementDeplacement),
+      // aucune dépendance à l'évolution de l'Edge Function pour ce cas.
+      if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+      const data = await UL.relancerPaiementDeplacement(id);
+      closeModal('modalDepl');
+      if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+      afficherAvertissementHelloAsso(data.redirectUrl, 'deplacement', data.inscriptionId);
+      return;
+    }
+
+    // Pas encore inscrit : ouvre le modal de sélection (soi seul par
+    // défaut, avec options amis app / invités hors app).
+    _deplIdCourantInscription = id;
+    document.getElementById('idAvecAmis').checked = false;
+    document.getElementById('idAvecInvites').checked = false;
+    document.getElementById('blocAmisDepl').style.display = 'none';
+    document.getElementById('blocInvitesDepl').style.display = 'none';
+    document.getElementById('listeInvitesDepl').innerHTML = '';
+    document.getElementById('idRechercheAmis').value = '';
+    _amisDeplDisponibles = [];
+    _amisDeplSelectionnes.clear();
+
+    let quotaHtml = '';
+    const quota = await UL.getMonQuotaDepl(id).catch(() => null);
+    if (quota) quotaHtml = `<div class="info-box warning">⚠️ Quota: il te reste ${quota.restant} place${quota.restant>1?'s':''} sur ${quota.quota}</div>`;
+    document.getElementById('inscritDeplQuotaInfo').innerHTML = quotaHtml;
+    _quotaDeplCourant = quota;
+    _prixDeplCourant = d.prix_total || 0;
+
+    majRecapInscritDepl();
+    showModal('modalInscritDepl');
+  } catch(e) {
+    toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
+}
+
+let _amisDeplDisponibles = [];
+let _amisDeplSelectionnes = new Set();
+let _invitesDeplCompteur = 0;
+let _quotaDeplCourant = null;
+let _prixDeplCourant = 0;
+
+async function toggleAmisDepl() {
+  const actif = document.getElementById('idAvecAmis').checked;
+  document.getElementById('blocAmisDepl').style.display = actif ? 'block' : 'none';
+  if (actif && !_amisDeplDisponibles.length) {
+    document.getElementById('listeAmisDepl').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+    try {
+      _amisDeplDisponibles = await UL.getMembresPourAmisDepl();
+      renderListeAmisDepl(_amisDeplDisponibles);
+    } catch(e) { document.getElementById('listeAmisDepl').innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur de chargement</div>'; }
+  }
+  majRecapInscritDepl();
+}
+
+function filtrerAmisDepl() {
+  const q = document.getElementById('idRechercheAmis').value.trim().toLowerCase();
+  const filtres = _amisDeplDisponibles.filter(m => `${m.prenom} ${m.nom} ${m.pseudo_telegram}`.toLowerCase().includes(q));
+  renderListeAmisDepl(filtres);
+}
+
+function renderListeAmisDepl(liste) {
+  const el = document.getElementById('listeAmisDepl');
+  if (!liste.length) { el.innerHTML = '<div style="font-size:13px;color:var(--gris);">Aucun résultat</div>'; return; }
+  el.innerHTML = liste.map(m => `
+    <label style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;">
+      <input type="checkbox" ${_amisDeplSelectionnes.has(m.id)?'checked':''} onchange="toggleAmiDeplSelectionne('${m.id}',this.checked)" style="width:18px;height:18px;accent-color:#1A56DB;flex-shrink:0;">
+      <span style="font-size:14px;">${esc(m.prenom)} ${esc(m.nom)} <span style="color:var(--gris);font-size:12px;">@${esc(m.pseudo_telegram)}</span></span>
+    </label>`).join('');
+}
+
+function toggleAmiDeplSelectionne(membreId, coche) {
+  if (coche) _amisDeplSelectionnes.add(membreId); else _amisDeplSelectionnes.delete(membreId);
+  majRecapInscritDepl();
+}
+
+function toggleInvitesDepl() {
+  const actif = document.getElementById('idAvecInvites').checked;
+  document.getElementById('blocInvitesDepl').style.display = actif ? 'block' : 'none';
+  if (actif && !document.getElementById('listeInvitesDepl').children.length) {
+    ajouterLigneInviteDepl();
+  }
+  majRecapInscritDepl();
+}
+
+function ajouterLigneInviteDepl() {
+  const idLigne = 'invite_' + (_invitesDeplCompteur++);
+  const div = document.createElement('div');
+  div.id = idLigne;
+  div.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;';
+  div.innerHTML = `
+    <div class="form-group" style="margin-bottom:6px;"><input type="text" placeholder="Prénom" class="invite-prenom" oninput="majRecapInscritDepl()"></div>
+    <div class="form-group" style="margin-bottom:6px;"><input type="text" placeholder="Nom" class="invite-nom" oninput="majRecapInscritDepl()"></div>
+    <div class="form-group" style="margin-bottom:6px;"><input type="email" placeholder="Email" class="invite-email" oninput="majRecapInscritDepl()"></div>
+    <button class="btn btn-sm btn-danger" style="width:100%;" onclick="document.getElementById('${idLigne}').remove();majRecapInscritDepl();">🗑 Retirer</button>
+  `;
+  document.getElementById('listeInvitesDepl').appendChild(div);
+  majRecapInscritDepl();
+}
+
+function lireInvitesDepl() {
+  return [...document.getElementById('listeInvitesDepl').children].map(div => ({
+    prenom: div.querySelector('.invite-prenom').value.trim(),
+    nom: div.querySelector('.invite-nom').value.trim(),
+    email: div.querySelector('.invite-email').value.trim(),
+  })).filter(inv => inv.prenom && inv.nom && inv.email);
+}
+
+function majRecapInscritDepl() {
+  const nbAmis = document.getElementById('idAvecAmis')?.checked ? _amisDeplSelectionnes.size : 0;
+  const nbInvites = document.getElementById('idAvecInvites')?.checked ? lireInvitesDepl().length : 0;
+  const total = 1 + nbAmis + nbInvites; // 1 = soi-même
+  const montant = (_prixDeplCourant * total).toFixed(2);
+  let html = `👥 ${total} place${total>1?'s':''} — 💶 ${montant}€`;
+  if (_quotaDeplCourant && total > _quotaDeplCourant.restant) {
+    html += `<div style="color:var(--rouge);font-size:13px;font-weight:400;margin-top:4px;">⚠️ Dépasse ton quota restant (${_quotaDeplCourant.restant})</div>`;
+  }
+  document.getElementById('inscritDeplRecap').innerHTML = html;
+}
+
+async function doInscritDeplMulti(btn) {
+  const id = _deplIdCourantInscription;
+  const participants = [{ type: 'moi' }];
+  if (document.getElementById('idAvecAmis').checked) {
+    _amisDeplSelectionnes.forEach(membreId => participants.push({ type: 'ami', membreId }));
+  }
+  if (document.getElementById('idAvecInvites').checked) {
+    lireInvitesDepl().forEach(inv => participants.push({ type: 'invite', ...inv }));
+  }
+  if (_quotaDeplCourant && participants.length > _quotaDeplCourant.restant) {
+    return toast(`Quota dépassé — il te reste ${_quotaDeplCourant.restant} place(s)`, 'error');
+  }
+  if (document.getElementById('idAvecInvites').checked && !lireInvitesDepl().length) {
+    return toast('Complète au moins un ami (prénom, nom, email) ou décoche cette option', 'error');
+  }
+
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    const { data, error } = await UL.sb.functions.invoke('helloasso-create-checkout', {
-      body: { deplacementId: id },
-    });
-    if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
-    if (data?.error) throw new Error(data.error);
-    if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
+    const data = await UL.demanderInscriptionDeplacementHelloAsso(id, participants);
+    closeModal('modalInscritDepl');
     closeModal('modalDepl');
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
     afficherAvertissementHelloAsso(data.redirectUrl, 'deplacement', data.inscriptionId);
-    // Bouton réactivé avant l'avertissement (pas systématiquement dans une
-    // modale qui se ferme — cf. bouton "M'inscrire" directement sur la
-    // carte déplacement) — voir doPayerCartage (boutique.js) même logique.
   } catch(e) {
     toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error');
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
@@ -313,6 +481,7 @@ async function ouvrirCreerDepl() {
   document.getElementById('dRdvAutre').style.display = 'none';
   document.getElementById('dTelegram').value = '';
   ['dHeure','dPrix','dPlaces','dLimite','dNotes'].forEach(id => document.getElementById(id).value = '');
+  ['dQuota','dOuvConfirme','dOuvDraft','dOuvSympa'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('dNotifier').checked = true;
   onChangeSourceDepl();
 
@@ -398,6 +567,10 @@ async function doCreerDepl(btn) {
     date_limite_inscription: document.getElementById('dLimite').value || null,
     notes: document.getElementById('dNotes').value || null,
     match_id: (source === 'match' && matchId) ? matchId : null,
+    quota_par_membre: parseInt(document.getElementById('dQuota').value) || null,
+    ouverture_confirme: document.getElementById('dOuvConfirme').value || null,
+    ouverture_draft: document.getElementById('dOuvDraft').value || null,
+    ouverture_sympathisant: document.getElementById('dOuvSympa').value || null,
   };
   if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
   const notifier = document.getElementById('dNotifier')?.checked;
@@ -446,6 +619,13 @@ async function ouvrirModifierDepl(deplId) {
     document.getElementById('dmLimite').value = d.date_limite_inscription || '';
     document.getElementById('dmNotes').value = d.notes || '';
     document.getElementById('dmStatut').value = d.statut || 'ouvert';
+    document.getElementById('dmQuota').value = d.quota_par_membre ?? '';
+    // datetime-local attend "YYYY-MM-DDTHH:mm" — les timestamptz renvoyés
+    // par Supabase incluent secondes/fuseau (ex. "2026-07-15T14:30:00+00:00"),
+    // on tronque à 16 caractères pour que l'input les accepte.
+    document.getElementById('dmOuvConfirme').value = d.ouverture_confirme ? d.ouverture_confirme.slice(0,16) : '';
+    document.getElementById('dmOuvDraft').value = d.ouverture_draft ? d.ouverture_draft.slice(0,16) : '';
+    document.getElementById('dmOuvSympa').value = d.ouverture_sympathisant ? d.ouverture_sympathisant.slice(0,16) : '';
 
     // Point de RDV : si la valeur actuelle correspond à une des options
     // prédéfinies, on la sélectionne ; sinon on bascule sur "Autre" avec
@@ -534,6 +714,10 @@ async function doModifierDepl(btn) {
     notes: document.getElementById('dmNotes').value || null,
     statut: document.getElementById('dmStatut').value,
     match_id: (source === 'match' && matchId) ? matchId : null,
+    quota_par_membre: parseInt(document.getElementById('dmQuota').value) || null,
+    ouverture_confirme: document.getElementById('dmOuvConfirme').value || null,
+    ouverture_draft: document.getElementById('dmOuvDraft').value || null,
+    ouverture_sympathisant: document.getElementById('dmOuvSympa').value || null,
   };
   if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
   const texteOriginal = btn ? btn.textContent : '';
