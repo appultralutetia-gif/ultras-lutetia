@@ -1,8 +1,31 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v61
+// ULTRAS LUTETIA — Service Worker v62
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v62 (09/07/2026) : CACHE_NAME bumpé (v61 → v62) — suite retour Remi sur
+// le multi-personnes Déplacements :
+// (1) Liste "Inscrits" (admin) : un invité hors app affiche maintenant
+// son nom/prénom (au lieu de "@?" vide) ; le nom du PAYEUR s'affiche en
+// plus quand il diffère du participant ("💳 Payé par @...") — pour savoir
+// qui a réglé la place de qui. getDeplacement() embarque désormais aussi
+// le payeur (2e FK vers membres, contrainte explicite comme pour
+// membre_id).
+// (2) Scan présence (contexte Déplacement) : refonte complète du flux —
+// on scanne maintenant le QR du PAYEUR (pas celui du participant), et
+// l'admin voit la liste de TOUTES les places que cette personne a payées
+// pour ce déplacement (soi + amis + invités), avec une case à cocher par
+// personne. Un seul "Confirmer" valide la présence des personnes cochées
+// — si le payeur a réglé 3 places, coche les 3 pour valider les 3 d'un
+// coup (ou seulement celles réellement présentes). confirmerPresenceDeplacement
+// (singulier, un membre_id) remplacée par confirmerPresencesDeplacement
+// (pluriel, une liste d'inscriptionIds) — fonctionne aussi pour les
+// invités hors app, qui n'ont pas de membre_id. validerPaiementCash prend
+// désormais un inscriptionId directement (même raison : un invité n'a pas
+// de membre_id à chercher).
+// ⚠️ Aucune migration SQL nécessaire pour cette version (les colonnes
+// utilisées existent déjà depuis migration_deplacements_avance.sql).
 //
 // v61 (09/07/2026) : CACHE_NAME bumpé (v60 → v61) — 2 demandes Remi liées
 // aux amis sur Déplacements :
@@ -241,7 +264,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v61';
+const CACHE_NAME = 'ul-v62';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
