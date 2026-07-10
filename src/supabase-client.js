@@ -1037,15 +1037,90 @@ async function getMonQuotaDepl(deplacementId) {
   return { quota: d.quota_par_membre, utilise, restant: d.quota_par_membre - utilise };
 }
 
-// Liste des membres actifs pouvant être choisis comme "amis de l'app" à
-// inscrire en même temps (soi-même exclu) — même source que Gérer les
-// membres (getAllMembres), filtrée aux comptes actifs uniquement.
+// ⚠️ Remplacée le 09/07/2026 (demande Remi) : renvoyait auparavant TOUS
+// les membres actifs, ce qui exposait la liste complète des membres à
+// n'importe qui (et pas seulement leur pseudo). Ne renvoie désormais que
+// les amitiés CONFIRMÉES du membre connecté — cf. getMesAmis() ci-dessous.
 async function getMembresPourAmisDepl() {
+  return await getMesAmis();
+}
+
+// ============================================================
+// AMITIÉS ("Mes amis") — demande Remi 09/07/2026
+// ============================================================
+// Deux FK vers membres sur la même table (demandeur_id, destinataire_id)
+// — comme documenté en tête de ce fichier pour inscriptions_deplacement,
+// contrainte explicite nécessaire dès le premier embed pour éviter une
+// erreur PGRST201 (relation ambiguë).
+
+// Amis confirmés (statut 'acceptee') — renvoie toujours "l'autre
+// personne" de la relation, peu importe qui avait envoyé la demande à
+// qui à l'origine.
+async function getMesAmis() {
+  const { data, error } = await sb.from('amities')
+    .select(`
+      id, demandeur_id, destinataire_id,
+      demandeur:membres!amities_demandeur_id_fkey(id, nom, prenom, pseudo_telegram),
+      destinataire:membres!amities_destinataire_id_fkey(id, nom, prenom, pseudo_telegram)
+    `)
+    .eq('statut', 'acceptee')
+    .or(`demandeur_id.eq.${currentUser.id},destinataire_id.eq.${currentUser.id}`);
+  if (error) throw error;
+  return (data || []).map(r => r.demandeur_id === currentUser.id ? r.destinataire : r.demandeur).filter(Boolean);
+}
+
+async function getDemandesAmitieRecues() {
+  const { data, error } = await sb.from('amities')
+    .select('id, created_at, demandeur:membres!amities_demandeur_id_fkey(id, nom, prenom, pseudo_telegram)')
+    .eq('destinataire_id', currentUser.id)
+    .eq('statut', 'en_attente')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+async function getDemandesAmitieEnvoyees() {
+  const { data, error } = await sb.from('amities')
+    .select('id, created_at, destinataire:membres!amities_destinataire_id_fkey(id, nom, prenom, pseudo_telegram)')
+    .eq('demandeur_id', currentUser.id)
+    .eq('statut', 'en_attente')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+async function repondreDemandeAmitie(amitieId, accepter) {
+  const { error } = await sb.from('amities')
+    .update({ statut: accepter ? 'acceptee' : 'refusee', repondu_at: new Date().toISOString() })
+    .eq('id', amitieId);
+  if (error) throw error;
+  return { success: true };
+}
+
+async function annulerDemandeAmitie(amitieId) {
+  const { error } = await sb.from('amities').delete().eq('id', amitieId);
+  if (error) throw error;
+  return { success: true };
+}
+
+async function envoyerDemandeAmitie(destinataireId) {
+  const { data, error } = await sb.rpc('envoyer_demande_amitie', { p_destinataire_id: destinataireId });
+  if (error) throw error;
+  return data;
+}
+
+// Recherche par PSEUDO uniquement (jamais par nom/prénom dans la requête
+// elle-même) — chercher quelqu'un par son nom irait à l'encontre de la
+// confidentialité demandée. nom/prenom sont quand même renvoyés dans le
+// résultat : c'est l'affichage (nomAfficheMembre, app.js) qui décide de
+// les montrer ou non selon que le membre connecté est Bureau/Admin.
+async function rechercherMembrePourAmi(recherche) {
   const { data, error } = await sb.from('membres')
-    .select('id, nom, prenom, pseudo_telegram, statut')
+    .select('id, pseudo_telegram, nom, prenom')
     .eq('actif', true)
     .neq('id', currentUser.id)
-    .order('prenom');
+    .ilike('pseudo_telegram', `%${(recherche||'').trim()}%`)
+    .limit(20);
   if (error) throw error;
   return data || [];
 }
@@ -2294,6 +2369,9 @@ window.UL = {
   // Déplacements
   getDeplacements, getDeplacement, getStatutInscriptionDepl,
   getMonQuotaDepl, getMembresPourAmisDepl, relancerPaiementDeplacement, demanderInscriptionDeplacementHelloAsso,
+  // Amitiés
+  getMesAmis, getDemandesAmitieRecues, getDemandesAmitieEnvoyees, repondreDemandeAmitie, annulerDemandeAmitie,
+  envoyerDemandeAmitie, rechercherMembrePourAmi,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
   // Annonces
   getAnnonces, publierAnnonce,
