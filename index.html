@@ -680,6 +680,38 @@
     <div id="reabonnementContainer"></div>
   </div>
 
+  <!-- ── PAGE MES AMIS (accessible depuis Profil) ────────────────
+       Demande Remi 09/07/2026 : demande d'amitié à confirmer par
+       l'autre personne avant d'apparaître dans "mes amis" (utilisé pour
+       inscrire plusieurs personnes à un déplacement). Recherche par
+       pseudo uniquement — jamais nom/prénom pour un membre simple,
+       cf. nomAfficheMembre (app.js). -->
+  <div id="pageAmis" class="page">
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
+      <button class="btn btn-sm btn-secondary" onclick="showPage('pageProfil')">← Retour</button>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;">👥 Mes amis</span>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <input type="text" id="amisRecherche" placeholder="Rechercher un pseudo…" onkeydown="if(event.key==='Enter') chercherAmiPotentiel()">
+      <button class="btn btn-primary" style="width:auto;flex-shrink:0;" onclick="chercherAmiPotentiel()">Chercher</button>
+    </div>
+    <div id="amisRechercheResultats" style="margin-bottom:16px;"></div>
+
+    <div id="amisDemandesRecuesSection" style="display:none;margin-bottom:16px;">
+      <div class="card-label">Demandes reçues</div>
+      <div id="amisDemandesRecues"></div>
+    </div>
+
+    <div id="amisDemandesEnvoyeesSection" style="display:none;margin-bottom:16px;">
+      <div class="card-label">Demandes envoyées</div>
+      <div id="amisDemandesEnvoyees"></div>
+    </div>
+
+    <div class="card-label">Mes amis</div>
+    <div id="amisListe"></div>
+  </div>
+
   <!-- ── PAGE ADMIN — VÉRIFIER UN CODE RÉABONNEMENT (Bureau+) ──── -->
   <div id="pageVerifCode" class="page">
     <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
