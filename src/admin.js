@@ -212,7 +212,12 @@ async function doSauvegarderMembre(btn) {
     // pourtant emprunté par le Comité de passage pour valider (demande
     // Remi 09/07/2026).
     if (_statutAvantEditionMembre === 'sympathisant' && nouveauStatut !== 'sympathisant') {
-      if (membre?.email) UL.envoyerEmailValidation(membre).catch(() => {});
+      if (membre?.email) {
+        UL.envoyerEmailValidation(membre).catch(e => {
+          console.error('[UL] Échec envoi email de validation:', e);
+          toast(`⚠️ Compte activé, mais l'email n'a pas pu être envoyé (${e.message||'erreur inconnue'})`, 'error');
+        });
+      }
       UL.envoyerNotificationPush(
         id,
         '✅ Compte activé !',
@@ -656,7 +661,16 @@ async function validerDemandeAdmin(membreId, statut, sectionId) {
     const membre = await UL.updateMembre(membreId, { statut, actif: true, section_id: sectionId || null });
     toast(`Membre accepté → ${statut} ✅`, 'success');
     if (membre && membre.email) {
-      UL.envoyerEmailValidation(membre).catch(() => {});
+      // ⚠️ Corrigé 09/07/2026 : catch silencieux remplacé — un échec
+      // d'envoi (clé API Brevo, expéditeur non vérifié, quota...) passait
+      // totalement inaperçu jusqu'ici, aucun moyen de savoir que l'email
+      // n'était jamais parti. La validation elle-même reste non-bloquante
+      // (le compte est déjà activé au moment de cet appel), mais l'échec
+      // est maintenant visible (toast + log console).
+      UL.envoyerEmailValidation(membre).catch(e => {
+        console.error('[UL] Échec envoi email de validation:', e);
+        toast(`⚠️ Compte activé, mais l'email n'a pas pu être envoyé (${e.message||'erreur inconnue'})`, 'error');
+      });
     }
     // Notification push en plus de l'email — n'échoue jamais l'action de
     // validation elle-même si l'envoi échoue (cf. envoyerNotificationPush,
