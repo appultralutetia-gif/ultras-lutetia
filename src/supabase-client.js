@@ -1019,6 +1019,79 @@ async function getDeplacement(id) {
   return { deplacement: data, inscrits: inscrits || [], monInscrit, nbInscrits };
 }
 
+// Quota par PAYEUR (pas par participant) — un membre peut avoir réservé
+// plusieurs places sur plusieurs commandes séparées pour le même
+// déplacement (lui + des amis à des moments différents) ; le total
+// compte toutes les lignes où il est payeur_id, pas seulement membre_id
+// (cf. migration_deplacements_avance.sql — mirroir du quota Sticks/Matos,
+// getMonQuotaStick).
+async function getMonQuotaDepl(deplacementId) {
+  const { data: d } = await sb.from('deplacements')
+    .select('quota_par_membre').eq('id', deplacementId).single();
+  if (!d?.quota_par_membre) return null; // pas de quota configuré
+  const { data: mesInscriptions } = await sb.from('inscriptions_deplacement')
+    .select('id')
+    .eq('deplacement_id', deplacementId)
+    .eq('payeur_id', currentUser.id);
+  const utilise = (mesInscriptions || []).length;
+  return { quota: d.quota_par_membre, utilise, restant: d.quota_par_membre - utilise };
+}
+
+// Liste des membres actifs pouvant être choisis comme "amis de l'app" à
+// inscrire en même temps (soi-même exclu) — même source que Gérer les
+// membres (getAllMembres), filtrée aux comptes actifs uniquement.
+async function getMembresPourAmisDepl() {
+  const { data, error } = await sb.from('membres')
+    .select('id, nom, prenom, pseudo_telegram, statut')
+    .eq('actif', true)
+    .neq('id', currentUser.id)
+    .order('prenom');
+  if (error) throw error;
+  return data || [];
+}
+
+// Relance de paiement pour une inscription DÉJÀ existante (refusée ou en
+// attente) — forme d'appel strictement identique à l'ancien comportement
+// (avant l'ajout des amis/invités), pour continuer à fonctionner sans
+// attendre la moindre évolution de l'Edge Function côté serveur.
+async function relancerPaiementDeplacement(deplacementId) {
+  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
+    body: { deplacementId },
+  });
+  if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
+  if (data?.error) throw new Error(data.error);
+  if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
+  return data;
+}
+
+// ⚠️ Nécessite une évolution de l'Edge Function helloasso-create-checkout
+// (non incluse ici — son code source n'a pas été fourni dans cette
+// session). Jusqu'ici elle prenait { deplacementId } et créait UNE ligne
+// inscriptions_deplacement pour currentUser, pour un montant = prix_total.
+// Contrat attendu désormais, uniquement pour une TOUTE NOUVELLE
+// inscription (jamais pour relancer un paiement existant — cf.
+// relancerPaiementDeplacement ci-dessus, qui reste inchangée) : appel
+// avec { deplacementId, participants }, où participants est un tableau :
+//   { type: 'moi' }
+//   { type: 'ami', membreId: '...' }
+//   { type: 'invite', nom: '...', prenom: '...', email: '...' }
+// → côté serveur, créer UNE ligne inscriptions_deplacement par
+// participant (membre_id renseigné pour 'moi'/'ami', invite_* pour
+// 'invite'), toutes avec payeur_id = currentUser.id, et un montant
+// HelloAsso total = prix_total × participants.length. Le reste du flux
+// (webhook, statuts paye_ha/refuse/rembourse) ne change pas de logique,
+// juste appliqué à plusieurs lignes au lieu d'une avec la même référence
+// de paiement.
+async function demanderInscriptionDeplacementHelloAsso(deplacementId, participants) {
+  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
+    body: { deplacementId, participants },
+  });
+  if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
+  if (data?.error) throw new Error(data.error);
+  if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
+  return data;
+}
+
 async function validerPaiementCash(deplacementId, membreId) {
   const qrCode = `UL-${Date.now()}-${membreId.slice(0,6).toUpperCase()}`;
   const { error } = await sb.from('inscriptions_deplacement')
@@ -2220,6 +2293,7 @@ window.UL = {
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   // Déplacements
   getDeplacements, getDeplacement, getStatutInscriptionDepl,
+  getMonQuotaDepl, getMembresPourAmisDepl, relancerPaiementDeplacement, demanderInscriptionDeplacementHelloAsso,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
   // Annonces
   getAnnonces, publierAnnonce,
