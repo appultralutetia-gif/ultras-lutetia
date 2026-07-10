@@ -1,8 +1,36 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v58
+// ULTRAS LUTETIA — Service Worker v59
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v59 (09/07/2026) : CACHE_NAME bumpé (v58 → v59) — 4 évolutions
+// Déplacements (demande Remi) :
+// (1) Accès échelonné par statut : 3 dates optionnelles par déplacement
+// (ouverture_confirme/draft/sympathisant) — un statut sans date reste
+// ouvert sans restriction (comportement par défaut inchangé). Vérifié
+// côté client (inscriptionPasEncoreOuvertePourMoi), affiché en badge
+// "🔒 Ouverture le …" à la place du bouton M'inscrire tant que la date
+// n'est pas atteinte pour le statut du membre connecté.
+// (2) Quota par membre (quota_par_membre sur deplacements, mirroir exact
+// du quota Sticks/Matos) — compte le total de places réservées par
+// PAYEUR (pas juste par participant, cf. point 3).
+// (3) Inscription multi-personnes : nouveau modal modalInscritDepl
+// (soi + case "amis de l'app" avec sélection multiple + case "amis hors
+// app" avec saisie nom/prénom/email répétable). ⚠️ PARTIEL : le paiement
+// pour plusieurs personnes en une fois nécessite une évolution de
+// l'Edge Function helloasso-create-checkout dont le code source n'a pas
+// été fourni dans cette session (contrat attendu documenté en commentaire
+// dans demanderInscriptionDeplacementHelloAsso, supabase-client.js) — le
+// modal et les 3 autres évolutions sont pleinement fonctionnels dès
+// maintenant, seule la validation du paiement à plusieurs est en attente.
+// (4) La relance de paiement pour une inscription déjà existante
+// (refusée/en attente) reste sur l'ancien appel exact, inchangé
+// (relancerPaiementDeplacement) — aucune dépendance à l'Edge Function à
+// venir pour ce cas, donc aucune régression possible dessus.
+// ⚠️ Nécessite d'exécuter migration_deplacements_avance.sql avant de
+// déployer les fichiers front (nouvelles colonnes utilisées dès le
+// chargement de la page).
 //
 // v58 (09/07/2026) : CACHE_NAME bumpé (v57 → v58) — "🕵️ Se connecter en
 // tant que" (demande Remi, option B "vraie connexion") : nouveau bouton
@@ -168,7 +196,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v58';
+const CACHE_NAME = 'ul-v59';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
