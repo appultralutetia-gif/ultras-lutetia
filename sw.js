@@ -1,8 +1,21 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v66
+// ULTRAS LUTETIA — Service Worker v67
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v67 (09/07/2026) : CACHE_NAME bumpé (v66 → v67) — 2 correctifs :
+// (1) Annonces enfin résolu — vraie erreur obtenue cette fois : "column
+// annonces.actif does not exist". Filtre .eq('actif', true) retiré de
+// getAnnonces(), cette colonne n'existe pas sur la vraie table.
+// (2) Déplacements à venir/historique : le découpage se faisait par DATE
+// (v66), Remi voulait par STATUT — un déplacement "Fermé" (ou "Annulé")
+// va maintenant dans l'historique même si sa date est encore future (ex:
+// fermé manuellement en avance). getDeplacementsHistorique (v66, requête
+// serveur par date) retirée — un seul appel getDeplacements(false) côté
+// front, partitionné par statutEffectifDepl/estHistoriqueDepl.
+// statutEffectifDepl couvre maintenant aussi "complet" (pas seulement
+// "ouvert") une fois la date du match dépassée.
 //
 // v66 (09/07/2026) : CACHE_NAME bumpé (v65 → v66) — page Déplacements
 // réorganisée comme la page Sessions Tifo (demande Remi) : deux sections
@@ -317,7 +330,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v66';
+const CACHE_NAME = 'ul-v67';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
