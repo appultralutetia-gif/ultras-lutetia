@@ -2,7 +2,10 @@
 async function loadDeplacements() {
   document.getElementById('deplacementsListe').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
-    const depls = await UL.getDeplacements(true);
+    const [depls, historique] = await Promise.all([
+      UL.getDeplacements(true),
+      UL.getDeplacementsHistorique(),
+    ]);
     // Tri (demande Remi 09/07/2026) : les déplacements ouverts en premier,
     // les fermés/complets/annulés ensuite — chaque groupe conservant le tri
     // chronologique déjà fait côté serveur (getDeplacements ORDER BY
@@ -19,6 +22,9 @@ async function loadDeplacements() {
     document.getElementById('deplacementsListe').innerHTML = tries.length
       ? tries.map(d => renderDeplCard(d)).join('')
       : '<div class="empty-state"><div>✈️</div>Aucun déplacement à venir</div>';
+    document.getElementById('deplacementsHistorique').innerHTML = historique.length
+      ? historique.map(d => renderDeplCard(d)).join('')
+      : '<div class="empty-state"><div>📋</div>Aucun historique</div>';
   } catch(e) { toast('Erreur chargement déplacements', 'error'); }
 }
 
@@ -56,8 +62,14 @@ function calculerStatutPaiementDepl(monInscrit) {
 // même chantier que les plages de précommande Matos/Sticks — demande
 // Remi : auto-fermeture à la date). Optionnel : un déplacement sans date
 // limite reste ouvert sans limite, comportement inchangé.
+// ⚠️ Complété le 09/07/2026 : ferme aussi une fois la date du MATCH elle-
+// même dépassée, même sans date_limite_inscription renseignée — sinon un
+// déplacement passé, affiché dans l'historique (cf. getDeplacementsHistorique),
+// montrerait encore un bouton "M'inscrire" pour un bus déjà parti.
 function inscriptionsDeplFermees(d) {
-  return !!d.date_limite_inscription && new Date() > new Date(d.date_limite_inscription);
+  const dateLimitePassee = !!d.date_limite_inscription && new Date() > new Date(d.date_limite_inscription);
+  const matchDejaPasse = !!d.date_match && d.date_match < new Date().toISOString().split('T')[0];
+  return dateLimitePassee || matchDejaPasse;
 }
 
 // Accès échelonné par statut (demande Remi 09/07/2026) : un Confirmé peut
