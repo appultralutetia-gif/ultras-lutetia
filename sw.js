@@ -1,8 +1,49 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v55
+// ULTRAS LUTETIA — Service Worker v58
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v58 (09/07/2026) : CACHE_NAME bumpé (v57 → v58) — "🕵️ Se connecter en
+// tant que" (demande Remi, option B "vraie connexion") : nouveau bouton
+// sur chaque carte de Gérer les membres, visible uniquement pour
+// admin_app (pas Bureau, volontairement plus strict que le reste du hub
+// Admin — cette action donne un accès complet au compte de la personne).
+// Génère un vrai lien de connexion (magic link) via la nouvelle Edge
+// Function admin-generer-lien-connexion (service_role, jamais exposé
+// côté client ; rôle admin_app revérifié côté serveur, indépendamment de
+// l'UI). ⚠️ Comportement à connaître : ouvrir ce lien dans le même
+// navigateur REMPLACE la session Admin actuelle par celle du membre visé
+// (session partagée par origine, pas par onglet) — confirmation explicite
+// affichée avant génération, et recommandation d'ouvrir en navigation
+// privée pour garder les deux sessions en parallèle. ⚠️ Nécessite de
+// déployer la nouvelle Edge Function (admin-generer-lien-connexion,
+// Verify JWT resté ACTIVÉ — ne pas le désactiver comme les autres
+// fonctions du projet, indispensable ici) avant de déployer admin.js/
+// supabase-client.js.
+//
+// v57 (09/07/2026) : CACHE_NAME bumpé (v56 → v57) — vrai correctif des
+// annonces (le précédent, en v50, devinait un nom de contrainte FK qui
+// s'est révélé faux). Erreur exacte obtenue cette fois : "Could not find
+// the 'cellule_id' column of 'annonces' in the schema cache" — cette
+// colonne n'existe pas du tout dans la vraie table, retirée de
+// publierAnnonce() (elle n'était de toute façon jamais renseignée par
+// l'UI). Pour getAnnonces(), embed PostgREST membres(...) abandonné
+// complètement (plus de pari sur un nom de contrainte) : deux requêtes
+// séparées désormais — les annonces, puis les auteurs récupérés à part
+// et recollés en JS. Aucun changement de rendu (le nom de l'auteur
+// n'est de toute façon pas affiché sur Accueil).
+//
+// v56 (09/07/2026) : CACHE_NAME bumpé (v55 → v56) — correctif affichage
+// sur pageVerifCode ("🔍 Vérifier un code réabonnement") : le champ de
+// recherche s'affichait comme un minuscule carré, le bouton "Chercher"
+// prenant presque toute la largeur. Cause : .btn a width:100% par défaut
+// (pensé pour des boutons empilés en pleine largeur, cf. le reste de
+// l'app) — placé à côté d'un input flex:1 dans une même ligne flex, les
+// deux se disputaient l'espace et le bouton gagnait presque tout.
+// Corrigé avec width:auto;flex-shrink:0 sur ce bouton précis. Aucun
+// autre endroit de l'app ne combine input+bouton sur une même ligne
+// flex, donc pas d'autre occurrence de ce bug à corriger.
 //
 // v55 (09/07/2026) : CACHE_NAME bumpé (v54 → v55) — retour Remi : l'outil
 // de recherche au cas par cas "ne sert pas à grand chose", le code doit
@@ -127,7 +168,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v55';
+const CACHE_NAME = 'ul-v58';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
