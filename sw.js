@@ -1,8 +1,16 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v68
+// ULTRAS LUTETIA — Service Worker v69
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v69 (09/07/2026) : CACHE_NAME bumpé (v68 → v69) — les deux appels à
+// envoyerEmailValidation (validerDemandeAdmin et doSauvegarderMembre)
+// avalaient silencieusement tout échec d'envoi (.catch(() => {})) —
+// aucun moyen de savoir qu'un email n'était jamais parti (cas rapporté
+// par Remi : compte validé, aucun email reçu). Remplacé par un toast
+// d'erreur explicite + log console à chaque échec, sans bloquer la
+// validation elle-même (déjà effective au moment de l'appel).
 //
 // v68 (09/07/2026) : CACHE_NAME bumpé (v67 → v68) — l'email + notification
 // de validation de compte (déjà existants, cf. envoyerEmailValidation)
@@ -342,7 +350,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v68';
+const CACHE_NAME = 'ul-v69';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
