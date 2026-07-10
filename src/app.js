@@ -822,7 +822,9 @@ async function loadAccueil() {
         <span style="font-size:13px;">${a.contenu}</span>
       </div>`).join('') || '<p style="color:var(--gris);font-size:14px;">Aucune annonce</p>';
   } catch(e) {
-    document.getElementById('annoncesContainer').innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger les annonces</div>';
+    console.error('[UL] Erreur chargement annonces:', e);
+    document.getElementById('annoncesContainer').innerHTML =
+      `<div class="empty-state"><div>⚠️</div>Impossible de charger les annonces<br><span style="font-size:11px;opacity:.6;">${esc(e.message||'')}</span></div>`;
   }
 
   // Prochain match domicile / extérieur — réutilise renderMatchCard (calendrier.js)
@@ -850,26 +852,17 @@ async function loadAccueil() {
     }
 
     document.getElementById('matchDomicileAccueil').innerHTML = prochainDomicile
-      ? renderMatchCard(prochainDomicile, m)
+      ? renderMatchCard(prochainDomicile, m, true)
       : '<p style="color:var(--gris);font-size:14px;">Aucun match à domicile à venir</p>';
     document.getElementById('matchExterieurAccueil').innerHTML = prochainExterieur
       ? renderMatchCard(prochainExterieur, m)
       : '<p style="color:var(--gris);font-size:14px;">Aucun match à l\'extérieur à venir</p>';
+    // Peuple le bouton "Présent" après coup (appel réseau, cf. calendrier.js)
+    // — seulement si la carte domicile a bien un placeholder (avecPresence=true).
+    if (prochainDomicile) afficherPresenceMatch(prochainDomicile.id);
   } catch(e) {
     document.getElementById('matchDomicileAccueil').innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger</div>';
     document.getElementById('matchExterieurAccueil').innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger</div>';
-  }
-
-  // Déplacement
-  document.getElementById('deplAccueil').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
-  try {
-    const depls = await UL.getDeplacements(true);
-    const el = document.getElementById('deplAccueil');
-    el.innerHTML = depls.length
-      ? renderDeplCard(depls[0])
-      : '<p style="color:var(--gris);font-size:14px;">Aucun déplacement à venir</p>';
-  } catch(e) {
-    document.getElementById('deplAccueil').innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger</div>';
   }
 
   // Sessions tifo (visibles seulement si le membre a le droit de voir les tifos)
@@ -896,10 +889,10 @@ async function loadAccueil() {
   try {
     const stats = await UL.getMesStats();
     document.getElementById('mesStats').innerHTML = `
-      <div class="stat-card"><div class="stat-value">${stats.sessionsPresent}</div><div class="stat-label">Présences</div></div>
-      <div class="stat-card"><div class="stat-value">${stats.tauxPresence}%</div><div class="stat-label">Assiduité</div></div>
-      <div class="stat-card"><div class="stat-value">${stats.deplacements}</div><div class="stat-label">Déplacements</div></div>
-      <div class="stat-card"><div class="stat-value">${stats.sessionsInscrites}</div><div class="stat-label">Inscriptions</div></div>`;
+      <div class="stat-card"><div class="stat-value">${stats.matchsTotal}</div><div class="stat-label">Matchs (saison)</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.presencesDomicile}</div><div class="stat-label">Présent domicile</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.presencesExterieur}</div><div class="stat-label">Présent extérieur</div></div>
+      <div class="stat-card"><div class="stat-value">${stats.sessionsPresent}</div><div class="stat-label">Sessions tifo</div></div>`;
   } catch(e) {
     document.getElementById('mesStats').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div>⚠️</div>Impossible de charger</div>';
   }
