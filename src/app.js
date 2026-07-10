@@ -32,6 +32,20 @@ function hasDistributeurSticks(membre) { return hasCelluleSticks(membre) || hasR
 function peutValiderInscriptions(membre) {
   return isAdmin(membre) || isBureau(membre) || hasCelluleComite(membre);
 }
+// Confidentialité entre membres (demande Remi 09/07/2026) : un membre
+// simple ne doit jamais voir le nom/prénom d'un autre membre simple —
+// seul le pseudo Telegram est affiché dans ce cas (déjà utilisé comme
+// identifiant public partout ailleurs, ex. @NecroYann). Bureau/Admin
+// voient le nom complet, comme ils le font déjà ailleurs dans l'app
+// (Gérer les membres, Comité de passage…). Centralisé ici pour être
+// utilisé partout où un AUTRE membre est affiché à un membre simple
+// (liste d'amis, recherche pour demande d'amitié, sélection "amis" sur
+// un déplacement).
+function nomAfficheMembre(m) {
+  if (!m) return '?';
+  const voirNomComplet = isBureau(UL.getCurrentMembre());
+  return voirNomComplet ? `${m.prenom||''} ${m.nom||''}`.trim() || '?' : `@${m.pseudo_telegram||'?'}`;
+}
 // Accès à la page Tifos : Confirmé et au-dessus voient automatiquement,
 // Draft seulement après validation explicite par cellule Tifo/Bureau/Admin
 // (membre.valide_tifo), Sympathisant jamais. La cellule Tifo elle-même
