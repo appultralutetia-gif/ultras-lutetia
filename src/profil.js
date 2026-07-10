@@ -51,6 +51,9 @@ async function loadProfil() {
     <div style="font-size:13px;margin-bottom:6px;">📋 Charte: ${m.charte_signee ? '✅ Signée' : '❌ Non signée'}</div>
     <div style="font-size:13px;">💶 Cartage: ${m.cotisation_a_jour ? '✅ À jour' : '⏳ En attente'}</div>
     <div id="profilReabonnementBtn" style="margin-top:10px;"></div>
+    <div style="margin-top:10px;">
+      <button class="btn btn-secondary" onclick="showPage('pageAmis');loadAmis()">👥 Mes amis</button>
+    </div>
   `;
   afficherBoutonReabonnementProfil();
   try {
@@ -189,6 +192,104 @@ async function loadReabonnement() {
   } catch(e) {
     el.innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger tes codes</div>';
   }
+}
+
+// ─── MES AMIS ───────────────────────────────────────────────────
+// Confidentialité (demande Remi 09/07/2026) : nomAfficheMembre (app.js)
+// décide seule ce qui est montré (pseudo pour un membre simple, nom
+// complet pour Bureau/Admin) — cette page ne fait jamais elle-même le
+// choix d'afficher nom/prénom.
+async function loadAmis() {
+  document.getElementById('amisRecherche').value = '';
+  document.getElementById('amisRechercheResultats').innerHTML = '';
+
+  try {
+    const [recues, envoyees, amis] = await Promise.all([
+      UL.getDemandesAmitieRecues(),
+      UL.getDemandesAmitieEnvoyees(),
+      UL.getMesAmis(),
+    ]);
+
+    const secRecues = document.getElementById('amisDemandesRecuesSection');
+    secRecues.style.display = recues.length ? 'block' : 'none';
+    document.getElementById('amisDemandesRecues').innerHTML = recues.map(d => `
+      <div class="card" style="margin-bottom:8px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span style="font-size:14px;">${esc(nomAfficheMembre(d.demandeur))}</span>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="btn btn-sm btn-success" onclick="doRepondreAmi('${d.id}',true,this)">✅ Accepter</button>
+          <button class="btn btn-sm btn-danger" onclick="doRepondreAmi('${d.id}',false,this)">❌ Refuser</button>
+        </div>
+      </div>`).join('');
+
+    const secEnvoyees = document.getElementById('amisDemandesEnvoyeesSection');
+    secEnvoyees.style.display = envoyees.length ? 'block' : 'none';
+    document.getElementById('amisDemandesEnvoyees').innerHTML = envoyees.map(d => `
+      <div class="card" style="margin-bottom:8px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span style="font-size:14px;">${esc(nomAfficheMembre(d.destinataire))}</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <span class="badge badge-orange">⏳ En attente</span>
+          <button class="btn btn-sm btn-secondary" onclick="doAnnulerDemandeAmi('${d.id}',this)">Annuler</button>
+        </div>
+      </div>`).join('');
+
+    document.getElementById('amisListe').innerHTML = amis.length
+      ? amis.map(m => `
+        <div class="card" style="margin-bottom:8px;padding:12px;">
+          <span style="font-size:14px;">${esc(nomAfficheMembre(m))}</span>
+        </div>`).join('')
+      : '<div class="empty-state"><div>👥</div>Aucun ami confirmé pour l\'instant</div>';
+  } catch(e) { toast('Erreur chargement de tes amis', 'error'); }
+}
+
+async function chercherAmiPotentiel() {
+  const q = document.getElementById('amisRecherche').value.trim();
+  const el = document.getElementById('amisRechercheResultats');
+  if (!q) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="empty-state"><div>⏳</div>Recherche…</div>';
+  try {
+    const resultats = await UL.rechercherMembrePourAmi(q);
+    if (!resultats.length) { el.innerHTML = '<div style="font-size:13px;color:var(--gris);">Aucun résultat</div>'; return; }
+    el.innerHTML = resultats.map(m => `
+      <div class="card" style="margin-bottom:8px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span style="font-size:14px;">${esc(nomAfficheMembre(m))}</span>
+        <button class="btn btn-sm btn-primary" style="flex-shrink:0;" onclick="doEnvoyerDemandeAmi('${m.id}',this)">➕ Ajouter</button>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur de recherche</div>'; }
+}
+
+async function doEnvoyerDemandeAmi(membreId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+  try {
+    const res = await UL.envoyerDemandeAmitie(membreId);
+    if (res.success) {
+      toast(res.auto_acceptee ? 'Vous êtes maintenant amis ✅' : 'Demande envoyée ✅', 'success');
+      loadAmis();
+    } else {
+      toast(res.error || 'Impossible d\'envoyer la demande', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '➕ Ajouter'; }
+    }
+  } catch(e) {
+    toast(e.message || 'Impossible d\'envoyer la demande', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '➕ Ajouter'; }
+  }
+}
+
+async function doRepondreAmi(amitieId, accepter, btn) {
+  if (btn) { btn.disabled = true; }
+  try {
+    await UL.repondreDemandeAmitie(amitieId, accepter);
+    toast(accepter ? 'Ami ajouté ✅' : 'Demande refusée', 'success');
+    loadAmis();
+  } catch(e) { toast(e.message || 'Impossible de répondre à cette demande', 'error'); if (btn) btn.disabled = false; }
+}
+
+async function doAnnulerDemandeAmi(amitieId, btn) {
+  if (btn) { btn.disabled = true; }
+  try {
+    await UL.annulerDemandeAmitie(amitieId);
+    toast('Demande annulée', 'success');
+    loadAmis();
+  } catch(e) { toast(e.message || 'Impossible d\'annuler cette demande', 'error'); if (btn) btn.disabled = false; }
 }
 
 async function doChangeMdp() {
