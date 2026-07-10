@@ -1,8 +1,30 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v59
+// ULTRAS LUTETIA — Service Worker v60
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v60 (09/07/2026) : CACHE_NAME bumpé (v59 → v60) — Déplacements
+// multi-personnes désormais COMPLET (partie serveur reçue de Remi) :
+// helloasso-create-checkout étendu pour accepter { deplacementId,
+// participants } — crée une ligne inscriptions_deplacement par
+// participant (soi/ami app/invité hors app), un seul paiement HelloAsso
+// pour le total (prix_total × nb participants). Validation en deux
+// passes (résolution+vérif sans écriture, puis écriture) pour ne jamais
+// laisser de lignes orphelines si un participant du groupe est déjà payé.
+// Quota par payeur recalculé correctement en tenant compte des lignes
+// réutilisées (une relance de paiement ne consomme jamais deux fois le
+// quota). helloasso-webhook étendu en miroir : metadata.inscription_ids
+// (pluriel) marque toutes les lignes du groupe 'paye_ha' ensemble à la
+// confirmation, notifie chaque participant ayant un compte app + le
+// payeur. Les deux fichiers Edge Function restent strictement
+// rétrocompatibles : sans `participants` dans la requête (cas de
+// relancerPaiementDeplacement, la relance de paiement), le comportement
+// est identique à avant au bit près. ⚠️ Déploiement : remplacer les 2
+// fichiers supabase/functions/helloasso-create-checkout/index.ts et
+// supabase/functions/helloasso-webhook/index.ts, puis redéployer
+// (supabase functions deploy helloasso-create-checkout / helloasso-webhook).
+// Aucun changement de secrets/config nécessaire.
 //
 // v59 (09/07/2026) : CACHE_NAME bumpé (v58 → v59) — 4 évolutions
 // Déplacements (demande Remi) :
@@ -196,7 +218,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v59';
+const CACHE_NAME = 'ul-v60';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
