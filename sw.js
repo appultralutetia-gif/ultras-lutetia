@@ -1,8 +1,50 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v63
+// ULTRAS LUTETIA — Service Worker v66
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v66 (09/07/2026) : CACHE_NAME bumpé (v65 → v66) — page Déplacements
+// réorganisée comme la page Sessions Tifo (demande Remi) : deux sections
+// "Déplacements à venir" / "Historique" au lieu d'une liste unique.
+// Nouvelle fonction getDeplacementsHistorique() (20 derniers déplacements
+// passés, même limite que getPastSessions) ; enrichissement _inscrits/
+// monInscrit factorisé (_enrichirDeplacements) entre les deux fonctions.
+// Le tri "ouverts en premier" (v63) reste appliqué uniquement à la liste
+// "à venir". Corrigé au passage : inscriptionsDeplFermees() ferme
+// maintenant aussi une fois la date du MATCH passée (pas seulement
+// date_limite_inscription) — sinon un déplacement de l'historique aurait
+// encore pu afficher "M'inscrire" pour un bus déjà parti.
+// ⚠️ Aucune migration SQL nécessaire.
+//
+// v65 (09/07/2026) : CACHE_NAME bumpé (v64 → v65) — correctif "Matchs
+// (saison)" : comptait le nombre total de matchs programmés au calendrier
+// (34), pas les présences personnelles — recalculé comme la somme des
+// présences domicile + extérieur du membre (demande Remi : "matchs
+// présents dans la saison domicile + extérieur").
+//
+// v64 (09/07/2026) : CACHE_NAME bumpé (v63 → v64) — 4 sujets Accueil/
+// Stats/Annonces (demande Remi) :
+// (1) Section "Prochain déplacement" retirée d'Accueil — redondante avec
+// le bouton "🚌 Voir le déplacement" déjà présent sur la carte "Prochain
+// match extérieur".
+// (2) Annonces : "Impossible de charger" toujours signalé malgré le
+// correctif v57 — l'erreur réelle (e.message) s'affiche maintenant
+// directement dans le message, pour diagnostiquer sans devoir ouvrir la
+// console navigateur.
+// (3) Nouveau : présence déclarative gratuite aux matchs à DOMICILE
+// (bouton "✅ Présent au match" sur la carte, désinscription possible à
+// tout moment — contrairement à un déplacement extérieur, payant). Table
+// presences_matchs_domicile, RLS un membre gère sa propre présence.
+// renderMatchCard (calendrier.js) accepte un 3e paramètre optionnel
+// avecPresence (jamais utilisé nulle part ailleurs que la carte domicile
+// d'Accueil pour l'instant — Calendrier et la carte extérieur inchangés).
+// (4) "Mes stats" (Accueil + Profil + mini-bloc page Statistiques admin)
+// remplacées : Matchs (saison), Présent domicile, Présent extérieur
+// (désormais basé sur present_at réellement scanné, pas juste
+// inscrit/payé), Sessions tifo réalisées.
+// ⚠️ Nécessite d'exécuter migration_presence_matchs_domicile.sql avant de
+// déployer les fichiers front.
 //
 // v63 (09/07/2026) : CACHE_NAME bumpé (v62 → v63) — 2 demandes Remi sur la
 // liste Déplacements : (1) tri : ouverts en premier, fermés/complets/
@@ -275,7 +317,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v63';
+const CACHE_NAME = 'ul-v66';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
