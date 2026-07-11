@@ -229,6 +229,10 @@ async function saisirScore(matchId) {
 // Matos/Sticks) et Suivi des paiements (ex-pageCartage, filtres étendus).
 let allCartage = [], currentFiltreCartage = 'tous';
 let allCartageCatalogueAdmin = [];
+// Liste réellement affichée à l'écran après filtre courant — exportée
+// telle quelle par exporterCartageCsv() (même convention que
+// _membresComiteTriesAffiches, admin.js).
+let _cartageAffichesCourant = [];
 
 function switchGererCartageTab(tab) {
   document.getElementById('tabGererCartageArticles').classList.toggle('active', tab === 'articles');
@@ -353,6 +357,31 @@ async function loadCartageSuivi() {
   } catch(e) { toast('Erreur cartage', 'error'); }
 }
 
+// Exporte exactement ce qui est affiché à l'écran (filtre courant
+// compris) — même convention que exporterCsvMembresComite (admin.js),
+// dont csvEscape est réutilisé ici (chargé dans la même page, accessible
+// globalement).
+function exporterCartageCsv() {
+  const filtered = _cartageAffichesCourant || [];
+  if (!filtered.length) return toast('Aucun membre à exporter avec ce filtre', 'error');
+  const entete = ['Prénom', 'Nom', 'Pseudo', 'Email', 'Statut UL', 'Statut Cartage', 'Statut Charte'];
+  const lignes = filtered.map(m => [
+    m.prenom || '', m.nom || '', m.pseudo_telegram || '', m.email || '',
+    m.statut || '', m.cotisation_a_jour ? 'Payé' : 'Incomplet', m.charte_signee ? 'Signée' : 'Non signée',
+  ]);
+  const csv = '\uFEFF' + [entete, ...lignes].map(l => l.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `cartage_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Export CSV généré (${filtered.length}) !`, 'success');
+}
+
 function filtrerCartage(filtre) {
   currentFiltreCartage = filtre;
   ['fcartTous','fcartIncomplets','fcartAttente','fcartPaye'].forEach(id => {
@@ -372,6 +401,7 @@ function filtrerCartage(filtre) {
   if (filtre === 'paye') filtered = allCartage.filter(m => m.cotisation_a_jour);
 
   const el = document.getElementById('cartageListe');
+  _cartageAffichesCourant = filtered;
   if (!filtered.length) { el.innerHTML = '<div class="empty-state"><div>🗂️</div>Aucun membre</div>'; return; }
 
   el.innerHTML = filtered.map(m => {
@@ -383,6 +413,7 @@ function filtrerCartage(filtre) {
         <div style="flex:1;min-width:0;">
           <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(m.prenom)} ${esc(m.nom)}</div>
           <div style="font-size:11px;color:var(--gris);">@${esc(m.pseudo_telegram)} · <span class="statut-${m.statut}">${m.statut}</span></div>
+          ${m.email ? `<div style="font-size:11px;color:var(--gris);margin-top:1px;">✉️ ${esc(m.email)}</div>` : ''}
           <div style="font-size:11px;margin-top:3px;">
             ${m.cotisation_a_jour ? '✅' : '❌'} Cartage &nbsp;|&nbsp; ${m.charte_signee ? '✅' : '❌'} Charte
           </div>
