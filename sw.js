@@ -1,8 +1,22 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v75
+// ULTRAS LUTETIA — Service Worker v76
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v76 (10/07/2026) : CACHE_NAME bumpé (v75 → v76) — cause probable
+// trouvée pour les épisodes répétés de "version pas à jour malgré un
+// déploiement confirmé sur GitHub" : fetch(e.request) dans la branche
+// "network-first" respectait le cache HTTP du navigateur (et/ou du CDN
+// GitHub Pages) — un fetch() peut être satisfait silencieusement par une
+// réponse encore "fraîche" en cache selon Cache-Control, sans jamais
+// vraiment retourner sur le réseau. { cache: 'reload' } force désormais
+// une vraie revalidation serveur pour tous les fichiers NETWORK_FIRST.
+// ⚠️ Ce correctif lui-même dépend du navigateur qui va récupérer CE
+// nouveau sw.js au moins une fois pour être actif — si le problème
+// persiste après déploiement, un Unregister manuel du service worker
+// (DevTools → Application → Service Workers) reste le recours immédiat,
+// ce correctif évite que ça se reproduise ensuite.
 //
 // v75 (10/07/2026) : CACHE_NAME bumpé (v74 → v75) — le filtre "Demandes
 // d'inscription" de v74 (statut === 'visiteur' uniquement) faisait
@@ -416,7 +430,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v75';
+const CACHE_NAME = 'ul-v76';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
@@ -472,8 +486,18 @@ self.addEventListener('fetch', e => {
 
   // Network-first pour tous les modules JS/CSS
   if (NETWORK_FIRST.some(p => url.pathname === p)) {
+    // ⚠️ Corrigé 10/07/2026 (bug rapporté par Remi : ancienne version
+    // d'admin.js encore servie malgré un déploiement confirmé à jour sur
+    // GitHub) — fetch(e.request) tout seul respecte le cache HTTP du
+    // navigateur (et/ou celui du CDN de GitHub Pages) : "network-first"
+    // ne garantissait donc PAS un vrai aller-retour réseau, juste un
+    // fetch() qui pouvait être satisfait silencieusement par une réponse
+    // en cache si elle était encore "fraîche" selon les en-têtes
+    // Cache-Control — sans jamais toucher le réseau ni ce service worker.
+    // { cache: 'reload' } force la revalidation réelle auprès du serveur.
+    const req = new Request(e.request.url, { cache: 'reload' });
     e.respondWith(
-      fetch(e.request).then(response => {
+      fetch(req).then(response => {
         if (response && response.status === 200) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
