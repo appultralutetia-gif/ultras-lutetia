@@ -1,8 +1,14 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v77
+// ULTRAS LUTETIA — Service Worker v78
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v78 (10/07/2026) : CACHE_NAME bumpé (v77 → v78) — Gérer le cartage →
+// Suivi des paiements : 2 nouveaux filtres (demande Remi) — "❌ Cartage
+// non payé" et "❌ Charte non signée" — pour isoler chaque cause
+// séparément (le filtre "Incomplets" existant mélange les deux, cartage
+// OU charte manquant, sans distinguer lequel).
 //
 // v77 (10/07/2026) : CACHE_NAME bumpé (v76 → v77) — cause RÉELLE de la
 // carte "Demandes d'inscription" restée bloquée sur l'ancienne version
@@ -446,7 +452,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v77';
+const CACHE_NAME = 'ul-v78';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
