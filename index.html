@@ -329,6 +329,7 @@
       <input type="text" id="searchMembre" placeholder="Rechercher..." style="flex:1;min-width:120px;" oninput="filtrerMembres()">
       <select id="filterStatut" onchange="filtrerMembres()" style="flex:1;min-width:110px;">
         <option value="">Tous statuts</option>
+        <option value="visiteur">Visiteur</option>
         <option value="sympathisant">Sympathisant</option>
         <option value="draft">Draft</option>
         <option value="confirme">Confirmé</option>
@@ -355,6 +356,7 @@
 
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;" id="filtresStatutComite">
       <button class="filter-btn active" data-statut="" onclick="filtrerStatutComite('')">Tous statuts</button>
+      <button class="filter-btn" data-statut="visiteur" onclick="filtrerStatutComite('visiteur')">🚶 Visiteur</button>
       <button class="filter-btn" data-statut="sympathisant" onclick="filtrerStatutComite('sympathisant')">💙 Sympathisant</button>
       <button class="filter-btn" data-statut="draft" onclick="filtrerStatutComite('draft')">🚀 Draft</button>
       <button class="filter-btn" data-statut="confirme" onclick="filtrerStatutComite('confirme')">🏅 Confirmé</button>
@@ -1290,6 +1292,7 @@
     <div class="form-group">
       <label>Statut UL</label>
       <select id="editStatut">
+        <option value="visiteur">Visiteur</option>
         <option value="sympathisant">Sympathisant</option>
         <option value="draft">Draft</option>
         <option value="confirme">Confirmé</option>
