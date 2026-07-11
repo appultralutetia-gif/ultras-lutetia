@@ -1,8 +1,24 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v76
+// ULTRAS LUTETIA — Service Worker v77
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v77 (10/07/2026) : CACHE_NAME bumpé (v76 → v77) — cause RÉELLE de la
+// carte "Demandes d'inscription" restée bloquée sur l'ancienne version
+// malgré plusieurs déploiements confirmés : ce n'était PAS un problème de
+// cache. app.js contenait une copie ENTIÈREMENT SÉPARÉE de cette
+// fonctionnalité (loadDemandes/validerDemande/refuserDemande, pour la
+// section repliée sur l'Accueil), jamais mise à jour en parallèle de
+// celle d'admin.js (pageDemandesAdmin) pendant tous les correctifs
+// précédents (statut par défaut, bouton Visiteur, sélecteur de section
+// inline, email non-bloquant...). loadDemandesAdmin (admin.js) généralisée
+// pour servir les DEUX emplacements (paramètres idListe/idBadge, ids de
+// <select> préfixés pour éviter les doublons puisque les deux conteneurs
+// existent simultanément dans le DOM) ; la copie dans app.js supprimée,
+// loadDemandes() n'est plus qu'un appel à loadDemandesAdmin('demandesListe',
+// 'demandesBadge'). Une seule implémentation désormais, plus de risque de
+// divergence future entre les deux écrans.
 //
 // v76 (10/07/2026) : CACHE_NAME bumpé (v75 → v76) — cause probable
 // trouvée pour les épisodes répétés de "version pas à jour malgré un
@@ -430,7 +446,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v76';
+const CACHE_NAME = 'ul-v77';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
