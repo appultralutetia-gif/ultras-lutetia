@@ -104,7 +104,7 @@ async function _ouvrirModalEditMembre(m, mode) {
   document.getElementById('editTelegram').value = m.pseudo_telegram||'';
   document.getElementById('editEmail').value = m.email||'';
   // Statut UL : seulement sympathisant/draft/confirme
-  const statutUL = ['sympathisant','draft','confirme'].includes(m.statut) ? m.statut : 'confirme';
+  const statutUL = ['visiteur','sympathisant','draft','confirme'].includes(m.statut) ? m.statut : 'confirme';
   document.getElementById('editStatut').value = statutUL;
   document.getElementById('editValideTifo').checked = !!m.valide_tifo;
 
@@ -609,6 +609,7 @@ async function loadDemandesAdmin() {
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-secondary" onclick="ouvrirValiderDemande('${m.id}','visiteur','${esc(m.prenom)} ${esc(m.nom)}')">🚶 Visiteur</button>
           <button class="btn btn-sm btn-secondary" onclick="ouvrirValiderDemande('${m.id}','sympathisant','${esc(m.prenom)} ${esc(m.nom)}')">💙 Sympa.</button>
           <button class="btn btn-sm btn-success" onclick="ouvrirValiderDemande('${m.id}','draft','${esc(m.prenom)} ${esc(m.nom)}')">✅ Draft</button>
           <button class="btn btn-sm btn-primary" onclick="ouvrirValiderDemande('${m.id}','confirme','${esc(m.prenom)} ${esc(m.nom)}')">⭐ Confirmé</button>
@@ -627,7 +628,7 @@ async function loadDemandesAdmin() {
 let _demandeEnCours = null;
 async function ouvrirValiderDemande(membreId, statut, nomAffiche) {
   _demandeEnCours = { membreId, statut };
-  const LABEL_STATUT = { sympathisant: '💙 Sympathisant', draft: '✅ Draft', confirme: '⭐ Confirmé' };
+  const LABEL_STATUT = { visiteur: '🚶 Visiteur', sympathisant: '💙 Sympathisant', draft: '✅ Draft', confirme: '⭐ Confirmé' };
   document.getElementById('demandeValiderTitre').textContent =
     `${nomAffiche || 'Ce membre'} → ${LABEL_STATUT[statut] || statut}`;
   try {
@@ -921,7 +922,7 @@ function renderMembresComiteListe(membres) {
 }
 
 const STATUT_LABEL_COMITE = {
-  sympathisant: '💙 Sympathisant', draft: '🚀 Draft', confirme: '🏅 Confirmé',
+  visiteur: '🚶 Visiteur', sympathisant: '💙 Sympathisant', draft: '🚀 Draft', confirme: '🏅 Confirmé',
 };
 // Catégorie de notation applicable selon le statut — null si aucune
 // (Confirmé+ a déjà passé l'évaluation, pas de catégorie pour lui ici).
