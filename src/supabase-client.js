@@ -2157,7 +2157,7 @@ async function validerCartageHelloAssoManuel(membreId, cartageId) {
 // on veut le membre PAYEUR, pas l'admin qui a validé le paiement.
 async function getAllCartagePaiements() {
   const { data, error } = await sb.from('membres')
-    .select('id, nom, prenom, pseudo_telegram, statut, cotisation_a_jour, charte_signee, section:sections(nom), cartage_paiements!cartage_paiements_membre_id_fkey(statut, montant, mode_paiement, paye_at, cartage:cartage_catalogue(nom), created_at)')
+    .select('id, nom, prenom, pseudo_telegram, email, statut, cotisation_a_jour, charte_signee, section:sections(nom), cartage_paiements!cartage_paiements_membre_id_fkey(statut, montant, mode_paiement, paye_at, cartage:cartage_catalogue(nom), created_at)')
     .order('nom');
   if (error) throw error;
   return (data || []).map(m => {
