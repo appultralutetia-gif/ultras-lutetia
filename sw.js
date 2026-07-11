@@ -1,8 +1,16 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v71
+// ULTRAS LUTETIA — Service Worker v72
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v72 (09/07/2026) : CACHE_NAME bumpé (v71 → v72) — annonces, cette fois
+// pour de bon : schéma réel obtenu via information_schema.columns
+// (annonces = id, titre, contenu, categorie, created_at — rien d'autre).
+// publierAnnonce() n'envoie plus publie_par (colonne inexistante,
+// 3e colonne fantôme trouvée après cellule_id et actif). getAnnonces()
+// simplifiée en conséquence : plus de recherche d'auteur (jamais
+// affiché côté front de toute façon).
 //
 // v71 (09/07/2026) : CACHE_NAME bumpé (v70 → v71) — page Gérer le cartage
 // → Suivi des paiements (demande Remi) : (1) email affiché sur chaque
@@ -370,7 +378,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v71';
+const CACHE_NAME = 'ul-v72';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
