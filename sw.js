@@ -1,8 +1,21 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v73
+// ULTRAS LUTETIA — Service Worker v74
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v74 (10/07/2026) : CACHE_NAME bumpé (v73 → v74) — suite Visiteur
+// (demande Remi) : (1) statut par défaut à l'inscription passé de
+// 'sympathisant' à 'visiteur' (inscription(), supabase-client.js).
+// (2) Filtre "Demandes d'inscription en attente" mis à jour en
+// conséquence (cherchait statut === 'sympathisant', cherche désormais
+// 'visiteur' — sinon les nouvelles inscriptions n'y seraient plus
+// jamais apparues). (3) Choix de la section intégré directement sur
+// chaque carte de demande (select "Ultra Lutetia" présélectionné par
+// défaut) au lieu d'une popup séparée après le clic sur un statut — un
+// seul clic suffit désormais. modalValiderDemande (HTML) et le flux en
+// 2 étapes (ouvrirValiderDemande/confirmerValiderDemande) retirés,
+// remplacés par validerDemandeInline().
 //
 // v73 (10/07/2026) : CACHE_NAME bumpé (v72 → v73) — 2 demandes Remi :
 // (1) Évaluation "Cellule Tifo" (pinceaux 🖌️) retirée de l'affichage
@@ -395,7 +408,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v73';
+const CACHE_NAME = 'ul-v74';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
