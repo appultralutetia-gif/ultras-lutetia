@@ -752,6 +752,8 @@
         <button class="filter-btn" id="fcartIncomplets" onclick="filtrerCartage('incomplets')">⚠️ Incomplets</button>
         <button class="filter-btn" id="fcartAttente" onclick="filtrerCartage('attente')">⏳ En attente de paiement</button>
         <button class="filter-btn" id="fcartPaye" onclick="filtrerCartage('paye')">✅ Payé</button>
+        <button class="filter-btn" id="fcartSansCartage" onclick="filtrerCartage('sans_cartage')">❌ Cartage non payé</button>
+        <button class="filter-btn" id="fcartSansCharte" onclick="filtrerCartage('sans_charte')">❌ Charte non signée</button>
       </div>
       <div id="cartageStats" style="display:flex;gap:8px;margin-bottom:14px;font-size:13px;color:var(--gris);flex-wrap:wrap;"></div>
       <button class="btn btn-sm btn-secondary" style="margin-bottom:12px;" onclick="exporterCartageCsv()">📥 Exporter en CSV</button>
