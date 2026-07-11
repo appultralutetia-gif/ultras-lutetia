@@ -580,7 +580,15 @@ async function doSupprimerMatch(id) {
 // c'était donc du code mort, retiré le 05/07/2026.
 
 // ─── DEMANDES ADMIN (page dédiée) ────────────────────────────
-async function loadDemandesAdmin() {
+// Généralisée le 10/07/2026 (bug rapporté par Remi) : cette fonction
+// servait uniquement pageDemandesAdmin — l'Accueil avait sa PROPRE copie
+// quasi-identique (loadDemandes/validerDemande/refuserDemande, app.js),
+// jamais mise à jour en même temps que celle-ci (statut par défaut,
+// bouton Visiteur, sélecteur de section inline, correctif email
+// silencieux...) — d'où des versions divergentes selon l'écran. Les deux
+// emplacements appellent désormais CETTE fonction, avec leurs propres
+// ids de conteneur/badge — plus qu'une seule implémentation à maintenir.
+async function loadDemandesAdmin(idListe = 'demandesListeAdmin', idBadge = 'demandesBadge2') {
   try {
     const tous = await UL.getAllMembres();
     // ⚠️ 10/07/2026 : le statut par défaut à l'inscription est passé de
@@ -589,13 +597,13 @@ async function loadDemandesAdmin() {
     // attente (!actif). Les deux valeurs sont donc acceptées ici, pour ne
     // pas faire disparaître ces demandes déjà en cours.
     const demandes = tous.filter(m => (m.statut === 'visiteur' || m.statut === 'sympathisant') && !m.actif);
-    const badge = document.getElementById('demandesBadge2');
+    const badge = document.getElementById(idBadge);
     if (badge) {
       badge.textContent = demandes.length + ' en attente';
       badge.style.display = demandes.length ? 'inline-flex' : 'none';
     }
 
-    const el = document.getElementById('demandesListeAdmin');
+    const el = document.getElementById(idListe);
     if (!el) return;
     if (!demandes.length) {
       el.innerHTML = '<div class="empty-state"><div>✅</div>Aucune demande en attente</div>';
@@ -614,6 +622,10 @@ async function loadDemandesAdmin() {
       ).join('');
     } catch(e) { /* select reste avec le seul placeholder si le chargement échoue */ }
 
+    // Id du <select> préfixé par idListe : les DEUX conteneurs (Accueil +
+    // page Admin) existent simultanément dans le DOM (l'un juste masqué),
+    // donc un id non préfixé serait dupliqué deux fois dans la page —
+    // getElementById ne retrouverait alors jamais le bon des deux.
     el.innerHTML = demandes.map(m => `
       <div class="card" style="margin-bottom:8px;padding:14px;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
@@ -625,13 +637,13 @@ async function loadDemandesAdmin() {
             <div style="font-size:11px;color:var(--gris);">📅 ${new Date(m.created_at).toLocaleDateString('fr-FR')}</div>
           </div>
         </div>
-        <select id="sectionDemande_${m.id}" style="margin-bottom:8px;">${optionsSection}</select>
+        <select id="sectionDemande_${idListe}_${m.id}" style="margin-bottom:8px;">${optionsSection}</select>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn btn-sm btn-secondary" onclick="validerDemandeInline('${m.id}','visiteur',this)">🚶 Visiteur</button>
-          <button class="btn btn-sm btn-secondary" onclick="validerDemandeInline('${m.id}','sympathisant',this)">💙 Sympa.</button>
-          <button class="btn btn-sm btn-success" onclick="validerDemandeInline('${m.id}','draft',this)">✅ Draft</button>
-          <button class="btn btn-sm btn-primary" onclick="validerDemandeInline('${m.id}','confirme',this)">⭐ Confirmé</button>
-          <button class="btn btn-sm btn-danger" onclick="refuserDemandeAdmin('${m.id}')">❌ Refuser</button>
+          <button class="btn btn-sm btn-secondary" onclick="validerDemandeInline('${m.id}','visiteur',this,'${idListe}')">🚶 Visiteur</button>
+          <button class="btn btn-sm btn-secondary" onclick="validerDemandeInline('${m.id}','sympathisant',this,'${idListe}')">💙 Sympa.</button>
+          <button class="btn btn-sm btn-success" onclick="validerDemandeInline('${m.id}','draft',this,'${idListe}')">✅ Draft</button>
+          <button class="btn btn-sm btn-primary" onclick="validerDemandeInline('${m.id}','confirme',this,'${idListe}')">⭐ Confirmé</button>
+          <button class="btn btn-sm btn-danger" onclick="refuserDemandeAdmin('${m.id}','${idListe}')">❌ Refuser</button>
         </div>
       </div>`).join('');
   } catch(e) { console.error('Erreur demandes admin:', e); }
@@ -641,19 +653,19 @@ async function loadDemandesAdmin() {
 // part) — demande Remi 10/07/2026 : la section est choisie directement
 // sur la carte (présélectionnée sur Ultra Lutetia), un clic sur un statut
 // suffit désormais à valider.
-async function validerDemandeInline(membreId, statut, btn) {
-  const sectionId = document.getElementById('sectionDemande_' + membreId).value;
+async function validerDemandeInline(membreId, statut, btn, idListe) {
+  const sectionId = document.getElementById('sectionDemande_' + idListe + '_' + membreId).value;
   if (!sectionId) return toast('Sélectionne une section', 'error');
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    await validerDemandeAdmin(membreId, statut, sectionId);
+    await validerDemandeAdmin(membreId, statut, sectionId, idListe);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
   }
 }
 
-async function validerDemandeAdmin(membreId, statut, sectionId) {
+async function validerDemandeAdmin(membreId, statut, sectionId, idListe = 'demandesListeAdmin') {
   try {
     const membre = await UL.updateMembre(membreId, { statut, actif: true, section_id: sectionId || null });
     toast(`Membre accepté → ${statut} ✅`, 'success');
@@ -680,16 +692,23 @@ async function validerDemandeAdmin(membreId, statut, sectionId) {
       'Ton compte Ultras Lutetia a été validé par le bureau — tu peux te connecter.',
       '/ultras-lutetia/',
     );
-    loadDemandesAdmin();
+    loadDemandesAdmin(idListe, _badgeIdPour(idListe));
   } catch(e) { toast('Impossible de valider la demande', 'error'); }
 }
 
-async function refuserDemandeAdmin(membreId) {
+// Les deux emplacements (Accueil / page Admin dédiée) sont toujours
+// appairés liste↔badge de la même façon — évite d'avoir à faire passer
+// l'id du badge partout en plus de celui de la liste.
+function _badgeIdPour(idListe) {
+  return idListe === 'demandesListe' ? 'demandesBadge' : 'demandesBadge2';
+}
+
+async function refuserDemandeAdmin(membreId, idListe = 'demandesListeAdmin') {
   if (!confirm('Refuser et désactiver ce compte ?')) return;
   try {
     await UL.toggleBlocageMembre(membreId, false);
     toast('Demande refusée', 'success');
-    loadDemandesAdmin();
+    loadDemandesAdmin(idListe, _badgeIdPour(idListe));
   } catch(e) { toast('Impossible de refuser la demande', 'error'); }
 }
 
