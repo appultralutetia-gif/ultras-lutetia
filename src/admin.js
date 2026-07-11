@@ -583,11 +583,12 @@ async function doSupprimerMatch(id) {
 async function loadDemandesAdmin() {
   try {
     const tous = await UL.getAllMembres();
-    // ⚠️ 10/07/2026 : filtre passé de statut === 'sympathisant' à
-    // 'visiteur' — c'est désormais le statut par défaut d'une inscription
-    // (demande Remi), donc le signal "en attente de validation" pour une
-    // toute nouvelle inscription.
-    const demandes = tous.filter(m => m.statut === 'visiteur' && !m.actif);
+    // ⚠️ 10/07/2026 : le statut par défaut à l'inscription est passé de
+    // 'sympathisant' à 'visiteur' — mais les inscriptions faites AVANT ce
+    // changement ont encore statut='sympathisant' et sont toujours en
+    // attente (!actif). Les deux valeurs sont donc acceptées ici, pour ne
+    // pas faire disparaître ces demandes déjà en cours.
+    const demandes = tous.filter(m => (m.statut === 'visiteur' || m.statut === 'sympathisant') && !m.actif);
     const badge = document.getElementById('demandesBadge2');
     if (badge) {
       badge.textContent = demandes.length + ' en attente';
