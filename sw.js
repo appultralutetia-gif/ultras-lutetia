@@ -1,8 +1,17 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v70
+// ULTRAS LUTETIA — Service Worker v71
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v71 (09/07/2026) : CACHE_NAME bumpé (v70 → v71) — page Gérer le cartage
+// → Suivi des paiements (demande Remi) : (1) email affiché sur chaque
+// carte membre (ajouté à getAllCartagePaiements, absent jusqu'ici).
+// (2) Nouveau bouton "📥 Exporter en CSV" — exporte exactement ce qui est
+// affiché à l'écran (respecte le filtre courant : Tous/Incomplets/En
+// attente/Payé), colonnes Prénom/Nom/Pseudo/Email/Statut UL/Statut
+// Cartage/Statut Charte. Même convention que exporterCsvMembresComite
+// (Comité de passage) dont csvEscape() est réutilisé.
 //
 // v70 (09/07/2026) : CACHE_NAME bumpé (v69 → v70) — bug rapporté par
 // Remi à l'inscription : "insert or update on table 'membres' violates
@@ -361,7 +370,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v70';
+const CACHE_NAME = 'ul-v71';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
