@@ -922,75 +922,20 @@ async function loadAccueil() {
   }
 }
 
+// Appelle désormais la même implémentation que la page Admin dédiée
+// (loadDemandesAdmin, admin.js) — évite d'avoir deux copies divergentes
+// de la même fonctionnalité à maintenir en parallèle (bug réel rencontré
+// le 10/07/2026 : cette copie-ci n'avait jamais reçu les mêmes
+// correctifs que l'autre — statut par défaut, bouton Visiteur, sélecteur
+// de section inline...).
 async function loadDemandes() {
-  try {
-    const tous = await UL.getAllMembres();
-    const demandes = tous.filter(m => m.statut === 'sympathisant' && !m.actif);
-    const badge = document.getElementById('demandesBadge');
-
-    if (demandes.length > 0) {
-      badge.textContent = demandes.length + ' en attente';
-      badge.style.display = 'inline-flex';
-    } else {
-      badge.style.display = 'none';
-    }
-
-    const el = document.getElementById('demandesListe');
-    if (!demandes.length) {
-      el.innerHTML = '<p style="color:var(--gris);font-size:13px;margin-bottom:16px;">Aucune demande en attente</p>';
-      return;
-    }
-
-    el.innerHTML = demandes.map(m => `
-      <div class="card" style="margin-bottom:8px;padding:14px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <div class="avatar" style="width:38px;height:38px;font-size:14px;">${((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase()}</div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;">${esc(m.prenom)} ${esc(m.nom)}</div>
-            <div style="font-size:12px;color:var(--gris);">@${esc(m.pseudo_telegram)}</div>
-            ${m.email ? `<div style="font-size:11px;color:var(--gris);">✉️ ${esc(m.email)}</div>` : ''}
-            <div style="font-size:11px;color:var(--gris);">📅 ${new Date(m.created_at).toLocaleDateString('fr-FR')}</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn btn-sm btn-secondary" onclick="validerDemande('${m.id}','sympathisant')">💙 Sympathisant</button>
-          <button class="btn btn-sm btn-success" onclick="validerDemande('${m.id}','draft')">✅ Draft</button>
-          <button class="btn btn-sm btn-primary" onclick="validerDemande('${m.id}','confirme')">⭐ Confirmé</button>
-          <button class="btn btn-sm btn-danger" onclick="refuserDemande('${m.id}')">❌ Refuser</button>
-        </div>
-      </div>`).join('');
-  } catch(e) { console.error('Erreur demandes:', e); }
+  return loadDemandesAdmin('demandesListe', 'demandesBadge');
 }
 
-async function validerDemande(membreId, nouveauStatut) {
-  const label = nouveauStatut === 'draft' ? 'Draft' : nouveauStatut === 'sympathisant' ? 'Sympathisant' : 'Confirmé';
-  try {
-    const membre = await UL.updateMembre(membreId, { statut: nouveauStatut, actif: true });
-    toast(`Membre accepté en tant que ${label} ✅`, 'success');
-    if (membre && membre.email) {
-      UL.envoyerEmailValidation(membre).catch(() => {});
-    }
-    // Même notification push que sur le chemin de validation depuis la
-    // page Admin (cf. validerDemandeAdmin dans admin.js) — deux chemins
-    // différents pour la même action, doivent rester cohérents.
-    UL.envoyerNotificationPush(
-      membreId,
-      '✅ Compte activé !',
-      'Ton compte Ultras Lutetia a été validé par le bureau — tu peux te connecter.',
-      '/ultras-lutetia/',
-    );
-    await loadDemandes();
-  } catch(e) { toast(e.message || 'Une erreur est survenue', 'error'); }
-}
-
-async function refuserDemande(membreId) {
-  if (!confirm('Refuser et désactiver ce compte ?')) return;
-  try {
-    await UL.toggleBlocageMembre(membreId, false);
-    toast('Demande refusée — compte désactivé', 'success');
-    await loadDemandes();
-  } catch(e) { toast(e.message || 'Une erreur est survenue', 'error'); }
-}
+// refuserDemande retirée le 10/07/2026 — refuserDemandeAdmin (admin.js)
+// couvre déjà les deux emplacements (Accueil + page Admin dédiée) via son
+// paramètre idListe ; les boutons "Refuser" générés par loadDemandesAdmin
+// l'appellent directement, plus besoin de cette copie.
 
 // ═══════════════════════════════════════════════════════════════
 
