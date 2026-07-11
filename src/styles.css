@@ -375,6 +375,7 @@ select option { background: var(--navy); color: var(--blanc); }
 .badge-gris   { background: rgba(148,163,184,.1);  color: var(--gris);       border: 1px solid rgba(148,163,184,.2); }
 
 /* Statuts membres */
+.statut-visiteur      { color: var(--gris); }
 .statut-sympathisant  { color: var(--bleu-clair); }
 .statut-draft         { color: var(--orange); }
 .statut-confirme      { color: var(--vert); }
