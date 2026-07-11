@@ -706,6 +706,24 @@ async function signerCharteGate() {
 }
 
 function applyRights(membre) {
+  // Visibilité par statut (demande Remi 10/07/2026) — nouveau statut
+  // "Visiteur" : gens qui ne rejoignent pas l'association mais veulent
+  // faire des déplacements. Onglet Tifos masqué pour Visiteur ET
+  // Sympathisant (ni l'un ni l'autre n'y a jamais eu accès en pratique,
+  // cf. hasCelluleTifo/valide_tifo déjà en place pour Draft/Confirmé —
+  // ceci masque juste l'onglet de nav lui-même, la restriction de
+  // contenu à l'intérieur de la page ne change pas). Boutique : Visiteur
+  // ne voit que l'onglet Cartage (pas Matos/Sticks) — Sympathisant et
+  // au-dessus voient les 3 onglets, inchangé.
+  if (membre.statut === 'visiteur' || membre.statut === 'sympathisant') {
+    document.getElementById('nav3').style.display = 'none';
+  }
+  if (membre.statut === 'visiteur') {
+    document.getElementById('tabMatos').style.display = 'none';
+    document.getElementById('tabSticks').style.display = 'none';
+    switchBoutiqueTab('cotisation');
+  }
+
   // Boutons contextuels pages existantes
   if (hasCelluleTifo(membre)) document.getElementById('btnCreerTifo').style.display = 'block';
   if (hasCelluleDepl(membre)) document.getElementById('btnCreerDepl').style.display = 'block';
