@@ -1316,37 +1316,27 @@ async function getListeBusTelegram(deplacementId) {
 // ============================================================
 
 async function getAnnonces() {
-  // ⚠️ Corrigé le 09/07/2026 : erreur exacte enfin obtenue ("column
-  // annonces.actif does not exist") — cette colonne n'existe pas du tout
-  // sur la vraie table. Filtre retiré ; si un jour un concept d'annonce
-  // masquée/archivée existe, il faudra que Remi précise le vrai nom de
-  // colonne plutôt que de re-deviner.
+  // Schéma réel confirmé le 09/07/2026 (information_schema.columns) :
+  // annonces = id, titre, contenu, categorie, created_at. Ni actif ni
+  // publie_par n'existent — filtre et enrichissement auteur retirés en
+  // conséquence (l'auteur n'était de toute façon jamais affiché nulle
+  // part côté front).
   const { data, error } = await sb.from('annonces')
     .select('*')
     .order('created_at', { ascending: false })
     .limit(10);
   if (error) throw error;
-  if (!data || !data.length) return data || [];
-
-  const auteurIds = [...new Set(data.map(a => a.publie_par).filter(Boolean))];
-  if (auteurIds.length) {
-    const { data: auteurs } = await sb.from('membres').select('id, nom, prenom').in('id', auteurIds);
-    const parId = {};
-    (auteurs || []).forEach(m => { parId[m.id] = m; });
-    data.forEach(a => { a.publie_par = parId[a.publie_par] || null; });
-  }
-  return data;
+  return data || [];
 }
 
 async function publierAnnonce(titre, contenu, categorie = 'info') {
-  // cellule_id retiré (09/07/2026) : cette colonne n'existe pas dans la
-  // vraie table annonces ("Could not find the 'cellule_id' column of
-  // 'annonces' in the schema cache") — le paramètre n'était de toute
-  // façon jamais renseigné par l'UI (doPublierAnnonce ne l'appelait
-  // jamais avec une valeur), donc rien perdu à le retirer.
+  // Schéma réel confirmé le 09/07/2026 (information_schema.columns) :
+  // annonces = id, titre, contenu, categorie, created_at. Ni cellule_id,
+  // ni actif, ni publie_par n'existent — les trois ont été retirés au fil
+  // des corrections précédentes (deviner colonne par colonne s'est avéré
+  // trop lent ; la vraie liste de colonnes règle tout d'un coup).
   const { error } = await sb.from('annonces').insert({
     titre, contenu, categorie,
-    publie_par: currentUser.id,
   });
   if (error) throw error;
   return { success: true };
