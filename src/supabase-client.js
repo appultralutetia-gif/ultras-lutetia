@@ -175,7 +175,7 @@ async function inscription(data) {
     email: data.email,
     ville: data.ville || null,
     code_postal: data.codePostal || null,
-    statut: 'sympathisant',
+    statut: 'visiteur', // défaut changé le 10/07/2026 (demande Remi) — était 'sympathisant'
   };
 
   // ⚠️ Corrigé 09/07/2026 (bug rapporté par Remi : "insert or update on
