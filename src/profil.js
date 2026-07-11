@@ -14,7 +14,7 @@ async function loadProfil() {
   if (!m) return;
   const initiales = ((m.prenom||'?')[0]+(m.nom||'?')[0]).toUpperCase();
   const statutLabel = {
-    sympathisant:'💙 Sympathisant', draft:'🚀 Draft', confirme:'🏅 Confirmé',
+    visiteur:'🚶 Visiteur', sympathisant:'💙 Sympathisant', draft:'🚀 Draft', confirme:'🏅 Confirmé',
     membre_cellule:'🛡️ Membre Cellule', bureau:'🏆 Bureau', admin:'⚙️ Admin'
   };
 
@@ -26,7 +26,6 @@ async function loadProfil() {
   const categoriesAAfficher = [];
   if (m.statut === 'sympathisant' && evaluations.comite_sympa) categoriesAAfficher.push('comite_sympa');
   if (m.statut === 'draft' && evaluations.comite_draft) categoriesAAfficher.push('comite_draft');
-  if (evaluations.tifo) categoriesAAfficher.push('tifo');
   if (evaluations.deplacement) categoriesAAfficher.push('deplacement');
 
   const evaluationsHtml = categoriesAAfficher.length
