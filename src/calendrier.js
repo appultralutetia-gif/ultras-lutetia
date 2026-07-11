@@ -384,11 +384,11 @@ function exporterCartageCsv() {
 
 function filtrerCartage(filtre) {
   currentFiltreCartage = filtre;
-  ['fcartTous','fcartIncomplets','fcartAttente','fcartPaye'].forEach(id => {
+  ['fcartTous','fcartIncomplets','fcartAttente','fcartPaye','fcartSansCartage','fcartSansCharte'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('active');
   });
-  const aid = {tous:'fcartTous',incomplets:'fcartIncomplets',attente:'fcartAttente',paye:'fcartPaye'}[filtre];
+  const aid = {tous:'fcartTous',incomplets:'fcartIncomplets',attente:'fcartAttente',paye:'fcartPaye',sans_cartage:'fcartSansCartage',sans_charte:'fcartSansCharte'}[filtre];
   if (aid && document.getElementById(aid)) document.getElementById(aid).classList.add('active');
 
   let filtered = allCartage;
@@ -399,6 +399,11 @@ function filtrerCartage(filtre) {
   // en cours (en_attente) non encore confirmée ni refusée.
   if (filtre === 'attente') filtered = allCartage.filter(m => m.dernierPaiementCartage && m.dernierPaiementCartage.statut === 'en_attente');
   if (filtre === 'paye') filtered = allCartage.filter(m => m.cotisation_a_jour);
+  // Filtres spécifiques (10/07/2026, demande Remi) : "Incomplets" mélange
+  // les deux causes (cartage OU charte manquant) — ces deux-là isolent
+  // chaque cause séparément, sans regarder l'autre critère.
+  if (filtre === 'sans_cartage') filtered = allCartage.filter(m => !m.cotisation_a_jour);
+  if (filtre === 'sans_charte') filtered = allCartage.filter(m => !m.charte_signee);
 
   const el = document.getElementById('cartageListe');
   _cartageAffichesCourant = filtered;
