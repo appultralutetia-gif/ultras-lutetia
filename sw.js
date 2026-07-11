@@ -1,8 +1,16 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v74
+// ULTRAS LUTETIA — Service Worker v75
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v75 (10/07/2026) : CACHE_NAME bumpé (v74 → v75) — le filtre "Demandes
+// d'inscription" de v74 (statut === 'visiteur' uniquement) faisait
+// disparaître les inscriptions faites AVANT le changement de statut par
+// défaut, encore à 'sympathisant' et toujours en attente — repéré via
+// Ahmad Makadji, inscrit avant v74, devenu invisible dans la liste.
+// Élargi pour accepter les deux valeurs ('visiteur' OU 'sympathisant')
+// tant que !actif.
 //
 // v74 (10/07/2026) : CACHE_NAME bumpé (v73 → v74) — suite Visiteur
 // (demande Remi) : (1) statut par défaut à l'inscription passé de
@@ -408,7 +416,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v74';
+const CACHE_NAME = 'ul-v75';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
