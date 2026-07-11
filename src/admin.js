@@ -583,7 +583,11 @@ async function doSupprimerMatch(id) {
 async function loadDemandesAdmin() {
   try {
     const tous = await UL.getAllMembres();
-    const demandes = tous.filter(m => m.statut === 'sympathisant' && !m.actif);
+    // ⚠️ 10/07/2026 : filtre passé de statut === 'sympathisant' à
+    // 'visiteur' — c'est désormais le statut par défaut d'une inscription
+    // (demande Remi), donc le signal "en attente de validation" pour une
+    // toute nouvelle inscription.
+    const demandes = tous.filter(m => m.statut === 'visiteur' && !m.actif);
     const badge = document.getElementById('demandesBadge2');
     if (badge) {
       badge.textContent = demandes.length + ' en attente';
@@ -597,6 +601,18 @@ async function loadDemandesAdmin() {
       return;
     }
 
+    // Sections chargées une seule fois pour toute la liste (pas un appel
+    // par carte) — "Ultra Lutetia" présélectionnée par défaut sur chaque
+    // carte (demande Remi 10/07/2026 : "plus simple à gérer").
+    let optionsSection = '<option value="">-- Sélectionner une section --</option>';
+    try {
+      const sections = await UL.getSections();
+      const ulOption = sections.find(s => s.nom?.toLowerCase().includes('ultra lutetia'));
+      optionsSection = sections.map(s =>
+        `<option value="${s.id}" ${ulOption && s.id === ulOption.id ? 'selected' : ''}>${esc(s.nom)}</option>`
+      ).join('');
+    } catch(e) { /* select reste avec le seul placeholder si le chargement échoue */ }
+
     el.innerHTML = demandes.map(m => `
       <div class="card" style="margin-bottom:8px;padding:14px;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
@@ -608,52 +624,31 @@ async function loadDemandesAdmin() {
             <div style="font-size:11px;color:var(--gris);">📅 ${new Date(m.created_at).toLocaleDateString('fr-FR')}</div>
           </div>
         </div>
+        <select id="sectionDemande_${m.id}" style="margin-bottom:8px;">${optionsSection}</select>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn btn-sm btn-secondary" onclick="ouvrirValiderDemande('${m.id}','visiteur','${esc(m.prenom)} ${esc(m.nom)}')">🚶 Visiteur</button>
-          <button class="btn btn-sm btn-secondary" onclick="ouvrirValiderDemande('${m.id}','sympathisant','${esc(m.prenom)} ${esc(m.nom)}')">💙 Sympa.</button>
-          <button class="btn btn-sm btn-success" onclick="ouvrirValiderDemande('${m.id}','draft','${esc(m.prenom)} ${esc(m.nom)}')">✅ Draft</button>
-          <button class="btn btn-sm btn-primary" onclick="ouvrirValiderDemande('${m.id}','confirme','${esc(m.prenom)} ${esc(m.nom)}')">⭐ Confirmé</button>
+          <button class="btn btn-sm btn-secondary" onclick="validerDemandeInline('${m.id}','visiteur',this)">🚶 Visiteur</button>
+          <button class="btn btn-sm btn-secondary" onclick="validerDemandeInline('${m.id}','sympathisant',this)">💙 Sympa.</button>
+          <button class="btn btn-sm btn-success" onclick="validerDemandeInline('${m.id}','draft',this)">✅ Draft</button>
+          <button class="btn btn-sm btn-primary" onclick="validerDemandeInline('${m.id}','confirme',this)">⭐ Confirmé</button>
           <button class="btn btn-sm btn-danger" onclick="refuserDemandeAdmin('${m.id}')">❌ Refuser</button>
         </div>
       </div>`).join('');
   } catch(e) { console.error('Erreur demandes admin:', e); }
 }
 
-// Étape intermédiaire ajoutée le 09/07/2026 (demande Remi) : la section
-// est désormais demandée à la validation d'une demande d'inscription,
-// quel que soit le statut choisi — jusqu'ici un membre validé restait
-// sans section tant qu'un admin n'y repensait pas plus tard via "Modifier
-// le membre". _demandeEnCours mémorise le choix (membreId + statut) fait
-// dans la liste, le temps de choisir la section dans la petite modale.
-let _demandeEnCours = null;
-async function ouvrirValiderDemande(membreId, statut, nomAffiche) {
-  _demandeEnCours = { membreId, statut };
-  const LABEL_STATUT = { visiteur: '🚶 Visiteur', sympathisant: '💙 Sympathisant', draft: '✅ Draft', confirme: '⭐ Confirmé' };
-  document.getElementById('demandeValiderTitre').textContent =
-    `${nomAffiche || 'Ce membre'} → ${LABEL_STATUT[statut] || statut}`;
-  try {
-    const sections = await UL.getSections();
-    const sel = document.getElementById('demandeValiderSection');
-    sel.innerHTML = '<option value="">-- Sélectionner une section --</option>' +
-      sections.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
-  } catch(e) {
-    document.getElementById('demandeValiderSection').innerHTML = '<option value="">Erreur chargement sections</option>';
-  }
-  showModal('modalValiderDemande');
-}
-
-async function confirmerValiderDemande(btn) {
-  if (!_demandeEnCours) return;
-  const sectionId = document.getElementById('demandeValiderSection').value;
+// Remplace l'ancien flux en 2 étapes (bouton statut → popup section à
+// part) — demande Remi 10/07/2026 : la section est choisie directement
+// sur la carte (présélectionnée sur Ultra Lutetia), un clic sur un statut
+// suffit désormais à valider.
+async function validerDemandeInline(membreId, statut, btn) {
+  const sectionId = document.getElementById('sectionDemande_' + membreId).value;
   if (!sectionId) return toast('Sélectionne une section', 'error');
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    await validerDemandeAdmin(_demandeEnCours.membreId, _demandeEnCours.statut, sectionId);
-    closeModal('modalValiderDemande');
+    await validerDemandeAdmin(membreId, statut, sectionId);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
-    _demandeEnCours = null;
   }
 }
 
