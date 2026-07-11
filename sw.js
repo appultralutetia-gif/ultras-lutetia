@@ -1,8 +1,25 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v72
+// ULTRAS LUTETIA — Service Worker v73
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
+//
+// v73 (10/07/2026) : CACHE_NAME bumpé (v72 → v73) — 2 demandes Remi :
+// (1) Évaluation "Cellule Tifo" (pinceaux 🖌️) retirée de l'affichage
+// Profil — les évaluations Comité (sympa/draft) et Déplacement restent.
+// (2) Nouveau statut "Visiteur" (gens qui ne rejoignent pas l'association
+// mais veulent faire des déplacements) — ajouté partout où sympathisant/
+// draft/confirme sont listés (dropdown Modifier le membre, boutons de
+// validation des demandes d'inscription, filtres Gérer les membres et
+// Comité de passage, libellés). Visibilité par statut : Visiteur et
+// Sympathisant n'ont plus l'onglet Tifos dans la nav (masqué) ; Visiteur
+// ne voit que l'onglet Cartage dans Boutique (Matos/Sticks masqués,
+// bascule automatique sur Cartage). Accueil/Calendrier/Déplacements/
+// Profil restent visibles pour tous, inchangé.
+// ⚠️ PARTIEL : nécessite une migration SQL pour autoriser 'visiteur' dans
+// la contrainte CHECK de membres.statut — en attente de la définition
+// exacte de cette contrainte (cf. message) avant de l'écrire, pour ne
+// pas deviner un schéma une fois de plus.
 //
 // v72 (09/07/2026) : CACHE_NAME bumpé (v71 → v72) — annonces, cette fois
 // pour de bon : schéma réel obtenu via information_schema.columns
@@ -378,7 +395,7 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v72';
+const CACHE_NAME = 'ul-v73';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
