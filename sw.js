@@ -452,7 +452,15 @@
 // (mode 'comite'). index.html : classe .champ-identite-membre ajoutée
 // aux 4 champs d'identité pour permettre leur masquage ciblé en JS.
 
-const CACHE_NAME = 'ul-v78';
+// v79 (10/07/2026) : CACHE_NAME bumpé (v78 → v79) — statut "Brouillon"
+// pour Déplacements/Matos/Sticks/Cartage (visible_membres) : un
+// déplacement/article créé avec la case "🔒 Brouillon" cochée reste
+// invisible pour les membres normaux, visible uniquement par la cellule
+// concernée (+ Bureau/Admin) — permet de tester un vrai paiement
+// HelloAsso en production avant publication. Nécessite la migration
+// migration_brouillon_visible_membres.sql (ajout colonne visible_membres,
+// default true, donc aucune régression sur l'existant).
+const CACHE_NAME = 'ul-v79';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
