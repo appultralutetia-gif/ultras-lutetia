@@ -472,7 +472,14 @@
 // v82 (12/07/2026) : CACHE_NAME bumpé (v81 → v82) — nouvelle carte
 // "🎨 Stats Tifo" sur la page Statistiques Admin (sessions, présences,
 // répartition par type, classement assiduité).
-const CACHE_NAME = 'ul-v82';
+// v83 (12/07/2026) : CACHE_NAME bumpé (v82 → v83) — Stats Tifo devient un
+// onglet séparé (Général / Tifo) sur la page Statistiques, avec beaucoup
+// plus de KPI : vue d'ensemble (dont taux Confirmés+Draft ayant
+// participé, répartition 0/1/2/3-4/5+ sessions), répartition par type/
+// lieu/statut membre, classement top 10 + no-show + nouveaux (30j),
+// évolution mensuelle + cumul participants uniques, classement des
+// sections.
+const CACHE_NAME = 'ul-v83';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
