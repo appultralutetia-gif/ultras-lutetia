@@ -465,7 +465,11 @@
 // réel de stickers (lots × taille du lot) pour les articles Sticks,
 // dans l'app et dans l'export Telegram. Aucun changement pour Matos
 // (pas de notion de lot).
-const CACHE_NAME = 'ul-v80';
+// v81 (12/07/2026) : CACHE_NAME bumpé (v80 → v81) — les dates d'ouverture
+// (précommande Matos/Sticks, accès échelonné Déplacements) sont
+// désormais affichées en permanence sur la carte, plus seulement avant
+// l'ouverture. Demande Remi.
+const CACHE_NAME = 'ul-v81';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
