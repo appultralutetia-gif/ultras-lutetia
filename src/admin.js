@@ -345,7 +345,7 @@ function barreHtml(label, valeur, max, couleur) {
 // alignées point à point même si l'une a des zéros que l'autre n'a pas.
 function courbeDoubleSvg(mois, serieALabel, serieAValeurs, serieACouleur, serieBLabel, serieBValeurs, serieBCouleur) {
   if (!mois.length) return '<div class="empty-state" style="padding:12px;"><div>📈</div>Pas assez de données</div>';
-  const W = 320, H = 170, padL = 26, padR = 10, padT = 14, padB = 24;
+  const W = 320, H = 180, padL = 26, padR = 10, padT = 22, padB = 24;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const n = mois.length;
   const maxY = Math.max(1, ...serieAValeurs, ...serieBValeurs);
@@ -353,6 +353,14 @@ function courbeDoubleSvg(mois, serieALabel, serieAValeurs, serieACouleur, serieB
   const yFor = v => padT + plotH - (v / maxY) * plotH;
   const ligne = valeurs => valeurs.map((v, i) => `${xFor(i)},${yFor(v)}`).join(' ');
   const points = (valeurs, couleur) => valeurs.map((v, i) => `<circle cx="${xFor(i)}" cy="${yFor(v)}" r="2.8" fill="${couleur}"/>`).join('');
+  // Étiquettes de valeur (12/07/2026, demande Remi) — série A (présences,
+  // généralement la ligne basse) étiquetée SOUS son point, série B
+  // (cumulé, généralement la ligne haute) étiquetée AU-DESSUS — évite le
+  // chevauchement la plupart du temps vu que B ≥ A presque toujours
+  // (cumul croissant). Reste lisible même quand les deux se frôlent.
+  const valeursTexte = (valeurs, couleur, dy) => valeurs.map((v, i) =>
+    `<text x="${xFor(i)}" y="${yFor(v) + dy}" font-size="9" font-weight="700" fill="${couleur}" text-anchor="middle">${v}</text>`
+  ).join('');
   const labelMois = m => {
     const l = new Date(m + '-01').toLocaleDateString('fr-FR', { month: 'short' });
     return l.charAt(0).toUpperCase() + l.slice(1).replace('.', '');
@@ -365,6 +373,8 @@ function courbeDoubleSvg(mois, serieALabel, serieAValeurs, serieACouleur, serieB
       <polyline points="${ligne(serieAValeurs)}" fill="none" stroke="${serieACouleur}" stroke-width="2.2"/>
       ${points(serieBValeurs, serieBCouleur)}
       ${points(serieAValeurs, serieACouleur)}
+      ${valeursTexte(serieBValeurs, serieBCouleur, -8)}
+      ${valeursTexte(serieAValeurs, serieACouleur, 14)}
       ${xLabels}
     </svg>
     <div style="display:flex;gap:16px;justify-content:center;margin-top:4px;font-size:11px;color:var(--gris);">
