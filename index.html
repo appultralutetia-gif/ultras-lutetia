@@ -1166,8 +1166,12 @@
     </div>
     <div class="form-group"><label>Lien Telegram du déplacement</label><input type="url" id="dTelegram" placeholder="https://t.me/..."></div>
     <div class="form-group"><label>Heure départ bus</label><input type="time" id="dHeure"></div>
-    <div class="form-group"><label>Prix total (€)</label><input type="number" id="dPrix" placeholder="55"></div>
-    <div class="form-group"><label>Places max</label><input type="number" id="dPlaces" placeholder="40"></div>
+    <div class="form-group"><label>Distance A/R (km)</label><input type="number" id="dDistance" placeholder="1200" oninput="calculerEquilibreDepl('creation')"></div>
+    <div class="form-group"><label>Coût du déplacement — devis bus (€)</label><input type="number" id="dCoutBus" placeholder="4400" oninput="calculerEquilibreDepl('creation')"></div>
+    <div class="form-group"><label>Prix bus (€)</label><input type="number" id="dPrixBus" placeholder="90" oninput="calculerEquilibreDepl('creation')"></div>
+    <div class="form-group"><label>Prix place (€)</label><input type="number" id="dPrixPlace" value="10" oninput="calculerEquilibreDepl('creation')"></div>
+    <div id="dEquilibreInfo" class="info-box" style="display:none;font-size:12px;"></div>
+    <div class="form-group"><label>Places max</label><input type="number" id="dPlaces" placeholder="40" oninput="calculerEquilibreDepl('creation')"></div>
     <div class="form-group"><label>Date limite inscription</label><input type="date" id="dLimite"></div>
     <div class="form-group"><label>Quota par membre (places, optionnel)</label><input type="number" id="dQuota" placeholder="Illimité"></div>
     <div class="form-group">
@@ -1242,8 +1246,12 @@
     </div>
     <div class="form-group"><label>Lien Telegram du déplacement</label><input type="url" id="dmTelegram" placeholder="https://t.me/..."></div>
     <div class="form-group"><label>Heure départ bus</label><input type="time" id="dmHeure"></div>
-    <div class="form-group"><label>Prix total (€)</label><input type="number" id="dmPrix" placeholder="55"></div>
-    <div class="form-group"><label>Places max</label><input type="number" id="dmPlaces" placeholder="40"></div>
+    <div class="form-group"><label>Distance A/R (km)</label><input type="number" id="dmDistance" placeholder="1200" oninput="calculerEquilibreDepl('modif')"></div>
+    <div class="form-group"><label>Coût du déplacement — devis bus (€)</label><input type="number" id="dmCoutBus" placeholder="4400" oninput="calculerEquilibreDepl('modif')"></div>
+    <div class="form-group"><label>Prix bus (€)</label><input type="number" id="dmPrixBus" placeholder="90" oninput="calculerEquilibreDepl('modif')"></div>
+    <div class="form-group"><label>Prix place (€)</label><input type="number" id="dmPrixPlace" value="10" oninput="calculerEquilibreDepl('modif')"></div>
+    <div id="dmEquilibreInfo" class="info-box" style="display:none;font-size:12px;"></div>
+    <div class="form-group"><label>Places max</label><input type="number" id="dmPlaces" placeholder="40" oninput="calculerEquilibreDepl('modif')"></div>
     <div class="form-group"><label>Date limite inscription</label><input type="date" id="dmLimite"></div>
     <div class="form-group"><label>Quota par membre (places, optionnel)</label><input type="number" id="dmQuota" placeholder="Illimité"></div>
     <div class="form-group">
