@@ -296,7 +296,20 @@ function renderToutesCommandes(commandes) {
       ${commandesSelectionneesReception.size ? `<button class="btn btn-sm btn-primary" onclick="doReceptionnerCommandesEnMasse()">✅ Valider la réception (${commandesSelectionneesReception.size})</button>` : ''}
     </div>` : '';
 
-  el.innerHTML = barreSelection + commandes.map(c => `
+  // Tri d'affichage (12/07/2026, demande Remi) : commandes "en cours"
+  // (cf. STATUTS_EN_COURS, même constante que le filtre "En cours" de
+  // l'onglet) groupées en premier, annulées/refusées/déjà reçues après —
+  // évite qu'une commande annulée s'intercale visuellement entre deux
+  // commandes qui nécessitent encore une action. Tri stable : à
+  // l'intérieur de chaque groupe, l'ordre d'origine (plus récent
+  // d'abord) est conservé.
+  const commandesTriees = [...commandes].sort((a, b) => {
+    const aEnCours = STATUTS_EN_COURS.includes(a.statut) ? 0 : 1;
+    const bEnCours = STATUTS_EN_COURS.includes(b.statut) ? 0 : 1;
+    return aEnCours - bEnCours;
+  });
+
+  el.innerHTML = barreSelection + commandesTriees.map(c => `
     <div class="card" style="margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <div style="display:flex;align-items:center;gap:8px;">
@@ -1194,7 +1207,15 @@ function renderToutesDistribs(distribs) {
       ${distribsSelectionneesReception.size ? `<button class="btn btn-sm btn-primary" onclick="doReceptionnerStickEnMasse()">✅ Valider la réception (${distribsSelectionneesReception.size})</button>` : ''}
     </div>` : '';
 
-  el.innerHTML = barreSelection + distribs.slice(0,30).map(d => `
+  // Tri d'affichage (12/07/2026, demande Remi) — même principe que
+  // renderToutesCommandes (Matos) ci-dessus.
+  const distribsTriees = [...distribs].sort((a, b) => {
+    const aEnCours = STATUTS_EN_COURS.includes(a.statut) ? 0 : 1;
+    const bEnCours = STATUTS_EN_COURS.includes(b.statut) ? 0 : 1;
+    return aEnCours - bEnCours;
+  });
+
+  el.innerHTML = barreSelection + distribsTriees.slice(0,30).map(d => `
     <div class="card" style="margin-bottom:6px;padding:12px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div style="display:flex;align-items:center;gap:8px;">
