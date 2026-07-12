@@ -998,7 +998,15 @@ async function getDeplacements(upcoming = true) {
   if (upcoming) query = query.gte('date_match', today);
   const { data, error } = await query;
   if (error) throw error;
-  return await _enrichirDeplacements(data || []);
+  // Statut "Brouillon" (10/07/2026) : un déplacement avec visible_membres
+  // = false n'est renvoyé qu'à la cellule Déplacement (+ Bureau/Admin,
+  // déjà inclus dans hasCelluleDepl) — utile pour tester un vrai paiement
+  // HelloAsso avant d'exposer le déplacement à tous les membres. Aucun
+  // filtre pour eux : ils continuent de tout voir comme avant.
+  const membre = currentMembre;
+  const voitLesBrouillons = membre && hasCelluleDepl(membre);
+  const visibles = voitLesBrouillons ? (data || []) : (data || []).filter(d => d.visible_membres !== false);
+  return await _enrichirDeplacements(visibles);
 }
 
 // Factorise l'enrichissement _inscrits/monInscrit pour getDeplacements —
@@ -1508,6 +1516,13 @@ async function getProduits() {
   // modèle à 2 niveaux (tous/section, où "section" restait visible à TOUS
   // les Confirmés quelle que soit leur section — incohérent avec Sticks).
   return (data || []).filter(p => {
+    // Statut "Brouillon" (10/07/2026) : même pour un Admin/Bureau/Cellule,
+    // on pourrait vouloir masquer un article de tous SAUF de la cellule
+    // Matos précisément — mais pour rester simple et cohérent avec le
+    // reste (Déplacements, Sticks, Cartage), on utilise le même
+    // isAdminBureauCellule déjà calculé ci-dessus : la cellule Matos voit
+    // ses brouillons, les autres membres non.
+    if (p.visible_membres === false && !isAdminBureauCellule) return false;
     if (isAdminBureauCellule) return true;
     if (p.niveau_acces === 'tous') return true;
     const memeSection = sectionId && p.section_id === sectionId;
@@ -1805,6 +1820,8 @@ async function getSticks() {
     .order('nom');
   if (error) throw error;
   return (data || []).filter(s => {
+    // Statut "Brouillon" (10/07/2026) — même principe que getProduits.
+    if (s.visible_membres === false && !isAdminBureauCellule) return false;
     if (isAdminBureauCellule) return true;
     if (s.niveau_acces === 'tous') return true;
     // 'draft_confirme' et 'confirme' sont tous deux restreints à la
@@ -2035,12 +2052,18 @@ async function validerPaiementStick(distribId) {
 // ============================================================
 
 async function getCartageCatalogue() {
+  // Statut "Brouillon" (10/07/2026) — même principe que Matos/Sticks.
+  // Pas de notion de "cellule Cartage" dédiée dans le projet (page Gérer
+  // le cartage réservée à Bureau/Admin, cf. app.js pageGererCartage), donc
+  // on s'aligne sur isAdmin/isBureau uniquement ici.
+  const membre = currentMembre;
+  const voitLesBrouillons = membre && (isAdmin(membre) || isBureau(membre));
   const { data, error } = await sb.from('cartage_catalogue')
     .select('*')
     .eq('statut', 'disponible')
     .order('prix');
   if (error) throw error;
-  return data || [];
+  return voitLesBrouillons ? (data || []) : (data || []).filter(c => c.visible_membres !== false);
 }
 
 async function getAllCartageCatalogue() {
