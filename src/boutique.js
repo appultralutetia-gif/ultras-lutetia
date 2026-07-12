@@ -973,6 +973,8 @@ function renderMatosAdmin(produits) {
       ? `<span class="badge badge-bleu" style="font-size:10px;">Section ${esc(p.section.nom)}</span>` : '';
     const archiveBadge = p.statut === 'archive'
       ? `<span class="badge badge-rouge" style="font-size:10px;">Archivé</span>` : '';
+    const brouillonBadge = p.visible_membres === false
+      ? `<span class="badge badge-rouge" style="font-size:10px;">🔒 Brouillon</span>` : '';
     return `<div class="produit-card">
       <div class="produit-img">${p.photo_url ? `<img src="${p.photo_url}" alt="${esc(p.nom)}">` : icones[p.categorie] || '📦'}</div>
       <div class="produit-info">
@@ -983,7 +985,7 @@ function renderMatosAdmin(produits) {
           ${p.quota_par_membre ? `• Quota: ${p.quota_par_membre} max` : ''}
           ${p.mode === 'precommande' ? `• Précommande${formatPlagePrecommande(p)}` : ''}
         </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${stockBadge}${sectionBadge}${archiveBadge}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${brouillonBadge}${stockBadge}${sectionBadge}${archiveBadge}</div>
         <div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;">
           ${p.mode !== 'precommande' ? `<button class="btn btn-sm btn-success" onclick="ouvrirCashMatos('${p.id}','${esc(p.nom)}','${p.type_tailles || 'aucune'}')">💵 Cash</button>` : ''}
           <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierProduit('${p.id}')">✏️ Modifier</button>
@@ -1012,7 +1014,10 @@ function renderSticksAdmin(sticks) {
         ${s.mode === 'precommande' ? 'Précommande' + formatPlagePrecommande(s) : 'Stock: ' + s.stock}
         ${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}
       </div>
-      ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">
+        ${s.visible_membres === false ? `<span class="badge badge-rouge" style="font-size:10px;">🔒 Brouillon</span>` : ''}
+        ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;">Section ${esc(s.section.nom)}</span>` : ''}
+      </div>
       <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">
         ${s.mode !== 'precommande' ? `<button class="btn btn-sm btn-success" onclick="ouvrirCashStick('${s.id}','${esc(s.nom)}')">💵 Cash</button>` : ''}
         <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierStick('${s.id}')">✏️ Modifier</button>
@@ -1530,14 +1535,18 @@ async function doCreerProduit() {
       precommande_livraison_estimee: dateSimpleOuNull('pLivraisonEstimee'),
       statut: 'disponible',
       photo_url: photoUrl,
+      // Brouillon (10/07/2026) : caché des membres tant que non coché —
+      // utile pour tester un vrai paiement HelloAsso avant publication.
+      visible_membres: !document.getElementById('pBrouillon').checked,
     });
 
     hideLoading();
     const sectionNom = acces !== 'tous'
       ? document.getElementById('pSection').options[document.getElementById('pSection').selectedIndex].text
       : null;
+    const estBrouillon = document.getElementById('pBrouillon').checked;
 
-    toast(`Article créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Généraliste'}`, 'success');
+    toast(estBrouillon ? 'Article créé en brouillon 🔒 ✅' : `Article créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Généraliste'}`, 'success');
     closeModal('modalCreerProduit');
     reinitialiserFormulaireProduit();
     ['pNom','pDesc','pPrix','pStock','pQuota','pPrecommandeDebut','pPrecommandeFin','pLivraisonEstimee'].forEach(id => document.getElementById(id).value = '');
@@ -1549,7 +1558,7 @@ async function doCreerProduit() {
     // cible:'matos' reproduit côté serveur la même règle que getProduits
     // (supabase-client.js) : 'tous' = tout le monde, 'section' = Confirmés
     // partout + Draft de la section visée uniquement.
-    if (notifier) {
+    if (notifier && !estBrouillon) {
       UL.envoyerNotificationPushGroupe({
         cible: 'matos',
         niveauAcces: acces,
@@ -1562,6 +1571,7 @@ async function doCreerProduit() {
     document.getElementById('pAcces').value = 'tous';
     document.getElementById('pTypeTailles').value = 'aucune';
     document.getElementById('sectionSelectGroup').style.display = 'none';
+    document.getElementById('pBrouillon').checked = false;
     loadAdminBoutique();
   } catch(e) {
     hideLoading();
@@ -1613,6 +1623,7 @@ async function ouvrirModifierProduit(produitId) {
   }
   toggleSectionSelect();
   if (p.section_id) document.getElementById('pSection').value = p.section_id;
+  document.getElementById('pBrouillon').checked = p.visible_membres === false;
 
   const btn = document.getElementById('modalProduitSubmitBtn');
   btn.textContent = '💾 Enregistrer';
@@ -1655,6 +1666,7 @@ async function doModifierProduit() {
       precommande_debut: dateLocalVersISO('pPrecommandeDebut'),
       precommande_fin: dateLocalVersISO('pPrecommandeFin'),
       precommande_livraison_estimee: dateSimpleOuNull('pLivraisonEstimee'),
+      visible_membres: !document.getElementById('pBrouillon').checked,
     };
     if (photoFile) {
       updates.photo_url = await UL.uploadPhotoMatos(photoFile, nom);
@@ -1685,6 +1697,7 @@ function reinitialiserFormulaireProduit() {
   btn.setAttribute('onclick', 'doCreerProduit()');
   document.getElementById('pNotifierGroup').style.display = '';
   document.getElementById('pNotifier').checked = true;
+  document.getElementById('pBrouillon').checked = false;
 }
 
 // ── STICKS — création (Admin/Cellule Sticks) ───────────────────
@@ -1738,14 +1751,17 @@ async function doCreerStick() {
       precommande_livraison_estimee: dateSimpleOuNull('stLivraisonEstimee'),
       statut: 'disponible',
       visuel_url: visuelUrl,
+      // Brouillon (10/07/2026) — même principe que Matos.
+      visible_membres: !document.getElementById('stBrouillon').checked,
     });
 
     hideLoading();
     const sectionNom = niveauAcces !== 'tous'
       ? document.getElementById('stSection').options[document.getElementById('stSection').selectedIndex].text
       : null;
+    const estBrouillon = document.getElementById('stBrouillon').checked;
 
-    toast(`Stick créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Tous les membres'}`, 'success');
+    toast(estBrouillon ? 'Stick créé en brouillon 🔒 ✅' : `Stick créé ✅ ${sectionNom ? '— Section ' + sectionNom : '— Tous les membres'}`, 'success');
     closeModal('modalCreerStick');
     reinitialiserFormulaireStick();
     ['stNom','stPrix','stLot','stQuota','stStock','stPrecommandeDebut','stPrecommandeFin','stLivraisonEstimee'].forEach(id => document.getElementById(id).value = '');
@@ -1760,7 +1776,7 @@ async function doCreerStick() {
     // cible:'sticks' reproduit côté serveur la même règle que getSticks
     // (supabase-client.js) : 'tous' = tout le monde, 'draft_confirme'/
     // 'confirme' = restreint à la section choisie + statut minimum requis.
-    if (notifier) {
+    if (notifier && !estBrouillon) {
       UL.envoyerNotificationPushGroupe({
         cible: 'sticks',
         niveauAcces,
@@ -1810,6 +1826,7 @@ async function ouvrirModifierStick(stickId) {
     document.getElementById('photoPreviewStick').style.display = 'none';
   }
   if (s.section_id) document.getElementById('stSection').value = s.section_id;
+  document.getElementById('stBrouillon').checked = s.visible_membres === false;
 
   const btn = document.getElementById('modalStickSubmitBtn');
   btn.textContent = '💾 Enregistrer';
@@ -1846,6 +1863,7 @@ async function doModifierStick() {
       precommande_debut: dateLocalVersISO('stPrecommandeDebut'),
       precommande_fin: dateLocalVersISO('stPrecommandeFin'),
       precommande_livraison_estimee: dateSimpleOuNull('stLivraisonEstimee'),
+      visible_membres: !document.getElementById('stBrouillon').checked,
     };
     if (photoFile) {
       updates.visuel_url = await UL.uploadPhotoStick(photoFile, nom);
@@ -1873,4 +1891,5 @@ function reinitialiserFormulaireStick() {
   btn.setAttribute('onclick', 'doCreerStick()');
   document.getElementById('stNotifierGroup').style.display = '';
   document.getElementById('stNotifier').checked = true;
+  document.getElementById('stBrouillon').checked = false;
 }
