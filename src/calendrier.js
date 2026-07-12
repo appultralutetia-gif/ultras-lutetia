@@ -267,6 +267,7 @@ function renderGererCartageArticles() {
         </div>
         <span class="badge ${c.statut === 'archive' ? 'badge-rouge' : 'badge-vert'}" style="flex-shrink:0;">${c.statut === 'archive' ? 'Archivé' : 'Disponible'}</span>
       </div>
+      ${c.visible_membres === false ? `<div style="margin-top:8px;"><span class="badge badge-rouge" style="font-size:10px;">🔒 Brouillon — invisible pour les membres</span></div>` : ''}
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
         <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierCartage('${c.id}')">✏️ Modifier</button>
         ${c.statut !== 'archive' ? `<button class="btn btn-sm btn-danger" onclick="doArchiverCartage('${c.id}')">Archiver</button>` : ''}
@@ -283,6 +284,7 @@ function ouvrirCreerCartage() {
   document.getElementById('cartageSaison').value = allCartageCatalogueAdmin[0]?.saison || '2026-2027';
   document.getElementById('cartagePhoto').value = '';
   document.getElementById('photoPreviewCartage').style.display = 'none';
+  document.getElementById('cartageBrouillon').checked = false;
   showModal('modalCreerCartage');
 }
 
@@ -302,6 +304,7 @@ function ouvrirModifierCartage(id) {
   } else {
     document.getElementById('photoPreviewCartage').style.display = 'none';
   }
+  document.getElementById('cartageBrouillon').checked = c.visible_membres === false;
   showModal('modalCreerCartage');
 }
 
@@ -318,6 +321,7 @@ async function doSauvegarderCartage() {
     description: document.getElementById('cartageDesc').value.trim() || null,
     prix,
     saison,
+    visible_membres: !document.getElementById('cartageBrouillon').checked,
   };
   try {
     showLoading();
@@ -328,7 +332,7 @@ async function doSauvegarderCartage() {
     if (id) await UL.updateCartage(id, payload);
     else await UL.createCartage({ ...payload, statut: 'disponible' });
     hideLoading();
-    toast('Cartage enregistré ✅', 'success');
+    toast(payload.visible_membres ? 'Cartage enregistré ✅' : 'Cartage enregistré en brouillon 🔒 ✅', 'success');
     closeModal('modalCreerCartage');
     loadGererCartageArticles();
   } catch(e) { hideLoading(); toast(e.message || 'Impossible d\'enregistrer le cartage', 'error'); }
