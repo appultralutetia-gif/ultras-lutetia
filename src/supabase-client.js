@@ -1954,7 +1954,7 @@ async function getAllDistributions() {
   // exacte (membre:membres!sticks_distribution_membre_id_fkey) — on veut
   // bien le membre destinataire, pas la personne qui a distribué.
   const { data, error } = await sb.from('sticks_distribution')
-    .select('*, stick:sticks_catalogue(nom, categorie, prix, mode), membre:membres!sticks_distribution_membre_id_fkey(nom, prenom, pseudo_telegram)')
+    .select('*, stick:sticks_catalogue(nom, categorie, prix, mode, lot), membre:membres!sticks_distribution_membre_id_fkey(nom, prenom, pseudo_telegram)')
     .order('created_at', { ascending: false })
     .limit(100);
   if (error) throw error;
