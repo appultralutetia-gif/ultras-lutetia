@@ -779,6 +779,12 @@
       <div class="form-group"><label>Description (optionnel)</label><textarea id="cartageDesc" placeholder="Description optionnelle"></textarea></div>
       <div class="form-group"><label>Prix (€)</label><input type="number" id="cartagePrix" placeholder="20"></div>
       <div class="form-group"><label>Saison</label><input type="text" id="cartageSaison" placeholder="2026-2027"></div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(239,68,68,.10);border:1.5px solid rgba(239,68,68,.35);border-radius:9px;cursor:pointer;margin:0;">
+          <input type="checkbox" id="cartageBrouillon" style="width:20px;height:20px;accent-color:#EF4444;">
+          <span style="font-size:14px;">🔒 Brouillon (visible uniquement par Bureau/Admin)</span>
+        </label>
+      </div>
       <button class="btn btn-primary" style="width:100%;" onclick="doSauvegarderCartage()">Enregistrer</button>
     </div>
   </div>
@@ -1170,6 +1176,12 @@
     </div>
     <div class="form-group"><label>Notes</label><textarea id="dNotes" rows="2" placeholder="Infos complémentaires..."></textarea></div>
     <div class="form-group">
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(239,68,68,.10);border:1.5px solid rgba(239,68,68,.35);border-radius:9px;cursor:pointer;margin:0;">
+        <input type="checkbox" id="dBrouillon" style="width:20px;height:20px;accent-color:#EF4444;">
+        <span style="font-size:14px;">🔒 Brouillon (visible uniquement par la cellule Déplacement)</span>
+      </label>
+    </div>
+    <div class="form-group">
       <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
         <input type="checkbox" id="dNotifier" checked style="width:20px;height:20px;accent-color:#1A56DB;">
         <span style="font-size:14px;">🔔 Notifier les membres</span>
@@ -1246,6 +1258,12 @@
         <option value="ferme">Fermé</option>
         <option value="annule">Annulé</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(239,68,68,.10);border:1.5px solid rgba(239,68,68,.35);border-radius:9px;cursor:pointer;margin:0;">
+        <input type="checkbox" id="dmBrouillon" style="width:20px;height:20px;accent-color:#EF4444;">
+        <span style="font-size:14px;">🔒 Brouillon (visible uniquement par la cellule Déplacement)</span>
+      </label>
     </div>
     <button class="btn btn-primary" onclick="doModifierDepl(this)">💾 Enregistrer</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalModifierDepl')">Annuler</button>
@@ -1433,6 +1451,12 @@
         Laisser vide = pas de limite de date. Si une date de fin est renseignée, le bouton "Précommander" disparaît automatiquement après cette date (remplacé par un badge "Précommande terminée"). Si une date de début est renseignée, le bouton n'apparaît qu'à partir de cette date.
       </p>
     </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(239,68,68,.10);border:1.5px solid rgba(239,68,68,.35);border-radius:9px;cursor:pointer;margin:0;">
+        <input type="checkbox" id="pBrouillon" style="width:20px;height:20px;accent-color:#EF4444;">
+        <span style="font-size:14px;">🔒 Brouillon (visible uniquement par la cellule Matos)</span>
+      </label>
+    </div>
     <div class="form-group" id="pNotifierGroup">
       <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
         <input type="checkbox" id="pNotifier" checked style="width:20px;height:20px;accent-color:#1A56DB;">
@@ -1503,6 +1527,12 @@
       <p style="font-size:11px;color:var(--gris);margin-top:6px;">
         Laisser vide = pas de limite de date. Si une date de fin est renseignée, le bouton disparaît automatiquement après cette date (remplacé par un badge "Précommande terminée").
       </p>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(239,68,68,.10);border:1.5px solid rgba(239,68,68,.35);border-radius:9px;cursor:pointer;margin:0;">
+        <input type="checkbox" id="stBrouillon" style="width:20px;height:20px;accent-color:#EF4444;">
+        <span style="font-size:14px;">🔒 Brouillon (visible uniquement par la cellule Sticks)</span>
+      </label>
     </div>
     <div class="form-group" id="stNotifierGroup">
       <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
