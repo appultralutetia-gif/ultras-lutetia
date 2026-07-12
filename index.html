@@ -383,7 +383,16 @@
   <!-- ── PAGE STATS ─────────────────────────────────────────── -->
   <div id="pageStats" class="page">
     <button class="btn btn-sm btn-secondary" style="margin-bottom:16px;" onclick="showPage('pageProfil')">← Retour</button>
-    <div id="statsContent"><div class="empty-state"><div>⏳</div>Chargement…</div></div>
+    <div class="boutique-tabs-wrap">
+      <button class="btn-tab active" id="tabStatsGeneral" onclick="switchStatsTab('general')">📊 Général</button>
+      <button class="btn-tab" id="tabStatsTifo" onclick="switchStatsTab('tifo')">🎨 Tifo</button>
+    </div>
+    <div id="sectionStatsGeneral">
+      <div id="statsContent"><div class="empty-state"><div>⏳</div>Chargement…</div></div>
+    </div>
+    <div id="sectionStatsTifo" style="display:none;">
+      <div id="statsTifoContent"><div class="empty-state"><div>⏳</div>Chargement…</div></div>
+    </div>
   </div>
 
   <!-- ── PAGE BOUTIQUE ─────────────────────────────────────── -->
