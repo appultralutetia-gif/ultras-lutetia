@@ -1561,24 +1561,39 @@ async function getStatsTifo() {
   }
 
   // ── Évolution ────────────────────────────────────────────────
-  const parMois = new Map();
+  // Timeline unifiée (12/07/2026) : les deux séries doivent partager le
+  // même axe des mois pour être affichées sur UNE courbe combinée — sinon
+  // un mois avec une session mais 0 présence (ex: une session à venir
+  // pas encore passée) apparaît dans l'une des deux séries mais pas
+  // l'autre, ce qui décale les points si on les traite indépendamment.
+  const parMoisPresences = new Map();
   for (const p of presences) {
     const sess = sessionById.get(p.session_id);
     if (!sess?.date) continue;
     const mois = sess.date.slice(0, 7);
-    parMois.set(mois, (parMois.get(mois) || 0) + 1);
+    parMoisPresences.set(mois, (parMoisPresences.get(mois) || 0) + 1);
   }
-  const evolutionMensuelle = [...parMois.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-
   const sessionsTriees = [...sessions].filter(s => s.date).sort((a, b) => a.date.localeCompare(b.date));
   const vus = new Set();
-  const cumulParMois = new Map();
+  const parMoisCumul = new Map();
   for (const s of sessionsTriees) {
     const mois = s.date.slice(0, 7);
     for (const p of presences) { if (p.session_id === s.id && p.membre_id) vus.add(p.membre_id); }
-    cumulParMois.set(mois, vus.size);
+    parMoisCumul.set(mois, vus.size);
   }
-  const cumulEvolution = [...cumulParMois.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const tousMois = [...new Set([...parMoisPresences.keys(), ...parMoisCumul.keys()])].sort();
+  let dernierCumul = 0;
+  const evolution = {
+    mois: tousMois,
+    presences: tousMois.map(m => parMoisPresences.get(m) || 0),
+    cumulUniques: tousMois.map(m => {
+      if (parMoisCumul.has(m)) dernierCumul = parMoisCumul.get(m);
+      return dernierCumul; // report du cumul si le mois n'a pas de nouvelle session
+    }),
+  };
+  // Conservés pour rétrocompatibilité éventuelle d'un ancien appelant.
+  const evolutionMensuelle = tousMois.map(m => [m, parMoisPresences.get(m) || 0]);
+  const cumulEvolution = evolution.mois.map((m, i) => [m, evolution.cumulUniques[i]]);
 
   // ── Classement des sections ──────────────────────────────────
   const sectionById = new Map(sections.map(s => [s.id, s.nom]));
@@ -1600,7 +1615,7 @@ async function getStatsTifo() {
     nbSansSession, tauxAvecSession, populationTotal: population.length, buckets,
     repartitionType, repartitionLieu, presencesParStatut,
     classement, tauxNoShow, nbAbsents: absents.length, nbResolus: resolus.length,
-    nouveauxParticipants, evolutionMensuelle, cumulEvolution, classementSections,
+    nouveauxParticipants, evolution, evolutionMensuelle, cumulEvolution, classementSections,
   };
 }
 
