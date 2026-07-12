@@ -496,7 +496,13 @@
 // uniquement). prix_total reste calculé automatiquement, jamais saisi
 // à la main. Migration : migration_decomposition_prix_deplacements.sql
 // (déjà appliquée en direct).
-const CACHE_NAME = 'ul-v86';
+// v87 (12/07/2026) : CACHE_NAME bumpé (v86 → v87) — visibilité brouillon
+// précisée (demande Remi) : admin + bureau + cellule CONCERNÉE
+// précisément (Matos → cellule_matos, Sticks → cellule_sticks, Cartage →
+// cellule_comite, Déplacements → cellule_depl déjà correct), plus
+// "n'importe quelle cellule" comme avant. Le bypass niveau_acces
+// (Matos/Sticks) reste inchangé, générique à toute cellule.
+const CACHE_NAME = 'ul-v87';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
