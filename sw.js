@@ -479,7 +479,16 @@
 // lieu/statut membre, classement top 10 + no-show + nouveaux (30j),
 // évolution mensuelle + cumul participants uniques, classement des
 // sections.
-const CACHE_NAME = 'ul-v83';
+// v84 (12/07/2026) : CACHE_NAME bumpé (v83 → v84) — onglet Stats Tifo :
+// courbe SVG combinée (présences/mois + cumul unique) à la place des
+// barres, histogramme pour le classement des sections, KPI "présents
+// max" avec libellé générique (plus le nom de session en gros), % ajouté
+// sous chaque tranche du nombre de sessions faites.
+// v85 (12/07/2026) : CACHE_NAME bumpé (v84 → v85) — la courbe Stats Tifo
+// affiche maintenant la valeur numérique à côté de chaque point (série
+// présences en dessous, série cumulé au-dessus, pour limiter le
+// chevauchement).
+const CACHE_NAME = 'ul-v85';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
