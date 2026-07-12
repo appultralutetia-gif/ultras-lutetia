@@ -338,6 +338,41 @@ function barreHtml(label, valeur, max, couleur) {
     </div>`;
 }
 
+// Courbe combinée (12/07/2026, demande Remi) — SVG simple en polyline,
+// pas de dépendance externe. viewBox responsive (s'adapte à la largeur
+// du conteneur sur mobile comme desktop). Les deux séries partagent le
+// même axe des mois (cf. getStatsTifo → evolution.mois), donc toujours
+// alignées point à point même si l'une a des zéros que l'autre n'a pas.
+function courbeDoubleSvg(mois, serieALabel, serieAValeurs, serieACouleur, serieBLabel, serieBValeurs, serieBCouleur) {
+  if (!mois.length) return '<div class="empty-state" style="padding:12px;"><div>📈</div>Pas assez de données</div>';
+  const W = 320, H = 170, padL = 26, padR = 10, padT = 14, padB = 24;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const n = mois.length;
+  const maxY = Math.max(1, ...serieAValeurs, ...serieBValeurs);
+  const xFor = i => (n > 1 ? padL + (i / (n - 1)) * plotW : padL + plotW / 2);
+  const yFor = v => padT + plotH - (v / maxY) * plotH;
+  const ligne = valeurs => valeurs.map((v, i) => `${xFor(i)},${yFor(v)}`).join(' ');
+  const points = (valeurs, couleur) => valeurs.map((v, i) => `<circle cx="${xFor(i)}" cy="${yFor(v)}" r="2.8" fill="${couleur}"/>`).join('');
+  const labelMois = m => {
+    const l = new Date(m + '-01').toLocaleDateString('fr-FR', { month: 'short' });
+    return l.charAt(0).toUpperCase() + l.slice(1).replace('.', '');
+  };
+  const xLabels = mois.map((m, i) => `<text x="${xFor(i)}" y="${H - 6}" font-size="8" fill="var(--gris)" text-anchor="middle">${labelMois(m)}</text>`).join('');
+  return `
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible;display:block;">
+      <line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" stroke="var(--border)" stroke-width="1"/>
+      <polyline points="${ligne(serieBValeurs)}" fill="none" stroke="${serieBCouleur}" stroke-width="2" opacity="0.9"/>
+      <polyline points="${ligne(serieAValeurs)}" fill="none" stroke="${serieACouleur}" stroke-width="2.2"/>
+      ${points(serieBValeurs, serieBCouleur)}
+      ${points(serieAValeurs, serieACouleur)}
+      ${xLabels}
+    </svg>
+    <div style="display:flex;gap:16px;justify-content:center;margin-top:4px;font-size:11px;color:var(--gris);">
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:${serieACouleur};display:inline-block;"></span>${serieALabel}</span>
+      <span style="display:flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:${serieBCouleur};display:inline-block;"></span>${serieBLabel}</span>
+    </div>`;
+}
+
 async function loadStatsTifo() {
   const el = document.getElementById('statsTifoContent');
   try {
@@ -371,35 +406,33 @@ async function loadStatsTifo() {
         </div>`;
     }).join('') || '<div class="empty-state" style="padding:12px;"><div>🏆</div>Aucune présence enregistrée</div>';
 
+    const totalPop = s.populationTotal || 0;
+    const pctBucket = n => (totalPop ? Math.round((n / totalPop) * 100) : 0);
     const bucketsHtml = `
       <div class="tranche-grid" style="grid-template-columns:repeat(5,1fr);">
-        <div class="tranche"><div class="tranche-lbl">0</div><div class="tranche-val">${s.buckets['0']}</div></div>
-        <div class="tranche"><div class="tranche-lbl">1</div><div class="tranche-val">${s.buckets['1']}</div></div>
-        <div class="tranche"><div class="tranche-lbl">2</div><div class="tranche-val">${s.buckets['2']}</div></div>
-        <div class="tranche"><div class="tranche-lbl">3-4</div><div class="tranche-val">${s.buckets['3-4']}</div></div>
-        <div class="tranche"><div class="tranche-lbl">5+</div><div class="tranche-val">${s.buckets['5+']}</div></div>
+        <div class="tranche"><div class="tranche-lbl">0</div><div class="tranche-val">${s.buckets['0']}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${pctBucket(s.buckets['0'])}%</div></div>
+        <div class="tranche"><div class="tranche-lbl">1</div><div class="tranche-val">${s.buckets['1']}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${pctBucket(s.buckets['1'])}%</div></div>
+        <div class="tranche"><div class="tranche-lbl">2</div><div class="tranche-val">${s.buckets['2']}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${pctBucket(s.buckets['2'])}%</div></div>
+        <div class="tranche"><div class="tranche-lbl">3-4</div><div class="tranche-val">${s.buckets['3-4']}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${pctBucket(s.buckets['3-4'])}%</div></div>
+        <div class="tranche"><div class="tranche-lbl">5+</div><div class="tranche-val">${s.buckets['5+']}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${pctBucket(s.buckets['5+'])}%</div></div>
       </div>`;
 
-    const evolutionHtml = s.evolutionMensuelle.length ? s.evolutionMensuelle.map(([mois, nb]) => {
-      const maxMois = Math.max(...s.evolutionMensuelle.map(x => x[1]));
-      const label = new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-      return barreHtml(label.charAt(0).toUpperCase() + label.slice(1), nb, maxMois);
-    }).join('') : '<div class="empty-state" style="padding:12px;"><div>📈</div>Pas assez de données</div>';
+    const evolutionHtml = courbeDoubleSvg(
+      s.evolution.mois,
+      'Présences/mois', s.evolution.presences, 'var(--bleu-clair)',
+      'Cumulé unique', s.evolution.cumulUniques, '#C4B5FF'
+    );
 
-    const cumulHtml = s.cumulEvolution.length ? s.cumulEvolution.map(([mois, cumul]) => {
-      const maxCumul = Math.max(...s.cumulEvolution.map(x => x[1]));
-      const label = new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-      return barreHtml(label.charAt(0).toUpperCase() + label.slice(1), cumul, maxCumul, '#C4B5FF');
-    }).join('') : '';
-
+    const maxSectionPresences = Math.max(1, ...s.classementSections.map(sec => sec.nbPresences));
     const classementSectionsHtml = s.classementSections.map((sec, i) => `
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
-        <span>${i + 1}. ${esc(sec.nom)}</span>
-        <span style="display:flex;gap:6px;">
-          <span class="badge badge-bleu" style="font-size:11px;">${sec.nbPresences} présences</span>
-          <span class="badge badge-gris" style="font-size:11px;">${sec.nbMembres} membres</span>
-        </span>
+      <div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+          <span>${i + 1}. ${esc(sec.nom)}</span>
+          <span style="color:var(--gris);">${sec.nbPresences} présences · ${sec.nbMembres} membres</span>
+        </div>
+        <div class="places-bar"><div class="places-fill" style="width:${Math.round((sec.nbPresences / maxSectionPresences) * 100)}%;background:var(--bleu);"></div></div>
       </div>`).join('') || '<div class="empty-state" style="padding:12px;"><div>🏳️</div>Aucune donnée</div>';
+
 
     el.innerHTML = `
       <div class="card">
@@ -412,7 +445,7 @@ async function loadStatsTifo() {
         <div style="font-size:11px;color:var(--gris);margin:4px 0 12px;">${s.sessionsTerminees} terminée${s.sessionsTerminees > 1 ? 's' : ''} · ${s.sessionsAVenir} à venir</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
           <div class="stat-card"><div class="stat-value">${s.moyennePresencesParSession.toFixed(1)}</div><div class="stat-label">Présents / session</div></div>
-          <div class="stat-card"><div class="stat-value">${s.sessionTop ? s.sessionTop.nb : '—'}</div><div class="stat-label">${s.sessionTop ? esc(s.sessionTop.nom) : 'Session la + fréquentée'}</div></div>
+          <div class="stat-card"><div class="stat-value">${s.sessionTop ? s.sessionTop.nb : '—'}</div><div class="stat-label">Présents max / session</div>${s.sessionTop ? `<div style="font-size:9px;color:var(--gris);margin-top:2px;">${esc(s.sessionTop.nom)}</div>` : ''}</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div class="stat-card"><div class="stat-value">${s.nbSansSession}</div><div class="stat-label">Confirmés+Draft sans session</div></div>
@@ -444,9 +477,7 @@ async function loadStatsTifo() {
 
       <div class="card" style="margin-top:12px;">
         <div class="card-label">Évolution</div>
-        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:4px 0;text-transform:uppercase;letter-spacing:.03em;">Présences par mois</div>
         ${evolutionHtml}
-        ${cumulHtml ? `<div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Participants uniques cumulés</div>${cumulHtml}` : ''}
       </div>
 
       <div class="card" style="margin-top:12px;">
