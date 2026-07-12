@@ -155,12 +155,21 @@ function renderDeplCard(d) {
   }
 
   // Barre de places + boutons admin bus
+  // Aperçu équilibre (12/07/2026) — visible seulement par la cellule
+  // Déplacement, uniquement si coût bus + places max sont renseignés.
+  // Recalculé à l'affichage de la carte, indépendant du formulaire.
+  let equilibreApercu = '';
+  if (hasCelluleDepl(m) && d.cout_bus && d.places_max) {
+    const seuil = d.cout_bus / d.places_max;
+    const auDessus = (d.prix_bus || 0) >= seuil;
+    equilibreApercu = `<div style="font-size:11px;color:var(--gris);margin-top:6px;">🎯 Seuil ${seuil.toFixed(1)}€/place ${auDessus ? '✅' : '⚠️'} ${d.distance_km ? `· 🛣️ ${d.distance_km}km A/R` : ''}</div>`;
+  }
   const adminBar = hasCelluleDepl(m) ? `
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();voirInscritsDepl('${d.id}')">👥 Inscrits</button>
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();copierListeBus('${d.id}')">📋 Liste bus</button>
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ouvrirModifierDepl('${d.id}')">✏️ Modifier</button>
-    </div>` : '';
+    </div>${equilibreApercu}` : '';
 
   return `<div class="depl-card" onclick="openDepl('${d.id}')">
     ${d.visible_membres === false ? `<div style="margin-bottom:6px;"><span class="badge badge-rouge">🔒 Brouillon — invisible pour les membres</span></div>` : ''}
@@ -205,9 +214,21 @@ async function openDepl(deplId) {
         ${d.point_rdv ? `🚌 RDV: ${d.point_rdv}<br>` : ''}
         ${d.heure_depart ? `⏰ Départ: ${d.heure_depart}<br>` : ''}
         ${d.prix_total ? `💶 ${d.prix_total}€ (bus + entrée)<br>` : ''}
+        ${d.distance_km ? `🛣️ ${d.distance_km}km A/R<br>` : ''}
         ${d.date_limite_inscription ? `⏳ Limite: ${new Date(d.date_limite_inscription).toLocaleDateString('fr-FR')}<br>` : ''}
         ${formatEchelonnementDepl(d) ? `📅 Ouverture : ${formatEchelonnementDepl(d)}<br>` : ''}
       </div>
+      ${hasCelluleDepl(m) && (d.cout_bus || d.prix_bus) ? `
+      <div class="info-box" style="font-size:12px;margin-bottom:16px;">
+        🎯 <strong>Détail cellule</strong><br>
+        ${d.prix_bus != null ? `Prix bus: ${d.prix_bus}€ + Prix place: ${d.prix_place ?? 10}€<br>` : ''}
+        ${d.cout_bus ? `Coût devis bus: ${d.cout_bus}€<br>` : ''}
+        ${d.cout_bus && d.places_max ? (() => {
+          const seuil = d.cout_bus / d.places_max;
+          const benef = ((d.prix_bus || 0) - seuil) * d.places_max;
+          return `Seuil équilibre: ${seuil.toFixed(1)}€/place — ${(d.prix_bus||0) >= seuil ? `✅ bénéf. plein bus ${benef.toFixed(0)}€` : `⚠️ perte plein bus ${benef.toFixed(0)}€`}`;
+        })() : ''}
+      </div>` : ''}
       <div style="font-size:14px;margin-bottom:16px;font-weight:600;">👥 ${nbInscrits} inscrit${nbInscrits>1?'s':''}${d.places_max?' / '+d.places_max+' places':''}</div>`;
 
     if (!estInscrit) {
@@ -568,7 +589,9 @@ async function ouvrirCreerDepl() {
   document.getElementById('dRdvAutre').value = '';
   document.getElementById('dRdvAutre').style.display = 'none';
   document.getElementById('dTelegram').value = '';
-  ['dHeure','dPrix','dPlaces','dLimite','dNotes'].forEach(id => document.getElementById(id).value = '');
+  ['dHeure','dPlaces','dLimite','dNotes','dDistance','dCoutBus','dPrixBus'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('dPrixPlace').value = 10;
+  document.getElementById('dEquilibreInfo').style.display = 'none';
   ['dQuota','dOuvConfirme','dOuvDraft','dOuvSympa'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('dNotifier').checked = true;
   onChangeSourceDepl();
@@ -637,11 +660,44 @@ async function onChangeMatchDepl() {
   } catch(e) { toast('Erreur chargement du match', 'error'); }
 }
 
+// Indicateur d'équilibre (12/07/2026, demande Remi) — recalculé en
+// direct (oninput) sur les formulaires création/modification. Seuil =
+// coût du devis bus / places max (prix par place nécessaire pour
+// rentrer dans les frais du bus). Comparé à prix_bus (pas prix_total :
+// prix_place — l'entrée du match — ne sert pas à couvrir le coût du
+// bus, cf. décomposition demandée par Remi). N'affiche rien tant que
+// coût bus ET places max ne sont pas tous les deux renseignés.
+function calculerEquilibreDepl(prefixe) {
+  const p = prefixe === 'modif' ? 'dm' : 'd';
+  const coutBus = parseFloat(document.getElementById(`${p}CoutBus`).value) || 0;
+  const places = parseInt(document.getElementById(`${p}Places`).value) || 0;
+  const prixBus = parseFloat(document.getElementById(`${p}PrixBus`).value) || 0;
+  const box = document.getElementById(`${p}EquilibreInfo`);
+  if (!coutBus || !places) { box.style.display = 'none'; return; }
+  const seuil = coutBus / places;
+  const beneficePlein = (prixBus - seuil) * places;
+  const auDessus = prixBus >= seuil;
+  box.style.display = 'block';
+  box.className = `info-box ${auDessus ? '' : 'warning'}`;
+  box.style.fontSize = '12px';
+  box.innerHTML = `🎯 Seuil d'équilibre : <strong>${seuil.toFixed(1)}€/place</strong> (bus complet, ${places} places)<br>` +
+    (auDessus
+      ? `✅ Prix bus actuel au-dessus du seuil — bénéf. plein bus : <strong>${beneficePlein.toFixed(0)}€</strong>`
+      : `⚠️ Prix bus actuel EN DESSOUS du seuil — perte plein bus : <strong>${beneficePlein.toFixed(0)}€</strong>`);
+}
+
 async function doCreerDepl(btn) {
   const source = document.getElementById('dSource').value;
   const matchId = document.getElementById('dMatchId').value;
   const rdvChoix = document.getElementById('dRdv').value;
   const pointRdv = rdvChoix === 'autre' ? (document.getElementById('dRdvAutre').value.trim() || null) : (rdvChoix || null);
+  // Prix décomposé (12/07/2026, demande Remi) : prix_total reste la
+  // colonne utilisée partout ailleurs (paiement HelloAsso, affichage
+  // membre) — jamais saisi directement, toujours recalculé comme
+  // prix_bus + prix_place pour rester rigoureusement cohérent. prix_bus/
+  // prix_place ne servent qu'à la décomposition et aux stats équilibre.
+  const prixBus = parseFloat(document.getElementById('dPrixBus').value) || 0;
+  const prixPlace = parseFloat(document.getElementById('dPrixPlace').value) || 0;
   const data = {
     adversaire: document.getElementById('dAdv').value,
     date_match: document.getElementById('dDate').value,
@@ -650,7 +706,11 @@ async function doCreerDepl(btn) {
     point_rdv: pointRdv,
     lien_telegram: document.getElementById('dTelegram').value.trim() || null,
     heure_depart: document.getElementById('dHeure').value || null,
-    prix_total: parseFloat(document.getElementById('dPrix').value) || null,
+    distance_km: parseFloat(document.getElementById('dDistance').value) || null,
+    cout_bus: parseFloat(document.getElementById('dCoutBus').value) || null,
+    prix_bus: prixBus || null,
+    prix_place: prixPlace || null,
+    prix_total: (prixBus + prixPlace) || null,
     places_max: parseInt(document.getElementById('dPlaces').value) || null,
     date_limite_inscription: document.getElementById('dLimite').value || null,
     notes: document.getElementById('dNotes').value || null,
@@ -708,13 +768,23 @@ async function ouvrirModifierDepl(deplId) {
     document.getElementById('dmVille').value = d.ville || '';
     document.getElementById('dmTelegram').value = d.lien_telegram || '';
     document.getElementById('dmHeure').value = d.heure_depart || '';
-    document.getElementById('dmPrix').value = d.prix_total || '';
+    document.getElementById('dmDistance').value = d.distance_km ?? '';
+    document.getElementById('dmCoutBus').value = d.cout_bus ?? '';
+    // Repli (12/07/2026) : pour un déplacement créé avant l'ajout de la
+    // décomposition prix_bus/prix_place, ces deux champs sont vides en
+    // base — on déduit prix_bus de prix_total - prix_place plutôt que de
+    // laisser le champ à 0, pour ne pas perdre silencieusement le prix
+    // déjà fixé au moment de la première sauvegarde après migration.
+    const prixPlaceActuel = d.prix_place ?? 10;
+    document.getElementById('dmPrixPlace').value = prixPlaceActuel;
+    document.getElementById('dmPrixBus').value = d.prix_bus ?? (d.prix_total != null ? Math.max(0, d.prix_total - prixPlaceActuel) : '');
     document.getElementById('dmPlaces').value = d.places_max || '';
     document.getElementById('dmLimite').value = d.date_limite_inscription || '';
     document.getElementById('dmNotes').value = d.notes || '';
     document.getElementById('dmStatut').value = d.statut || 'ouvert';
     document.getElementById('dmQuota').value = d.quota_par_membre ?? '';
     document.getElementById('dmBrouillon').checked = d.visible_membres === false;
+    calculerEquilibreDepl('modif');
     // datetime-local attend "YYYY-MM-DDTHH:mm" — les timestamptz renvoyés
     // par Supabase incluent secondes/fuseau (ex. "2026-07-15T14:30:00+00:00"),
     // on tronque à 16 caractères pour que l'input les accepte.
@@ -803,7 +873,11 @@ async function doModifierDepl(btn) {
     point_rdv: pointRdv,
     lien_telegram: document.getElementById('dmTelegram').value.trim() || null,
     heure_depart: document.getElementById('dmHeure').value || null,
-    prix_total: parseFloat(document.getElementById('dmPrix').value) || null,
+    distance_km: parseFloat(document.getElementById('dmDistance').value) || null,
+    cout_bus: parseFloat(document.getElementById('dmCoutBus').value) || null,
+    prix_bus: parseFloat(document.getElementById('dmPrixBus').value) || null,
+    prix_place: parseFloat(document.getElementById('dmPrixPlace').value) || null,
+    prix_total: ((parseFloat(document.getElementById('dmPrixBus').value) || 0) + (parseFloat(document.getElementById('dmPrixPlace').value) || 0)) || null,
     places_max: parseInt(document.getElementById('dmPlaces').value) || null,
     date_limite_inscription: document.getElementById('dmLimite').value || null,
     notes: document.getElementById('dmNotes').value || null,
