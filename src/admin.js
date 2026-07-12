@@ -286,8 +286,26 @@ async function loadStats() {
   try {
     const stats = await UL.getStats();
     const mesStats = await UL.getMesStats();
+    const statsTifo = await UL.getStatsTifo();
     const COLORS = ['#1700D1','#2E18E0','#4530EF','#5B48FF','#7060FF','#8575FF'];
     const r = stats.repartitionStatuts || {};
+    const labelType = { Tracage: '✏️ Traçage', Assemblage: '🧵 Assemblage', Peinture: '🎨 Peinture' };
+    const repartitionTypeHtml = Object.entries(statsTifo.repartitionType)
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, n]) => `
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;">
+          <span>${labelType[type] || type}</span><span style="font-weight:700;">${n}</span>
+        </div>`).join('') || '<div class="empty-state" style="padding:12px;"><div>🎨</div>Aucune session</div>';
+    const classementHtml = statsTifo.classement.slice(0, 10).map((c, i) => {
+      const nom = c.membre ? `${esc(c.membre.prenom)} (@${esc(c.membre.pseudo_telegram || '?')})` : 'Membre inconnu';
+      const medaille = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
+          <span>${medaille} ${nom}</span>
+          <span class="badge badge-bleu" style="font-size:11px;">${c.nb} présence${c.nb > 1 ? 's' : ''}</span>
+        </div>`;
+    }).join('') || '<div class="empty-state" style="padding:12px;"><div>🏆</div>Aucune présence enregistrée</div>';
+
     el.innerHTML = `
       <div class="kpi-grid">
         <div class="kpi"><div class="kpi-lbl">Total membres</div><div class="kpi-val">${stats.totalMembres}</div></div>
@@ -306,6 +324,19 @@ async function loadStats() {
           <div class="stat-card"><div class="stat-value">${mesStats.presencesDomicile}</div><div class="stat-label">Présent domicile</div></div>
           <div class="stat-card"><div class="stat-value">${mesStats.presencesExterieur}</div><div class="stat-label">Présent extérieur</div></div>
         </div>
+      </div>
+      <div class="card" style="margin-top:12px;">
+        <div class="card-label">🎨 Stats Tifo</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div class="stat-card"><div class="stat-value">${statsTifo.totalSessions}</div><div class="stat-label">Sessions</div></div>
+          <div class="stat-card"><div class="stat-value">${statsTifo.totalPresences}</div><div class="stat-label">Présences</div></div>
+          <div class="stat-card"><div class="stat-value">${statsTifo.membresActifs}</div><div class="stat-label">Membres actifs</div></div>
+        </div>
+        <div style="font-size:11px;color:var(--gris);margin-bottom:8px;">${statsTifo.sessionsTerminees} terminée${statsTifo.sessionsTerminees > 1 ? 's' : ''} · ${statsTifo.sessionsAVenir} à venir</div>
+        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Répartition par type</div>
+        ${repartitionTypeHtml}
+        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">🏆 Classement assiduité</div>
+        ${classementHtml}
       </div>`;
   } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
 }
