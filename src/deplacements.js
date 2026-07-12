@@ -145,6 +145,7 @@ function renderDeplCard(d) {
     </div>` : '';
 
   return `<div class="depl-card" onclick="openDepl('${d.id}')">
+    ${d.visible_membres === false ? `<div style="margin-bottom:6px;"><span class="badge badge-rouge">🔒 Brouillon — invisible pour les membres</span></div>` : ''}
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
       <div style="flex:1;min-width:0;">
         <div class="depl-match">${esc(d.adversaire || d.match?.equipe_domicile || '?')} — Paris FC</div>
@@ -638,6 +639,9 @@ async function doCreerDepl(btn) {
     ouverture_confirme: document.getElementById('dOuvConfirme').value || null,
     ouverture_draft: document.getElementById('dOuvDraft').value || null,
     ouverture_sympathisant: document.getElementById('dOuvSympa').value || null,
+    // Brouillon (10/07/2026) : caché des membres tant que non coché,
+    // utile pour tester un vrai paiement HelloAsso avant publication.
+    visible_membres: !document.getElementById('dBrouillon').checked,
   };
   if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
   const notifier = document.getElementById('dNotifier')?.checked;
@@ -645,13 +649,16 @@ async function doCreerDepl(btn) {
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
     const depl = await UL.createDeplacement(data);
-    toast('Déplacement créé ✅', 'success');
+    toast(data.visible_membres ? 'Déplacement créé ✅' : 'Déplacement créé en brouillon 🔒 ✅', 'success');
     closeModal('modalCreerDepl');
+    document.getElementById('dBrouillon').checked = false;
     loadDeplacements();
     // Notification "nouveau contenu" — ouverte à tous les membres actifs,
     // sans restriction de statut (cf. cible:'tous', cohérent avec
-    // getDeplacements qui n'applique aucun filtre de droits côté lecture).
-    if (notifier) {
+    // getDeplacements qui n'applique aucun filtre de droits côté lecture
+    // pour un déplacement visible). Jamais envoyée pour un brouillon,
+    // même si la case "Notifier" est restée cochée.
+    if (notifier && data.visible_membres) {
       UL.envoyerNotificationPushGroupe({
         cible: 'tous',
         titre: '🚌 Nouveau déplacement',
@@ -687,6 +694,7 @@ async function ouvrirModifierDepl(deplId) {
     document.getElementById('dmNotes').value = d.notes || '';
     document.getElementById('dmStatut').value = d.statut || 'ouvert';
     document.getElementById('dmQuota').value = d.quota_par_membre ?? '';
+    document.getElementById('dmBrouillon').checked = d.visible_membres === false;
     // datetime-local attend "YYYY-MM-DDTHH:mm" — les timestamptz renvoyés
     // par Supabase incluent secondes/fuseau (ex. "2026-07-15T14:30:00+00:00"),
     // on tronque à 16 caractères pour que l'input les accepte.
@@ -785,6 +793,7 @@ async function doModifierDepl(btn) {
     ouverture_confirme: document.getElementById('dmOuvConfirme').value || null,
     ouverture_draft: document.getElementById('dmOuvDraft').value || null,
     ouverture_sympathisant: document.getElementById('dmOuvSympa').value || null,
+    visible_membres: !document.getElementById('dmBrouillon').checked,
   };
   if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
   const texteOriginal = btn ? btn.textContent : '';
