@@ -460,7 +460,12 @@
 // HelloAsso en production avant publication. Nécessite la migration
 // migration_brouillon_visible_membres.sql (ajout colonne visible_membres,
 // default true, donc aucune régression sur l'existant).
-const CACHE_NAME = 'ul-v79';
+// v80 (12/07/2026) : CACHE_NAME bumpé (v79 → v80) — page Gestion Boutique
+// (Par article / Par membre) affiche désormais "×N lots" ET le nombre
+// réel de stickers (lots × taille du lot) pour les articles Sticks,
+// dans l'app et dans l'export Telegram. Aucun changement pour Matos
+// (pas de notion de lot).
+const CACHE_NAME = 'ul-v80';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
