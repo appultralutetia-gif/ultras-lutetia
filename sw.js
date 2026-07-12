@@ -469,7 +469,10 @@
 // (précommande Matos/Sticks, accès échelonné Déplacements) sont
 // désormais affichées en permanence sur la carte, plus seulement avant
 // l'ouverture. Demande Remi.
-const CACHE_NAME = 'ul-v81';
+// v82 (12/07/2026) : CACHE_NAME bumpé (v81 → v82) — nouvelle carte
+// "🎨 Stats Tifo" sur la page Statistiques Admin (sessions, présences,
+// répartition par type, classement assiduité).
+const CACHE_NAME = 'ul-v82';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
