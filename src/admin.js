@@ -281,31 +281,29 @@ async function supprimerMembre(membreId, nom) {
 }
 
 
+function switchStatsTab(tab) {
+  document.getElementById('sectionStatsGeneral').style.display = tab === 'general' ? 'block' : 'none';
+  document.getElementById('sectionStatsTifo').style.display = tab === 'tifo' ? 'block' : 'none';
+  document.getElementById('tabStatsGeneral').classList.toggle('active', tab === 'general');
+  document.getElementById('tabStatsTifo').classList.toggle('active', tab === 'tifo');
+  // Chargement paresseux (12/07/2026) : les stats Tifo demandent plusieurs
+  // requêtes (sessions + présences + population + sections) — inutile de
+  // les lancer tant que l'admin n'a pas cliqué sur cet onglet. _tifoCharge
+  // évite de tout recharger à chaque clic une fois que c'est déjà affiché.
+  if (tab === 'tifo' && !_statsTifoCharge) {
+    _statsTifoCharge = true;
+    loadStatsTifo();
+  }
+}
+let _statsTifoCharge = false;
+
 async function loadStats() {
   const el = document.getElementById('statsContent');
   try {
     const stats = await UL.getStats();
     const mesStats = await UL.getMesStats();
-    const statsTifo = await UL.getStatsTifo();
     const COLORS = ['#1700D1','#2E18E0','#4530EF','#5B48FF','#7060FF','#8575FF'];
     const r = stats.repartitionStatuts || {};
-    const labelType = { Tracage: '✏️ Traçage', Assemblage: '🧵 Assemblage', Peinture: '🎨 Peinture' };
-    const repartitionTypeHtml = Object.entries(statsTifo.repartitionType)
-      .sort((a, b) => b[1] - a[1])
-      .map(([type, n]) => `
-        <div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;">
-          <span>${labelType[type] || type}</span><span style="font-weight:700;">${n}</span>
-        </div>`).join('') || '<div class="empty-state" style="padding:12px;"><div>🎨</div>Aucune session</div>';
-    const classementHtml = statsTifo.classement.slice(0, 10).map((c, i) => {
-      const nom = c.membre ? `${esc(c.membre.prenom)} (@${esc(c.membre.pseudo_telegram || '?')})` : 'Membre inconnu';
-      const medaille = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-      return `
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
-          <span>${medaille} ${nom}</span>
-          <span class="badge badge-bleu" style="font-size:11px;">${c.nb} présence${c.nb > 1 ? 's' : ''}</span>
-        </div>`;
-    }).join('') || '<div class="empty-state" style="padding:12px;"><div>🏆</div>Aucune présence enregistrée</div>';
-
     el.innerHTML = `
       <div class="kpi-grid">
         <div class="kpi"><div class="kpi-lbl">Total membres</div><div class="kpi-val">${stats.totalMembres}</div></div>
@@ -324,21 +322,138 @@ async function loadStats() {
           <div class="stat-card"><div class="stat-value">${mesStats.presencesDomicile}</div><div class="stat-label">Présent domicile</div></div>
           <div class="stat-card"><div class="stat-value">${mesStats.presencesExterieur}</div><div class="stat-label">Présent extérieur</div></div>
         </div>
-      </div>
-      <div class="card" style="margin-top:12px;">
-        <div class="card-label">🎨 Stats Tifo</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
-          <div class="stat-card"><div class="stat-value">${statsTifo.totalSessions}</div><div class="stat-label">Sessions</div></div>
-          <div class="stat-card"><div class="stat-value">${statsTifo.totalPresences}</div><div class="stat-label">Présences</div></div>
-          <div class="stat-card"><div class="stat-value">${statsTifo.membresActifs}</div><div class="stat-label">Membres actifs</div></div>
-        </div>
-        <div style="font-size:11px;color:var(--gris);margin-bottom:8px;">${statsTifo.sessionsTerminees} terminée${statsTifo.sessionsTerminees > 1 ? 's' : ''} · ${statsTifo.sessionsAVenir} à venir</div>
-        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Répartition par type</div>
-        ${repartitionTypeHtml}
-        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">🏆 Classement assiduité</div>
-        ${classementHtml}
       </div>`;
   } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
+}
+
+// ─── STATS TIFO (12/07/2026, demande Remi) ─────────────────────
+function barreHtml(label, valeur, max, couleur) {
+  const pct = max > 0 ? Math.round((valeur / max) * 100) : 0;
+  return `
+    <div style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+        <span>${label}</span><span style="font-weight:700;">${valeur}</span>
+      </div>
+      <div class="places-bar"><div class="places-fill" style="width:${pct}%;background:${couleur||'var(--bleu)'};"></div></div>
+    </div>`;
+}
+
+async function loadStatsTifo() {
+  const el = document.getElementById('statsTifoContent');
+  try {
+    const s = await UL.getStatsTifo();
+    const labelType = { Tracage: '✏️ Traçage', Assemblage: '🧵 Assemblage', Peinture: '🎨 Peinture' };
+    const labelStatut = { confirme: 'Confirmé', draft: 'Draft', sympathisant: 'Sympathisant', visiteur: 'Visiteur' };
+
+    const maxType = Math.max(1, ...Object.values(s.repartitionType));
+    const repartitionTypeHtml = Object.entries(s.repartitionType)
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, n]) => barreHtml(labelType[type] || type, n, maxType)).join('')
+      || '<div class="empty-state" style="padding:12px;"><div>🎨</div>Aucune session</div>';
+
+    const maxLieu = Math.max(1, ...Object.values(s.repartitionLieu));
+    const repartitionLieuHtml = Object.entries(s.repartitionLieu)
+      .sort((a, b) => b[1] - a[1])
+      .map(([lieu, n]) => barreHtml(esc(lieu), n, maxLieu, 'var(--blue-light)')).join('');
+
+    const maxStatut = Math.max(1, ...Object.values(s.presencesParStatut));
+    const repartitionStatutHtml = Object.entries(s.presencesParStatut)
+      .sort((a, b) => b[1] - a[1])
+      .map(([st, n]) => barreHtml(labelStatut[st] || st, n, maxStatut, 'var(--open)')).join('');
+
+    const classementHtml = s.classement.slice(0, 10).map((c, i) => {
+      const nom = c.membre ? `${esc(c.membre.prenom)} (@${esc(c.membre.pseudo_telegram || '?')})` : 'Membre inconnu';
+      const medaille = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
+          <span>${medaille} ${nom}</span>
+          <span class="badge badge-bleu" style="font-size:11px;">${c.nb} présence${c.nb > 1 ? 's' : ''}</span>
+        </div>`;
+    }).join('') || '<div class="empty-state" style="padding:12px;"><div>🏆</div>Aucune présence enregistrée</div>';
+
+    const bucketsHtml = `
+      <div class="tranche-grid" style="grid-template-columns:repeat(5,1fr);">
+        <div class="tranche"><div class="tranche-lbl">0</div><div class="tranche-val">${s.buckets['0']}</div></div>
+        <div class="tranche"><div class="tranche-lbl">1</div><div class="tranche-val">${s.buckets['1']}</div></div>
+        <div class="tranche"><div class="tranche-lbl">2</div><div class="tranche-val">${s.buckets['2']}</div></div>
+        <div class="tranche"><div class="tranche-lbl">3-4</div><div class="tranche-val">${s.buckets['3-4']}</div></div>
+        <div class="tranche"><div class="tranche-lbl">5+</div><div class="tranche-val">${s.buckets['5+']}</div></div>
+      </div>`;
+
+    const evolutionHtml = s.evolutionMensuelle.length ? s.evolutionMensuelle.map(([mois, nb]) => {
+      const maxMois = Math.max(...s.evolutionMensuelle.map(x => x[1]));
+      const label = new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      return barreHtml(label.charAt(0).toUpperCase() + label.slice(1), nb, maxMois);
+    }).join('') : '<div class="empty-state" style="padding:12px;"><div>📈</div>Pas assez de données</div>';
+
+    const cumulHtml = s.cumulEvolution.length ? s.cumulEvolution.map(([mois, cumul]) => {
+      const maxCumul = Math.max(...s.cumulEvolution.map(x => x[1]));
+      const label = new Date(mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      return barreHtml(label.charAt(0).toUpperCase() + label.slice(1), cumul, maxCumul, '#C4B5FF');
+    }).join('') : '';
+
+    const classementSectionsHtml = s.classementSections.map((sec, i) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
+        <span>${i + 1}. ${esc(sec.nom)}</span>
+        <span style="display:flex;gap:6px;">
+          <span class="badge badge-bleu" style="font-size:11px;">${sec.nbPresences} présences</span>
+          <span class="badge badge-gris" style="font-size:11px;">${sec.nbMembres} membres</span>
+        </span>
+      </div>`).join('') || '<div class="empty-state" style="padding:12px;"><div>🏳️</div>Aucune donnée</div>';
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-label">Vue d'ensemble</div>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-lbl">Sessions</div><div class="kpi-val">${s.totalSessions}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Présences</div><div class="kpi-val" style="color:var(--open)">${s.totalPresences}</div></div>
+          <div class="kpi"><div class="kpi-lbl">Membres actifs</div><div class="kpi-val" style="color:var(--pizza)">${s.membresActifs}</div></div>
+        </div>
+        <div style="font-size:11px;color:var(--gris);margin:4px 0 12px;">${s.sessionsTerminees} terminée${s.sessionsTerminees > 1 ? 's' : ''} · ${s.sessionsAVenir} à venir</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div class="stat-card"><div class="stat-value">${s.moyennePresencesParSession.toFixed(1)}</div><div class="stat-label">Présents / session</div></div>
+          <div class="stat-card"><div class="stat-value">${s.sessionTop ? s.sessionTop.nb : '—'}</div><div class="stat-label">${s.sessionTop ? esc(s.sessionTop.nom) : 'Session la + fréquentée'}</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-card"><div class="stat-value">${s.nbSansSession}</div><div class="stat-label">Confirmés+Draft sans session</div></div>
+          <div class="stat-card"><div class="stat-value">${Math.round(s.tauxAvecSession * 100)}%</div><div class="stat-label">Confirmés+Draft ayant participé</div></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Nombre de sessions faites (Confirmés+Draft)</div>
+        ${bucketsHtml}
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="card-label">Répartition</div>
+        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:4px 0;text-transform:uppercase;letter-spacing:.03em;">Par type</div>
+        ${repartitionTypeHtml}
+        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Par lieu</div>
+        ${repartitionLieuHtml}
+        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Présences par statut membre</div>
+        ${repartitionStatutHtml}
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="card-label">Classement &amp; assiduité</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+          <div class="stat-card"><div class="stat-value">${Math.round(s.tauxNoShow * 100)}%</div><div class="stat-label">Taux de no-show</div></div>
+          <div class="stat-card"><div class="stat-value">${s.nouveauxParticipants}</div><div class="stat-label">Nouveaux (30j)</div></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.03em;">🏆 Top 10 présences</div>
+        ${classementHtml}
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="card-label">Évolution</div>
+        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:4px 0;text-transform:uppercase;letter-spacing:.03em;">Présences par mois</div>
+        ${evolutionHtml}
+        ${cumulHtml ? `<div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Participants uniques cumulés</div>${cumulHtml}` : ''}
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="card-label">🏳️ Classement des sections</div>
+        ${classementSectionsHtml}
+      </div>`;
+  } catch(e) { console.error(e); el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
 }
 
 // ─── ANNONCES ─────────────────────────────────────────────────
