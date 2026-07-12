@@ -1657,6 +1657,12 @@ async function getProduits() {
   // ce champ ne prend jamais : un Admin/Bureau n'ayant que son rôle dans
   // roles_app (cas normal) tombait alors dans la branche restreinte.
   const isAdminBureauCellule = isAdmin(membre) || isBureau(membre) || isCellule(membre);
+  // Brouillon (12/07/2026, précision demande Remi) : distinct de
+  // isAdminBureauCellule ci-dessus (qui reste générique "n'importe quelle
+  // cellule", utilisé pour le bypass niveau_acces, INCHANGÉ) — un
+  // brouillon Matos doit être visible par Admin/Bureau/cellule Matos
+  // précisément, pas par la cellule Sticks ou Tifo par exemple.
+  const voitBrouillon = hasCelluleMatos(membre);
   const { data, error } = await sb.from('produits')
     .select('*, section:sections(id, nom)')
     .eq('statut', 'disponible')
@@ -1668,13 +1674,10 @@ async function getProduits() {
   // modèle à 2 niveaux (tous/section, où "section" restait visible à TOUS
   // les Confirmés quelle que soit leur section — incohérent avec Sticks).
   return (data || []).filter(p => {
-    // Statut "Brouillon" (10/07/2026) : même pour un Admin/Bureau/Cellule,
-    // on pourrait vouloir masquer un article de tous SAUF de la cellule
-    // Matos précisément — mais pour rester simple et cohérent avec le
-    // reste (Déplacements, Sticks, Cartage), on utilise le même
-    // isAdminBureauCellule déjà calculé ci-dessus : la cellule Matos voit
-    // ses brouillons, les autres membres non.
-    if (p.visible_membres === false && !isAdminBureauCellule) return false;
+    // Statut "Brouillon" (10/07/2026, précisé 12/07/2026) : cellule Matos
+    // uniquement (cf. voitBrouillon ci-dessus), pas n'importe quelle
+    // cellule.
+    if (p.visible_membres === false && !voitBrouillon) return false;
     if (isAdminBureauCellule) return true;
     if (p.niveau_acces === 'tous') return true;
     const memeSection = sectionId && p.section_id === sectionId;
@@ -1966,14 +1969,18 @@ async function getSticks() {
   const sectionId = membre.section_id;
   // Détection via roles_app[] (isAdmin/isBureau/isCellule), pas via statut.
   const isAdminBureauCellule = isAdmin(membre) || isBureau(membre) || isCellule(membre);
+  // Brouillon (12/07/2026) — cellule Sticks précisément, cf. commentaire
+  // équivalent dans getProduits().
+  const voitBrouillon = hasCelluleSticks(membre);
   const { data, error } = await sb.from('sticks_catalogue')
     .select('*, section:sections(id, nom)')
     .eq('statut', 'disponible')
     .order('nom');
   if (error) throw error;
   return (data || []).filter(s => {
-    // Statut "Brouillon" (10/07/2026) — même principe que getProduits.
-    if (s.visible_membres === false && !isAdminBureauCellule) return false;
+    // Statut "Brouillon" (10/07/2026, précisé 12/07/2026) — cellule Sticks
+    // uniquement, cf. getProduits().
+    if (s.visible_membres === false && !voitBrouillon) return false;
     if (isAdminBureauCellule) return true;
     if (s.niveau_acces === 'tous') return true;
     // 'draft_confirme' et 'confirme' sont tous deux restreints à la
@@ -2204,12 +2211,14 @@ async function validerPaiementStick(distribId) {
 // ============================================================
 
 async function getCartageCatalogue() {
-  // Statut "Brouillon" (10/07/2026) — même principe que Matos/Sticks.
-  // Pas de notion de "cellule Cartage" dédiée dans le projet (page Gérer
-  // le cartage réservée à Bureau/Admin, cf. app.js pageGererCartage), donc
-  // on s'aligne sur isAdmin/isBureau uniquement ici.
+  // Statut "Brouillon" (12/07/2026, précision demande Remi) : admin +
+  // bureau + cellule concernée précisément — pas de "cellule Cartage"
+  // dédiée dans le projet, donc cellule Comité (déjà responsable du
+  // périmètre réabonnement/cartage ailleurs dans l'app, cf.
+  // pageGererCartage et recherche admin de code) fait office de cellule
+  // de référence ici.
   const membre = currentMembre;
-  const voitLesBrouillons = membre && (isAdmin(membre) || isBureau(membre));
+  const voitLesBrouillons = membre && hasCelluleComite(membre);
   const { data, error } = await sb.from('cartage_catalogue')
     .select('*')
     .eq('statut', 'disponible')
