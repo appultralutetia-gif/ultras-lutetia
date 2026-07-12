@@ -1466,48 +1466,141 @@ async function getMesStats() {
 }
 
 // ============================================================
-// STATS TIFO (12/07/2026, demande Remi) — pour la page Stats Admin.
-// Calcule tout côté client à partir de deux requêtes (sessions +
-// présences), pas de RPC dédiée : le volume reste faible (quelques
-// dizaines de sessions/présences par saison), donc pas besoin
-// d'optimiser côté base pour l'instant.
+// STATS TIFO (12/07/2026, demande Remi) — pour l'onglet dédié de la page
+// Stats Admin. Tout calculé côté client à partir de 4 requêtes brutes
+// (sessions, présences+statut/section du membre, population Confirmé+
+// Draft, sections actives) — volume faible (dizaines de lignes par
+// saison), pas besoin de RPC dédiée pour l'instant.
+//
+// Point d'attention pour les calculs basés sur le temps (nouveaux
+// participants, évolution mensuelle) : on utilise la DATE DE LA SESSION
+// (sessions_tifo.date), jamais inscriptions_session.created_at — sinon
+// un import massif d'historique (comme celui du 12/07/2026) fausserait
+// tout en faisant apparaître une vague de "nouveaux participants"
+// aujourd'hui, alors que les présences réelles datent de plusieurs mois.
 // ============================================================
 async function getStatsTifo() {
-  const [sessionsRes, presencesRes] = await Promise.all([
-    sb.from('sessions_tifo').select('id, statut, type_session'),
+  const [sessionsRes, inscriptionsRes, popRes, sectionsRes] = await Promise.all([
+    sb.from('sessions_tifo').select('id, nom, date, statut, type_session, lieu'),
     sb.from('inscriptions_session')
-      .select('membre_id, membre:membres(prenom, nom, pseudo_telegram)')
-      .eq('statut', 'present'),
+      .select('id, session_id, membre_id, statut, membre:membres(prenom, nom, pseudo_telegram, statut, section_id)'),
+    sb.from('membres').select('id, statut, section_id').in('statut', ['confirme', 'draft']),
+    sb.from('sections').select('id, nom').eq('actif', true),
   ]);
   if (sessionsRes.error) throw sessionsRes.error;
-  if (presencesRes.error) throw presencesRes.error;
+  if (inscriptionsRes.error) throw inscriptionsRes.error;
+  if (popRes.error) throw popRes.error;
+  if (sectionsRes.error) throw sectionsRes.error;
 
   const sessions = sessionsRes.data || [];
-  const presences = presencesRes.data || [];
+  const inscriptions = inscriptionsRes.data || []; // tous statuts (present/absent/inscrit)
+  const population = popRes.data || []; // Confirmés + Draft uniquement
+  const sections = sectionsRes.data || [];
 
-  const repartitionType = sessions.reduce((acc, s) => {
-    acc[s.type_session] = (acc[s.type_session] || 0) + 1;
-    return acc;
-  }, {});
+  const sessionById = new Map(sessions.map(s => [s.id, s]));
+  const presences = inscriptions.filter(i => i.statut === 'present');
 
-  const parMembre = new Map();
+  // ── Vue d'ensemble ──────────────────────────────────────────
+  const totalSessions = sessions.length;
+  const sessionsAVenir = sessions.filter(s => s.statut === 'a_venir').length;
+  const sessionsTerminees = sessions.filter(s => s.statut === 'terminee').length;
+  const totalPresences = presences.length;
+
+  const parMembre = new Map(); // membre_id -> { membre, nb, dates:[] }
   for (const p of presences) {
-    if (!p.membre_id) continue; // ligne orpheline éventuelle, ignorée
-    if (!parMembre.has(p.membre_id)) {
-      parMembre.set(p.membre_id, { membre: p.membre, nb: 0 });
-    }
-    parMembre.get(p.membre_id).nb++;
+    if (!p.membre_id) continue;
+    if (!parMembre.has(p.membre_id)) parMembre.set(p.membre_id, { membre: p.membre, nb: 0, dates: [] });
+    const entry = parMembre.get(p.membre_id);
+    entry.nb++;
+    const sess = sessionById.get(p.session_id);
+    if (sess?.date) entry.dates.push(sess.date);
   }
+  const membresActifs = parMembre.size;
+  const moyennePresencesParSession = sessionsTerminees ? totalPresences / sessionsTerminees : 0;
+
+  const presencesParSession = new Map();
+  for (const p of presences) presencesParSession.set(p.session_id, (presencesParSession.get(p.session_id) || 0) + 1);
+  let sessionTop = null, sessionTopNb = 0;
+  for (const [sid, nb] of presencesParSession) {
+    if (nb > sessionTopNb) { sessionTopNb = nb; sessionTop = sessionById.get(sid); }
+  }
+
+  const popIds = new Set(population.map(m => m.id));
+  const popAvecSession = new Set([...parMembre.keys()].filter(id => popIds.has(id)));
+  const nbSansSession = population.length - popAvecSession.size;
+  const tauxAvecSession = population.length ? popAvecSession.size / population.length : 0;
+
+  const buckets = { '0': 0, '1': 0, '2': 0, '3-4': 0, '5+': 0 };
+  for (const m of population) {
+    const nb = parMembre.get(m.id)?.nb || 0;
+    if (nb === 0) buckets['0']++;
+    else if (nb === 1) buckets['1']++;
+    else if (nb === 2) buckets['2']++;
+    else if (nb <= 4) buckets['3-4']++;
+    else buckets['5+']++;
+  }
+
+  // ── Répartition ──────────────────────────────────────────────
+  const repartitionType = sessions.reduce((acc, s) => { acc[s.type_session] = (acc[s.type_session] || 0) + 1; return acc; }, {});
+  const repartitionLieu = sessions.reduce((acc, s) => { const l = s.lieu || 'Non renseigné'; acc[l] = (acc[l] || 0) + 1; return acc; }, {});
+  const presencesParStatut = presences.reduce((acc, p) => { const st = p.membre?.statut || 'inconnu'; acc[st] = (acc[st] || 0) + 1; return acc; }, {});
+
+  // ── Classement & assiduité ──────────────────────────────────
   const classement = [...parMembre.values()].sort((a, b) => b.nb - a.nb);
+  const resolus = inscriptions.filter(i => i.statut === 'present' || i.statut === 'absent');
+  const absents = inscriptions.filter(i => i.statut === 'absent');
+  const tauxNoShow = resolus.length ? absents.length / resolus.length : 0;
+
+  const aujourdHui = new Date();
+  const il30j = new Date(aujourdHui.getTime() - 30 * 24 * 3600 * 1000);
+  let nouveauxParticipants = 0;
+  for (const entry of parMembre.values()) {
+    if (!entry.dates.length) continue;
+    const premiereDate = entry.dates.reduce((min, d) => (d < min ? d : min), entry.dates[0]);
+    if (new Date(premiereDate) >= il30j) nouveauxParticipants++;
+  }
+
+  // ── Évolution ────────────────────────────────────────────────
+  const parMois = new Map();
+  for (const p of presences) {
+    const sess = sessionById.get(p.session_id);
+    if (!sess?.date) continue;
+    const mois = sess.date.slice(0, 7);
+    parMois.set(mois, (parMois.get(mois) || 0) + 1);
+  }
+  const evolutionMensuelle = [...parMois.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+  const sessionsTriees = [...sessions].filter(s => s.date).sort((a, b) => a.date.localeCompare(b.date));
+  const vus = new Set();
+  const cumulParMois = new Map();
+  for (const s of sessionsTriees) {
+    const mois = s.date.slice(0, 7);
+    for (const p of presences) { if (p.session_id === s.id && p.membre_id) vus.add(p.membre_id); }
+    cumulParMois.set(mois, vus.size);
+  }
+  const cumulEvolution = [...cumulParMois.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+  // ── Classement des sections ──────────────────────────────────
+  const sectionById = new Map(sections.map(s => [s.id, s.nom]));
+  const parSection = new Map();
+  for (const p of presences) {
+    const secId = p.membre?.section_id || null;
+    if (!parSection.has(secId)) parSection.set(secId, { nb: 0, membres: new Set() });
+    const entry = parSection.get(secId);
+    entry.nb++;
+    if (p.membre_id) entry.membres.add(p.membre_id);
+  }
+  const classementSections = [...parSection.entries()]
+    .map(([secId, v]) => ({ nom: sectionById.get(secId) || 'Sans section', nbPresences: v.nb, nbMembres: v.membres.size }))
+    .sort((a, b) => b.nbPresences - a.nbPresences);
 
   return {
-    totalSessions: sessions.length,
-    sessionsAVenir: sessions.filter(s => s.statut === 'a_venir').length,
-    sessionsTerminees: sessions.filter(s => s.statut === 'terminee').length,
-    totalPresences: presences.length,
-    membresActifs: parMembre.size,
-    repartitionType,
-    classement,
+    totalSessions, sessionsAVenir, sessionsTerminees, totalPresences, membresActifs,
+    moyennePresencesParSession, sessionTop: sessionTop ? { nom: sessionTop.nom, nb: sessionTopNb } : null,
+    nbSansSession, tauxAvecSession, populationTotal: population.length, buckets,
+    repartitionType, repartitionLieu, presencesParStatut,
+    classement, tauxNoShow, nbAbsents: absents.length, nbResolus: resolus.length,
+    nouveauxParticipants, evolutionMensuelle, cumulEvolution, classementSections,
   };
 }
 
