@@ -508,7 +508,11 @@
 // Marseille, Le Mans) — la déduction auto de ville échouait
 // silencieusement pour ces 4 matchs. Corrigé + ville rétroremplie en
 // base pour les 17 déplacements existants.
-const CACHE_NAME = 'ul-v88';
+// v89 (12/07/2026) : CACHE_NAME bumpé (v88 → v89) — listes "Commandes en
+// cours" (Matos et Sticks, vue "Toutes") triées : commandes en cours
+// groupées en premier, annulées/refusées/reçues après — pour plus de
+// visibilité (demande Remi).
+const CACHE_NAME = 'ul-v89';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
