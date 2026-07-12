@@ -546,17 +546,24 @@ async function copierListeBus(deplId) {
 // Couvre les stades de Ligue 1 2026-2027 (18 clubs, dont les promus ESTAC
 // Troyes et Le Mans FC) — à étendre si Ultras Lutetia se déplace pour une
 // coupe ou un amical contre un club hors Ligue 1.
+// ⚠️ Corrigé (12/07/2026) — plusieurs clés ne correspondaient pas aux
+// noms de stades réellement stockés dans la table matchs (tirets
+// manquants, noms de sponsor à jour type "Orange Vélodrome" au lieu de
+// "Stade Vélodrome", "Stade Marie-Marvingt" au lieu de "MMArena") : la
+// déduction automatique de ville échouait silencieusement pour Auxerre,
+// Angers, Marseille et Le Mans depuis la mise en place du calendrier
+// 2026-2027. Vérifié contre les 17 valeurs réelles de matchs.stade.
 const STADE_VERS_VILLE = {
-  'Stade Raymond Kopa': 'Angers',
-  'Stade de l\'Abbé Deschamps': 'Auxerre',
+  'Stade Raymond-Kopa': 'Angers',
+  'Stade de l\'Abbé-Deschamps': 'Auxerre',
   'Stade Francis-Le Blé': 'Brest',
   'Stade Océane': 'Le Havre',
-  'MMArena': 'Le Mans',
+  'Stade Marie-Marvingt': 'Le Mans',
   'Stade Bollaert-Delelis': 'Lens',
   'Stade Pierre-Mauroy': 'Villeneuve-d\'Ascq',
   'Stade du Moustoir': 'Lorient',
   'Groupama Stadium': 'Décines-Charpieu',
-  'Stade Vélodrome': 'Marseille',
+  'Orange Vélodrome': 'Marseille',
   'Stade Louis-II': 'Monaco',
   'Allianz Riviera': 'Nice',
   'Parc des Princes': 'Paris',
