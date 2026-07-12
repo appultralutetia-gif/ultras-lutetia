@@ -502,7 +502,13 @@
 // cellule_comite, Déplacements → cellule_depl déjà correct), plus
 // "n'importe quelle cellule" comme avant. Le bypass niveau_acces
 // (Matos/Sticks) reste inchangé, générique à toute cellule.
-const CACHE_NAME = 'ul-v87';
+// v88 (12/07/2026) : CACHE_NAME bumpé (v87 → v88) — correction de la
+// table stade→ville (STADE_VERS_VILLE) : plusieurs clés ne matchaient
+// pas les vrais noms de stades du calendrier 2026-2027 (Auxerre, Angers,
+// Marseille, Le Mans) — la déduction auto de ville échouait
+// silencieusement pour ces 4 matchs. Corrigé + ville rétroremplie en
+// base pour les 17 déplacements existants.
+const CACHE_NAME = 'ul-v88';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
