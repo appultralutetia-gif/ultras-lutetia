@@ -103,6 +103,24 @@ function inscriptionPasEncoreOuvertePourMoi(d) {
   return new Date() < new Date(dateOuverture);
 }
 
+// Affiche systématiquement les dates d'ouverture échelonnée configurées
+// (12/07/2026, demande Remi) — jusqu'ici, la date n'était visible QUE
+// tant que ce n'était pas encore ouvert pour le membre courant ; une fois
+// l'ouverture passée, plus aucune trace de quand elle avait eu lieu.
+// N'affiche que les paliers réellement configurés (au moins une des 3
+// dates) ; vide si Remi n'a rien renseigné (comportement neutre inchangé
+// pour les déplacements sans accès échelonné).
+function formatEchelonnementDepl(d) {
+  const paliers = [
+    { label: 'Confirmés', date: d.ouverture_confirme },
+    { label: 'Draft', date: d.ouverture_draft },
+    { label: 'Sympathisants', date: d.ouverture_sympathisant },
+  ].filter(p => p.date);
+  if (!paliers.length) return '';
+  const fmt = iso => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return paliers.map(p => `${p.label} dès le ${fmt(p.date)}`).join(' · ');
+}
+
 function renderDeplCard(d) {
   const m = UL.getCurrentMembre();
   const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}) : '';
@@ -165,6 +183,7 @@ function renderDeplCard(d) {
       <div class="places-bar" style="flex:1;"><div class="places-fill" style="width:${pct}%"></div></div>
       <span style="font-size:11px;color:var(--gris);flex-shrink:0;">${d._inscrits||0}/${d.places_max}</span>
     </div>` : ''}
+    ${formatEchelonnementDepl(d) ? `<div style="font-size:11px;color:var(--gris);margin-top:6px;">📅 ${formatEchelonnementDepl(d)}</div>` : ''}
     <div style="margin-top:10px;">${boutonAction}</div>
     ${adminBar}
   </div>`;
@@ -187,6 +206,7 @@ async function openDepl(deplId) {
         ${d.heure_depart ? `⏰ Départ: ${d.heure_depart}<br>` : ''}
         ${d.prix_total ? `💶 ${d.prix_total}€ (bus + entrée)<br>` : ''}
         ${d.date_limite_inscription ? `⏳ Limite: ${new Date(d.date_limite_inscription).toLocaleDateString('fr-FR')}<br>` : ''}
+        ${formatEchelonnementDepl(d) ? `📅 Ouverture : ${formatEchelonnementDepl(d)}<br>` : ''}
       </div>
       <div style="font-size:14px;margin-bottom:16px;font-weight:600;">👥 ${nbInscrits} inscrit${nbInscrits>1?'s':''}${d.places_max?' / '+d.places_max+' places':''}</div>`;
 
