@@ -488,7 +488,15 @@
 // affiche maintenant la valeur numérique à côté de chaque point (série
 // présences en dessous, série cumulé au-dessus, pour limiter le
 // chevauchement).
-const CACHE_NAME = 'ul-v85';
+// v86 (12/07/2026) : CACHE_NAME bumpé (v85 → v86) — décomposition du
+// prix Déplacement en "Prix bus" + "Prix place" (pré-rempli 10€,
+// modifiable), ajout distance A/R et coût réel du devis bus, indicateur
+// d'équilibre en direct dans les formulaires création/modification +
+// aperçu sur la carte et la fiche détail (cellule Déplacement
+// uniquement). prix_total reste calculé automatiquement, jamais saisi
+// à la main. Migration : migration_decomposition_prix_deplacements.sql
+// (déjà appliquée en direct).
+const CACHE_NAME = 'ul-v86';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
