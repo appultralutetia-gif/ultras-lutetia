@@ -86,6 +86,7 @@ function renderMatos(produits) {
           ${p.quota_par_membre ? `• Quota: ${p.quota_par_membre} max` : ''}
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${stockBadge}${sectionBadge}</div>
+        ${p.mode === 'precommande' && (p.precommande_debut || p.precommande_fin) ? `<div style="font-size:11px;color:var(--gris);margin-top:4px;">📅 Précommande${formatPlagePrecommande(p)}</div>` : ''}
         ${p.mode === 'precommande' && p.precommande_livraison_estimee ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(p.precommande_livraison_estimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
         ${peutCommander ? `
         <button class="btn btn-sm btn-primary" style="margin-top:10px;" onclick="openCommander('${p.id}')">
@@ -483,6 +484,7 @@ function renderSticks(sticks) {
       </div>
       ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
       ${statutBadge}
+      ${s.mode === 'precommande' && (s.precommande_debut || s.precommande_fin) ? `<div style="font-size:11px;color:var(--gris);margin-top:4px;">📅 Précommande${formatPlagePrecommande(s)}</div>` : ''}
       ${s.mode === 'precommande' && s.precommande_livraison_estimee ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(s.precommande_livraison_estimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
       <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">
         ${peutCommander ? `<button class="btn btn-sm btn-primary" style="width:100%;" onclick="ouvrirCommanderStick('${s.id}')">💳 HelloAsso</button>` : ''}
