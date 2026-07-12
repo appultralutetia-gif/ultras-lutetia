@@ -1466,8 +1466,52 @@ async function getMesStats() {
 }
 
 // ============================================================
-// PRÉSENCE MATCHS DOMICILE (déclarative, gratuite) — 09/07/2026
+// STATS TIFO (12/07/2026, demande Remi) — pour la page Stats Admin.
+// Calcule tout côté client à partir de deux requêtes (sessions +
+// présences), pas de RPC dédiée : le volume reste faible (quelques
+// dizaines de sessions/présences par saison), donc pas besoin
+// d'optimiser côté base pour l'instant.
 // ============================================================
+async function getStatsTifo() {
+  const [sessionsRes, presencesRes] = await Promise.all([
+    sb.from('sessions_tifo').select('id, statut, type_session'),
+    sb.from('inscriptions_session')
+      .select('membre_id, membre:membres(prenom, nom, pseudo_telegram)')
+      .eq('statut', 'present'),
+  ]);
+  if (sessionsRes.error) throw sessionsRes.error;
+  if (presencesRes.error) throw presencesRes.error;
+
+  const sessions = sessionsRes.data || [];
+  const presences = presencesRes.data || [];
+
+  const repartitionType = sessions.reduce((acc, s) => {
+    acc[s.type_session] = (acc[s.type_session] || 0) + 1;
+    return acc;
+  }, {});
+
+  const parMembre = new Map();
+  for (const p of presences) {
+    if (!p.membre_id) continue; // ligne orpheline éventuelle, ignorée
+    if (!parMembre.has(p.membre_id)) {
+      parMembre.set(p.membre_id, { membre: p.membre, nb: 0 });
+    }
+    parMembre.get(p.membre_id).nb++;
+  }
+  const classement = [...parMembre.values()].sort((a, b) => b.nb - a.nb);
+
+  return {
+    totalSessions: sessions.length,
+    sessionsAVenir: sessions.filter(s => s.statut === 'a_venir').length,
+    sessionsTerminees: sessions.filter(s => s.statut === 'terminee').length,
+    totalPresences: presences.length,
+    membresActifs: parMembre.size,
+    repartitionType,
+    classement,
+  };
+}
+
+
 async function getMaPresenceMatch(matchId) {
   const { data, error } = await sb.from('presences_matchs_domicile')
     .select('id').eq('match_id', matchId).eq('membre_id', currentUser.id).maybeSingle();
@@ -2464,7 +2508,7 @@ window.UL = {
   // Connexion en tant que (Admin)
   genererLienConnexionAdmin,
   // Stats
-  getStats, getMesStats,
+  getStats, getMesStats, getStatsTifo,
   getMaPresenceMatch, declarerPresenceMatch, annulerPresenceMatch,
   // Matos
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
