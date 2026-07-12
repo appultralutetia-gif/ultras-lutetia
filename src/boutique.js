@@ -745,6 +745,7 @@ function construireCommandesUnifiees() {
       article: d.stick?.nom || '?',
       taille: null,
       quantite: d.quantite,
+      lot: d.stick?.lot || 1,
       statut: d.statut,
       mode_paiement: d.mode_paiement,
       prix: d.stick?.prix ? d.stick.prix * d.quantite : null,
@@ -776,9 +777,13 @@ function grouperParArticle(rows) {
   const map = new Map();
   for (const r of rows) {
     const key = `${r.type}|${r.article}|${r.taille || ''}`;
-    if (!map.has(key)) map.set(key, { type: r.type, article: r.article, taille: r.taille, mode: r.mode, quantite: 0, membres: new Set() });
+    if (!map.has(key)) map.set(key, { type: r.type, article: r.article, taille: r.taille, mode: r.mode, quantite: 0, totalUnites: 0, membres: new Set() });
     const g = map.get(key);
     g.quantite += r.quantite;
+    // totalUnites = nombre réel de stickers (lots × taille du lot) — pour
+    // Matos, lot est toujours 1 (pas de notion de lot), donc totalUnites
+    // === quantite dans ce cas, affiché nulle part de différent.
+    g.totalUnites += r.quantite * (r.lot || 1);
     g.membres.add(r.membre?.pseudo_telegram || '—');
   }
   return [...map.values()].sort((a, b) => a.article.localeCompare(b.article));
@@ -826,7 +831,10 @@ function renderGestionCommandes() {
             <div style="font-weight:700;">${g.type === 'matos' ? '🛍️' : '🎟️'} ${esc(g.article)}${g.taille ? ' (' + g.taille + ')' : ''}</div>
             <div style="font-size:12px;color:var(--gris);">${g.membres.size} membre${g.membres.size > 1 ? 's' : ''}${g.mode === 'precommande' ? ' · 📋 Précommande' : ''}</div>
           </div>
-          <div style="font-size:20px;font-family:'Bebas Neue',sans-serif;color:var(--bleu-clair);">×${g.quantite}</div>
+          <div style="text-align:right;">
+            <div style="font-size:20px;font-family:'Bebas Neue',sans-serif;color:var(--bleu-clair);">×${g.quantite} lot${g.quantite > 1 ? 's' : ''}</div>
+            ${g.type === 'stick' && g.totalUnites !== g.quantite ? `<div style="font-size:12px;color:var(--gris);">${g.totalUnites} sticks</div>` : ''}
+          </div>
         </div>
       </div>`).join('');
   } else {
@@ -838,7 +846,7 @@ function renderGestionCommandes() {
         <div style="font-weight:700;margin-bottom:6px;">👤 ${nom}</div>
         ${g.items.map(it => `
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:3px 0;gap:6px;">
-            <span>${it.type === 'matos' ? '🛍️' : '🎟️'} ${esc(it.article)}${it.taille ? ' (' + it.taille + ')' : ''}${it.mode === 'precommande' ? ' · 📋' : ''} ×${it.quantite}</span>
+            <span>${it.type === 'matos' ? '🛍️' : '🎟️'} ${esc(it.article)}${it.taille ? ' (' + it.taille + ')' : ''}${it.mode === 'precommande' ? ' · 📋' : ''} ×${it.quantite} lot${it.quantite > 1 ? 's' : ''}${it.type === 'stick' && it.lot > 1 ? ` (${it.quantite * it.lot} sticks)` : ''}</span>
             <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
               ${it.statut === 'disponible' ? `<button class="btn btn-sm btn-secondary" style="font-size:10px;padding:3px 8px;" onclick="doMarquerPreparee('${it.type}','${it.id}')">✔️ Préparé</button>` : ''}
               <span class="badge ${it.statut === 'distribue' ? 'badge-vert' : it.statut === 'disponible' ? 'badge-vert' : it.statut === 'prepare' ? 'badge-bleu' : it.statut === 'precommande_validee' ? 'badge-bleu' : it.statut === 'refuse' || it.statut === 'annulee' ? 'badge-rouge' : 'badge-orange'}" style="font-size:10px;">${STATUT_LABEL_GESTION[it.statut] || it.statut}</span>
@@ -872,14 +880,16 @@ function exporterTelegramCommandes() {
 
   if (vueGestionCommandes === 'article') {
     for (const g of grouperParArticle(rows)) {
-      texte += `• ${g.type === 'matos' ? '🛍️' : '🎟️'} ${g.article}${g.taille ? ' (' + g.taille + ')' : ''}${g.mode === 'precommande' ? ' [PRÉCOMMANDE]' : ''} — ×${g.quantite} (${g.membres.size} membre${g.membres.size > 1 ? 's' : ''})\n`;
+      const detailUnites = g.type === 'stick' && g.totalUnites !== g.quantite ? ` = ${g.totalUnites} sticks` : '';
+      texte += `• ${g.type === 'matos' ? '🛍️' : '🎟️'} ${g.article}${g.taille ? ' (' + g.taille + ')' : ''}${g.mode === 'precommande' ? ' [PRÉCOMMANDE]' : ''} — ×${g.quantite} lot${g.quantite > 1 ? 's' : ''}${detailUnites} (${g.membres.size} membre${g.membres.size > 1 ? 's' : ''})\n`;
     }
   } else {
     for (const g of grouperParMembre(rows)) {
       const nom = g.membre ? `${g.membre.prenom} ${g.membre.nom} (@${g.membre.pseudo_telegram})` : 'Membre inconnu';
       texte += `👤 ${nom}\n`;
       for (const it of g.items) {
-        texte += `   • ${it.type === 'matos' ? '🛍️' : '🎟️'} ${it.article}${it.taille ? ' (' + it.taille + ')' : ''}${it.mode === 'precommande' ? ' [PRÉCOMMANDE]' : ''} ×${it.quantite}\n`;
+        const detailUnites = it.type === 'stick' && it.lot > 1 ? ` (${it.quantite * it.lot} sticks)` : '';
+        texte += `   • ${it.type === 'matos' ? '🛍️' : '🎟️'} ${it.article}${it.taille ? ' (' + it.taille + ')' : ''}${it.mode === 'precommande' ? ' [PRÉCOMMANDE]' : ''} ×${it.quantite} lot${it.quantite > 1 ? 's' : ''}${detailUnites}\n`;
       }
       texte += `\n`;
     }
