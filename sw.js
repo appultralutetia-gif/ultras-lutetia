@@ -520,7 +520,14 @@
 // Confirmé/Draft, classement filtrable par type (clic sur une barre),
 // classement complet ("Voir tout"), comparaison saison précédente,
 // export CSV du classement, export PDF de toute la page (impression).
-const CACHE_NAME = 'ul-v90';
+// v91 (13/07/2026) : CACHE_NAME bumpé (v90 → v91) — Classement Ligue 1
+// (demande Remi) : nouvelle carte en haut de la page Calendrier,
+// repliée par défaut (aperçu ligne Paris FC), synchronisée
+// automatiquement toutes les 3h via cron Supabase + Edge Function
+// sync-classement-ligue1 (source football-data.org, gratuite). Bouton
+// "🔄 Rafraîchir" manuel réservé Admin/Bureau. Nécessite le secret
+// FOOTBALL_DATA_API_KEY côté Supabase (à poser par Remi, cf. message).
+const CACHE_NAME = 'ul-v91';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
