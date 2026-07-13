@@ -643,6 +643,31 @@ async function getMatchs() {
   return data || [];
 }
 
+// ============================================================
+// CLASSEMENT LIGUE 1 (13/07/2026, demande Remi) — synchronisé
+// automatiquement toutes les 3h par un cron Supabase (pg_cron + pg_net)
+// qui appelle l'Edge Function sync-classement-ligue1 (source :
+// football-data.org). Le front ne fait jamais d'appel direct à l'API
+// externe — uniquement lecture de la table déjà synchronisée, RLS
+// ouverte à tout membre connecté.
+// ============================================================
+async function getClassementLigue1() {
+  const { data, error } = await sb.from('classement_ligue1')
+    .select('*')
+    .order('position');
+  if (error) throw error;
+  return data || [];
+}
+
+// Déclenchement manuel (13/07/2026) — bouton "🔄 Rafraîchir" réservé
+// Admin/Bureau, pour forcer une synchro immédiate sans attendre le
+// prochain passage du cron (ex: juste après un match).
+async function syncClassementLigue1Manuel() {
+  const { data, error } = await sb.functions.invoke('sync-classement-ligue1', { body: {} });
+  if (error) throw error;
+  return data;
+}
+
 async function deleteMatch(id) {
   const { error } = await sb.from('matchs').delete().eq('id', id);
   if (error) throw error;
@@ -2721,6 +2746,7 @@ window.UL = {
   getSections,
   // Calendrier
   getCalendar, addMatch, updateMatch, getMatchs, deleteMatch,
+  getClassementLigue1, syncClassementLigue1Manuel,
   saisirScoreMatch, confirmerDateMatch, rouvrirConfirmationMatch,
   getEvenements, getEvenement, saveEvenement, deleteEvenement,
   // Charte
