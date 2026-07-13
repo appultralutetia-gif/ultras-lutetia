@@ -383,118 +383,297 @@ function courbeDoubleSvg(mois, serieALabel, serieAValeurs, serieACouleur, serieB
     </div>`;
 }
 
-async function loadStatsTifo() {
+// ─── STATS TIFO (12/07/2026, enrichie le 12/07/2026 — demande Remi) ────
+let _statsTifoActuel = null;        // dernier résultat serveur (saison affichée)
+let _statsTifoPrecedent = null;     // stats de la saison précédente (comparaison #11), ou null
+let _statsTifoSaisonsCache = [];    // liste des saisons dispo, pour le select
+let _statsTifoSaisonSelectionnee = null;
+let _statsTifoTypeFiltre = null;    // filtre actif sur le classement (type_session ou null = tous)
+let _statsTifoVoirTout = false;     // classement tronqué à 10 ou complet
+
+async function loadStatsTifo(saisonForcee) {
   const el = document.getElementById('statsTifoContent');
   try {
-    const s = await UL.getStatsTifo();
-    const labelType = { Tracage: '✏️ Traçage', Assemblage: '🧵 Assemblage', Peinture: '🎨 Peinture' };
-    const labelStatut = { confirme: 'Confirmé', draft: 'Draft', sympathisant: 'Sympathisant', visiteur: 'Visiteur' };
+    const saisons = await UL.getSaisonsTifoDisponibles();
+    _statsTifoSaisonsCache = saisons;
+    const saisonCourante = saisonForcee || _statsTifoSaisonSelectionnee || saisons[0] || null;
+    _statsTifoSaisonSelectionnee = saisonCourante;
 
-    const maxType = Math.max(1, ...Object.values(s.repartitionType));
-    const repartitionTypeHtml = Object.entries(s.repartitionType)
-      .sort((a, b) => b[1] - a[1])
-      .map(([type, n]) => barreHtml(labelType[type] || type, n, maxType)).join('')
-      || '<div class="empty-state" style="padding:12px;"><div>🎨</div>Aucune session</div>';
+    const s = await UL.getStatsTifo(saisonCourante);
+    _statsTifoActuel = s;
+    _statsTifoTypeFiltre = null;
+    _statsTifoVoirTout = false;
 
-    const maxLieu = Math.max(1, ...Object.values(s.repartitionLieu));
-    const repartitionLieuHtml = Object.entries(s.repartitionLieu)
-      .sort((a, b) => b[1] - a[1])
-      .map(([lieu, n]) => barreHtml(esc(lieu), n, maxLieu, 'var(--blue-light)')).join('');
+    // Comparaison saison précédente (#11) — la liste est triée la plus
+    // récente en premier (cf. getSaisonsTifoDisponibles), donc l'entrée
+    // juste après la saison courante dans le tableau est la précédente.
+    // Reste null tant qu'une seule saison existe en base — le bloc de
+    // comparaison ne s'affiche simplement pas dans ce cas.
+    const idx = saisons.indexOf(saisonCourante);
+    const saisonPrecedente = idx >= 0 && idx < saisons.length - 1 ? saisons[idx + 1] : null;
+    _statsTifoPrecedent = saisonPrecedente ? await UL.getStatsTifo(saisonPrecedente) : null;
 
-    const maxStatut = Math.max(1, ...Object.values(s.presencesParStatut));
-    const repartitionStatutHtml = Object.entries(s.presencesParStatut)
-      .sort((a, b) => b[1] - a[1])
-      .map(([st, n]) => barreHtml(labelStatut[st] || st, n, maxStatut, 'var(--open)')).join('');
-
-    const classementHtml = s.classement.slice(0, 10).map((c, i) => {
-      const nom = c.membre ? `${esc(c.membre.prenom)} (@${esc(c.membre.pseudo_telegram || '?')})` : 'Membre inconnu';
-      const medaille = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
-      return `
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
-          <span>${medaille} ${nom}</span>
-          <span class="badge badge-bleu" style="font-size:11px;">${c.nb} présence${c.nb > 1 ? 's' : ''}</span>
-        </div>`;
-    }).join('') || '<div class="empty-state" style="padding:12px;"><div>🏆</div>Aucune présence enregistrée</div>';
-
-    const totalPop = s.populationTotal || 0;
-    const pctBucket = n => (totalPop ? Math.round((n / totalPop) * 100) : 0);
-    const bucketsHtml = `
-      <div class="tranche-grid" style="grid-template-columns:repeat(5,1fr);">
-        <div class="tranche"><div class="tranche-lbl">0</div><div class="tranche-val">${s.buckets['0']}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${pctBucket(s.buckets['0'])}%</div></div>
-        <div class="tranche"><div class="tranche-lbl">1</div><div class="tranche-val">${s.buckets['1']}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${pctBucket(s.buckets['1'])}%</div></div>
-        <div class="tranche"><div class="tranche-lbl">2</div><div class="tranche-val">${s.buckets['2']}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${pctBucket(s.buckets['2'])}%</div></div>
-        <div class="tranche"><div class="tranche-lbl">3-4</div><div class="tranche-val">${s.buckets['3-4']}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${pctBucket(s.buckets['3-4'])}%</div></div>
-        <div class="tranche"><div class="tranche-lbl">5+</div><div class="tranche-val">${s.buckets['5+']}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${pctBucket(s.buckets['5+'])}%</div></div>
-      </div>`;
-
-    const evolutionHtml = courbeDoubleSvg(
-      s.evolution.mois,
-      'Présences/mois', s.evolution.presences, 'var(--bleu-clair)',
-      'Cumulé unique', s.evolution.cumulUniques, '#C4B5FF'
-    );
-
-    const maxSectionPresences = Math.max(1, ...s.classementSections.map(sec => sec.nbPresences));
-    const classementSectionsHtml = s.classementSections.map((sec, i) => `
-      <div style="margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-          <span>${i + 1}. ${esc(sec.nom)}</span>
-          <span style="color:var(--gris);">${sec.nbPresences} présences · ${sec.nbMembres} membres</span>
-        </div>
-        <div class="places-bar"><div class="places-fill" style="width:${Math.round((sec.nbPresences / maxSectionPresences) * 100)}%;background:var(--bleu);"></div></div>
-      </div>`).join('') || '<div class="empty-state" style="padding:12px;"><div>🏳️</div>Aucune donnée</div>';
-
-
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-label">Vue d'ensemble</div>
-        <div class="kpi-grid">
-          <div class="kpi"><div class="kpi-lbl">Sessions</div><div class="kpi-val">${s.totalSessions}</div></div>
-          <div class="kpi"><div class="kpi-lbl">Présences</div><div class="kpi-val" style="color:var(--open)">${s.totalPresences}</div></div>
-          <div class="kpi"><div class="kpi-lbl">Membres actifs</div><div class="kpi-val" style="color:var(--pizza)">${s.membresActifs}</div></div>
-        </div>
-        <div style="font-size:11px;color:var(--gris);margin:4px 0 12px;">${s.sessionsTerminees} terminée${s.sessionsTerminees > 1 ? 's' : ''} · ${s.sessionsAVenir} à venir</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-          <div class="stat-card"><div class="stat-value">${s.moyennePresencesParSession.toFixed(1)}</div><div class="stat-label">Présents / session</div></div>
-          <div class="stat-card"><div class="stat-value">${s.sessionTop ? s.sessionTop.nb : '—'}</div><div class="stat-label">Présents max / session</div>${s.sessionTop ? `<div style="font-size:9px;color:var(--gris);margin-top:2px;">${esc(s.sessionTop.nom)}</div>` : ''}</div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="stat-card"><div class="stat-value">${s.nbSansSession}</div><div class="stat-label">Confirmés+Draft sans session</div></div>
-          <div class="stat-card"><div class="stat-value">${Math.round(s.tauxAvecSession * 100)}%</div><div class="stat-label">Confirmés+Draft ayant participé</div></div>
-        </div>
-        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Nombre de sessions faites (Confirmés+Draft)</div>
-        ${bucketsHtml}
-      </div>
-
-      <div class="card" style="margin-top:12px;">
-        <div class="card-label">Répartition</div>
-        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:4px 0;text-transform:uppercase;letter-spacing:.03em;">Par type</div>
-        ${repartitionTypeHtml}
-        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Par lieu</div>
-        ${repartitionLieuHtml}
-        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Présences par statut membre</div>
-        ${repartitionStatutHtml}
-      </div>
-
-      <div class="card" style="margin-top:12px;">
-        <div class="card-label">Classement &amp; assiduité</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-          <div class="stat-card"><div class="stat-value">${Math.round(s.tauxNoShow * 100)}%</div><div class="stat-label">Taux de no-show</div></div>
-          <div class="stat-card"><div class="stat-value">${s.nouveauxParticipants}</div><div class="stat-label">Nouveaux (30j)</div></div>
-        </div>
-        <div style="font-size:12px;font-weight:700;color:var(--gris);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.03em;">🏆 Top 10 présences</div>
-        ${classementHtml}
-      </div>
-
-      <div class="card" style="margin-top:12px;">
-        <div class="card-label">Évolution</div>
-        ${evolutionHtml}
-      </div>
-
-      <div class="card" style="margin-top:12px;">
-        <div class="card-label">🏳️ Classement des sections</div>
-        ${classementSectionsHtml}
-      </div>`;
+    renderStatsTifo();
   } catch(e) { console.error(e); el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
+}
+
+function changerSaisonStatsTifo(saison) { loadStatsTifo(saison); }
+
+function toggleFiltreTypeTifo(type) {
+  _statsTifoTypeFiltre = (_statsTifoTypeFiltre === type) ? null : type;
+  _statsTifoVoirTout = false;
+  renderStatsTifo();
+}
+
+function toggleVoirToutClassementTifo() {
+  _statsTifoVoirTout = !_statsTifoVoirTout;
+  renderStatsTifo();
+}
+
+// Classement recalculé côté client depuis presencesDetail — évite un
+// aller-retour serveur à chaque clic sur un type dans "Répartition".
+function calculerClassementFiltreTifo() {
+  const s = _statsTifoActuel;
+  if (!_statsTifoTypeFiltre) return s.classement;
+  const map = new Map();
+  for (const p of s.presencesDetail) {
+    if (p.type !== _statsTifoTypeFiltre || !p.membre_id) continue;
+    if (!map.has(p.membre_id)) map.set(p.membre_id, { membre: p.membre, nb: 0 });
+    map.get(p.membre_id).nb++;
+  }
+  return [...map.values()].sort((a, b) => b.nb - a.nb);
+}
+
+function exporterCsvClassementTifo() {
+  const s = _statsTifoActuel;
+  const classement = calculerClassementFiltreTifo();
+  if (!s || !classement.length) return toast('Aucune donnée à exporter', 'error');
+  const entete = ['Rang', 'Prénom', 'Nom', 'Pseudo', 'Nombre de présences'];
+  const lignes = classement.map((c, i) => [
+    i + 1, c.membre?.prenom || '', c.membre?.nom || '', c.membre?.pseudo_telegram || '', c.nb,
+  ]);
+  const csv = '\uFEFF' + [entete, ...lignes].map(l => l.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `classement_tifo_${s.saison}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Export CSV généré (${classement.length}) !`, 'success');
+}
+
+// Export PDF (12/07/2026) — approche "conteneur cloné" : on copie le
+// contenu déjà rendu de #statsTifoContent dans une zone dédiée
+// (#zoneImpressionStatsTifo, cf. styles.css) que le navigateur imprime
+// seule via window.print(). Pas de vraie génération PDF côté client
+// (pas de dépendance ajoutée) — l'utilisateur choisit "Enregistrer en
+// PDF" comme destination dans la boîte de dialogue d'impression, ce que
+// tous les navigateurs proposent nativement.
+function exporterPdfStatsTifo() {
+  const source = document.getElementById('statsTifoContent');
+  if (!source) return;
+  let conteneur = document.getElementById('zoneImpressionStatsTifo');
+  if (!conteneur) {
+    conteneur = document.createElement('div');
+    conteneur.id = 'zoneImpressionStatsTifo';
+    document.body.appendChild(conteneur);
+  }
+  const dateExport = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  conteneur.innerHTML = `
+    <h1 style="font-family:'Bebas Neue',sans-serif;font-size:28px;margin-bottom:2px;">Stats Tifo — Ultras Lutetia</h1>
+    <div style="font-size:13px;margin-bottom:20px;">Saison ${esc(_statsTifoActuel?.saison || '')} · Exporté le ${dateExport}</div>
+    ${source.innerHTML}`;
+  window.print();
+}
+
+function renderStatsTifo() {
+  const el = document.getElementById('statsTifoContent');
+  const s = _statsTifoActuel;
+  const labelType = { Tracage: '✏️ Traçage', Assemblage: '🧵 Assemblage', Peinture: '🎨 Peinture' };
+  const labelStatut = { confirme: 'Confirmé', draft: 'Draft', sympathisant: 'Sympathisant', visiteur: 'Visiteur' };
+
+  const saisonSelectHtml = `
+    <div class="form-group" style="margin-bottom:12px;">
+      <select id="statsTifoSaisonSelect" onchange="changerSaisonStatsTifo(this.value)">
+        ${_statsTifoSaisonsCache.map(sa => `<option value="${esc(sa)}" ${sa === _statsTifoSaisonSelectionnee ? 'selected' : ''}>Saison ${esc(sa)}</option>`).join('')}
+      </select>
+    </div>`;
+
+  const maxType = Math.max(1, ...Object.values(s.repartitionType));
+  const repartitionTypeHtml = Object.entries(s.repartitionType)
+    .sort((a, b) => b[1] - a[1])
+    .map(([type, n]) => `
+      <div onclick="toggleFiltreTypeTifo('${type}')" style="cursor:pointer;border-radius:6px;padding:2px 4px;margin:-2px -4px;${_statsTifoTypeFiltre === type ? 'background:rgba(26,86,219,.18);' : ''}">
+        ${barreHtml(`${labelType[type] || type}${_statsTifoTypeFiltre === type ? ' · filtre actif ✓' : ''}`, n, maxType)}
+      </div>`).join('')
+    || '<div class="empty-state" style="padding:12px;"><div>🎨</div>Aucune session</div>';
+  const noteFiltreType = `<div style="font-size:11px;color:var(--gris);margin:-6px 0 10px;">👆 Clique un type pour filtrer le classement ci-dessous</div>`;
+
+  const maxLieu = Math.max(1, ...Object.values(s.repartitionLieu));
+  const repartitionLieuHtml = Object.entries(s.repartitionLieu)
+    .sort((a, b) => b[1] - a[1])
+    .map(([lieu, n]) => barreHtml(esc(lieu), n, maxLieu, 'var(--blue-light)')).join('');
+
+  const maxStatut = Math.max(1, ...Object.values(s.presencesParStatut));
+  const repartitionStatutHtml = Object.entries(s.presencesParStatut)
+    .sort((a, b) => b[1] - a[1])
+    .map(([st, n]) => barreHtml(labelStatut[st] || st, n, maxStatut, 'var(--open)')).join('');
+
+  const classementComplet = calculerClassementFiltreTifo();
+  const classementAffiche = _statsTifoVoirTout ? classementComplet : classementComplet.slice(0, 10);
+  const classementHtml = classementAffiche.map((c, i) => {
+    const nom = c.membre ? `${esc(c.membre.prenom)} (@${esc(c.membre.pseudo_telegram || '?')})` : 'Membre inconnu';
+    const medaille = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
+        <span>${medaille} ${nom}</span>
+        <span class="badge badge-bleu" style="font-size:11px;">${c.nb} présence${c.nb > 1 ? 's' : ''}</span>
+      </div>`;
+  }).join('') || '<div class="empty-state" style="padding:12px;"><div>🏆</div>Aucune présence enregistrée</div>';
+  const boutonVoirTout = classementComplet.length > 10 ? `
+    <button class="btn btn-sm btn-secondary" style="width:100%;margin-top:8px;" onclick="toggleVoirToutClassementTifo()">
+      ${_statsTifoVoirTout ? '▲ Réduire' : `▼ Voir tout (${classementComplet.length})`}
+    </button>` : '';
+
+  const totalPop = s.populationTotal || 0;
+  const pctBucket = n => (totalPop ? Math.round((n / totalPop) * 100) : 0);
+  const ligneBuckets = (buckets, total) => `
+    <div class="tranche-grid" style="grid-template-columns:repeat(5,1fr);">
+      ${['0','1','2','3-4','5+'].map(k => `
+        <div class="tranche"><div class="tranche-lbl">${k}</div><div class="tranche-val">${buckets[k]}</div><div style="font-size:10px;color:var(--gris);margin-top:2px;">${total ? Math.round((buckets[k]/total)*100) : 0}%</div></div>
+      `).join('')}
+    </div>`;
+  // KPI #6 (12/07/2026) : tranches séparées Confirmé / Draft plutôt que
+  // fusionnées — révèle si le décrochage touche plutôt l'un ou l'autre.
+  const nbConfirme = s.buckets ? Object.values(s.bucketsParStatut.confirme).reduce((a,b)=>a+b,0) : 0;
+  const nbDraft = s.bucketsParStatut ? Object.values(s.bucketsParStatut.draft).reduce((a,b)=>a+b,0) : 0;
+  const bucketsHtml = `
+    <div style="font-size:11px;color:var(--open);margin:8px 0 4px;font-weight:700;">Confirmés (${nbConfirme})</div>
+    ${ligneBuckets(s.bucketsParStatut.confirme, nbConfirme)}
+    <div style="font-size:11px;color:var(--pizza);margin:12px 0 4px;font-weight:700;">Draft (${nbDraft})</div>
+    ${ligneBuckets(s.bucketsParStatut.draft, nbDraft)}
+    <div style="font-size:10px;color:var(--gris);margin-top:8px;">Ensemble Confirmés+Draft :</div>
+    ${ligneBuckets(s.buckets, totalPop)}`;
+
+  const evolutionHtml = courbeDoubleSvg(
+    s.evolution.mois,
+    'Présences/mois', s.evolution.presences, 'var(--bleu-clair)',
+    'Cumulé unique', s.evolution.cumulUniques, '#C4B5FF'
+  );
+
+  const maxSectionPresences = Math.max(1, ...s.classementSections.map(sec => sec.nbPresences));
+  const classementSectionsHtml = s.classementSections.map((sec, i) => `
+    <div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+        <span>${i + 1}. ${esc(sec.nom)}</span>
+        <span style="color:var(--gris);">${sec.nbPresences} présences · ${sec.nbMembres} membres</span>
+      </div>
+      <div class="places-bar"><div class="places-fill" style="width:${Math.round((sec.nbPresences / maxSectionPresences) * 100)}%;background:var(--bleu);"></div></div>
+    </div>`).join('') || '<div class="empty-state" style="padding:12px;"><div>🏳️</div>Aucune donnée</div>';
+
+  // KPI #2 (12/07/2026) — décrocheurs.
+  const decrocheursHtml = s.decrocheurs.length ? s.decrocheurs.slice(0, 15).map(d => {
+    const nom = d.membre ? `${esc(d.membre.prenom)} (@${esc(d.membre.pseudo_telegram || '?')})` : 'Membre inconnu';
+    const jours = Math.round((Date.now() - new Date(d.derniereDate).getTime()) / (24*3600*1000));
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
+        <span>${nom}</span>
+        <span style="font-size:11px;color:var(--gris);">${d.nb} présence${d.nb>1?'s':''} · vu il y a ${jours}j</span>
+      </div>`;
+  }).join('') + (s.decrocheurs.length > 15 ? `<div style="font-size:11px;color:var(--gris);margin-top:6px;">+ ${s.decrocheurs.length - 15} autre(s)</div>` : '')
+    : '<div class="empty-state" style="padding:12px;"><div>✅</div>Personne n\'a décroché</div>';
+
+  // KPI #11 — comparaison saison précédente.
+  const comparaisonHtml = _statsTifoPrecedent ? `
+    <div class="card" style="margin-top:12px;">
+      <div class="card-label">📊 Vs saison ${esc(_statsTifoPrecedent.saison)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="stat-card"><div class="stat-value">${s.totalSessions >= _statsTifoPrecedent.totalSessions ? '+' : ''}${s.totalSessions - _statsTifoPrecedent.totalSessions}</div><div class="stat-label">Sessions (${_statsTifoPrecedent.totalSessions} → ${s.totalSessions})</div></div>
+        <div class="stat-card"><div class="stat-value">${s.totalPresences >= _statsTifoPrecedent.totalPresences ? '+' : ''}${s.totalPresences - _statsTifoPrecedent.totalPresences}</div><div class="stat-label">Présences (${_statsTifoPrecedent.totalPresences} → ${s.totalPresences})</div></div>
+      </div>
+    </div>` : (_statsTifoSaisonsCache.length <= 1 ? `
+    <div class="card" style="margin-top:12px;">
+      <div class="card-label">📊 Comparaison saisons</div>
+      <div class="empty-state" style="padding:12px;"><div>📅</div>Historique multi-saison disponible dès la saison suivante</div>
+    </div>` : '');
+
+  el.innerHTML = `
+    ${saisonSelectHtml}
+
+    <div class="card">
+      <div class="card-label">Vue d'ensemble</div>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-lbl">Sessions</div><div class="kpi-val">${s.totalSessions}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Présences</div><div class="kpi-val" style="color:var(--open)">${s.totalPresences}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Membres actifs</div><div class="kpi-val" style="color:var(--pizza)">${s.membresActifs}</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--gris);margin:4px 0 12px;">${s.sessionsTerminees} terminée${s.sessionsTerminees > 1 ? 's' : ''} · ${s.sessionsAVenir} à venir</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div class="stat-card"><div class="stat-value">${s.moyennePresencesParSession.toFixed(1)}</div><div class="stat-label">Présents / session</div></div>
+        <div class="stat-card"><div class="stat-value">${s.sessionTop ? s.sessionTop.nb : '—'}</div><div class="stat-label">Présents max / session</div>${s.sessionTop ? `<div style="font-size:9px;color:var(--gris);margin-top:2px;">${esc(s.sessionTop.nom)}</div>` : ''}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div class="stat-card"><div class="stat-value">${s.nbSansSession}</div><div class="stat-label">Confirmés+Draft sans session</div></div>
+        <div class="stat-card"><div class="stat-value">${Math.round(s.tauxAvecSession * 100)}%</div><div class="stat-label">Confirmés+Draft ayant participé</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div class="stat-card"><div class="stat-value">${Math.round(s.tauxRetention * 100)}%</div><div class="stat-label">Taux de rétention (≥2 sessions)</div></div>
+        <div class="stat-card"><div class="stat-value">${s.cadenceMoyenneJours != null ? Math.round(s.cadenceMoyenneJours) + 'j' : '—'}</div><div class="stat-label">Cadence moyenne</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="stat-card"><div class="stat-value">${s.tauxParticipationCelluleTifo != null ? Math.round(s.tauxParticipationCelluleTifo * 100) + '%' : '—'}</div><div class="stat-label">Cellule Tifo active${s.tauxParticipationCelluleTifo != null ? ` (${s.celluleTifoAvecPresence}/${s.celluleTifoTotal})` : ''}</div></div>
+        <div class="stat-card"><div class="stat-value">${s.tauxRemplissageMoyen != null ? Math.round(s.tauxRemplissageMoyen * 100) + '%' : '—'}</div><div class="stat-label">Remplissage moyen${s.tauxRemplissageMoyen != null ? ` (${s.nbSessionsAvecCapacite} session${s.nbSessionsAvecCapacite>1?'s':''})` : ' (aucune capacité définie)'}</div></div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Nombre de sessions faites</div>
+      ${bucketsHtml}
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="card-label">⚠️ Décrocheurs (45j+ sans présence)</div>
+      ${decrocheursHtml}
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="card-label">Répartition</div>
+      <div style="font-size:12px;font-weight:700;color:var(--gris);margin:4px 0;text-transform:uppercase;letter-spacing:.03em;">Par type</div>
+      ${repartitionTypeHtml}
+      ${noteFiltreType}
+      <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Par lieu</div>
+      ${repartitionLieuHtml}
+      <div style="font-size:12px;font-weight:700;color:var(--gris);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em;">Présences par statut membre</div>
+      ${repartitionStatutHtml}
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="card-label">Classement &amp; assiduité ${_statsTifoTypeFiltre ? `<span class="badge badge-bleu" style="font-size:10px;">${labelType[_statsTifoTypeFiltre] || _statsTifoTypeFiltre}</span>` : ''}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+        <div class="stat-card"><div class="stat-value">${Math.round(s.tauxNoShow * 100)}%</div><div class="stat-label">Taux de no-show</div></div>
+        <div class="stat-card"><div class="stat-value">${s.nouveauxParticipants}</div><div class="stat-label">Nouveaux (30j)</div></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 4px;">
+        <span style="font-size:12px;font-weight:700;color:var(--gris);text-transform:uppercase;letter-spacing:.03em;">🏆 Classement présences</span>
+        <button class="btn btn-sm btn-secondary" onclick="exporterCsvClassementTifo()">📄 CSV</button>
+      </div>
+      ${classementHtml}
+      ${boutonVoirTout}
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="card-label">Évolution</div>
+      ${evolutionHtml}
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="card-label">🏳️ Classement des sections</div>
+      ${classementSectionsHtml}
+    </div>
+
+    ${comparaisonHtml}
+
+    <button class="btn btn-secondary" style="width:100%;margin-top:12px;" onclick="exporterPdfStatsTifo()">📄 Exporter la page en PDF</button>`;
 }
 
 // ─── ANNONCES ─────────────────────────────────────────────────
