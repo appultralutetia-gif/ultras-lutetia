@@ -534,7 +534,14 @@
 // suivi live PFC (compo ~45 min avant, score+buteurs+stats toutes les
 // 8 min pendant le match). Carte match affiche désormais le badge "EN
 // DIRECT", les buteurs, et un indicateur "Compositions disponibles".
-const CACHE_NAME = 'ul-v92';
+// v93 (13/07/2026) : CACHE_NAME bumpé (v92 → v93) — nettoyage complet du
+// système Ligue 1 "intelligent" API-Football (abandonné : plan gratuit
+// ne couvre pas la saison en cours) — retrait du code live PFC
+// (buteurs/badge direct/compos) de renderMatchCard, colonnes et tables
+// superflues supprimées côté base. sync-classement-ligue1 repassée sur
+// football-data.org, cron simple toutes les 15 min. 2 matchs erronés
+// (VfB Stuttgart, Anger) supprimés du calendrier PFC.
+const CACHE_NAME = 'ul-v93';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
