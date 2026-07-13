@@ -482,6 +482,7 @@ async function doCreerSession(btn) {
     heure: document.getElementById('sHeure').value || null,
     lieu: document.getElementById('sLieu').value,
     type_session: document.getElementById('sType').value,
+    saison: document.getElementById('sSaison').value.trim() || UL_CONFIG.SAISON_COURANTE,
     capacite_max: parseInt(document.getElementById('sCapacite').value) || null,
     lien_telegram: document.getElementById('sTelegram').value || null,
     avec_pizza: document.getElementById('sPizza').checked,
@@ -537,6 +538,7 @@ async function chargerSessionAModifier(id) {
     document.getElementById('msHeure').value = s.heure ? s.heure.slice(0,5) : '';
     document.getElementById('msLieu').value = s.lieu || 'Paris Sud';
     document.getElementById('msType').value = s.type_session || 'Peinture';
+    document.getElementById('msSaison').value = s.saison || UL_CONFIG.SAISON_COURANTE;
     document.getElementById('msCapacite').value = s.capacite_max || '';
     document.getElementById('msTelegram').value = s.lien_telegram || '';
     document.getElementById('msPizza').checked = !!s.avec_pizza;
@@ -554,6 +556,7 @@ async function doModifierSession(btn) {
     heure: document.getElementById('msHeure').value || null,
     lieu: document.getElementById('msLieu').value,
     type_session: document.getElementById('msType').value,
+    saison: document.getElementById('msSaison').value.trim() || UL_CONFIG.SAISON_COURANTE,
     capacite_max: parseInt(document.getElementById('msCapacite').value) || null,
     lien_telegram: document.getElementById('msTelegram').value || null,
     avec_pizza: document.getElementById('msPizza').checked,
