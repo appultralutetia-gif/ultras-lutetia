@@ -229,22 +229,6 @@ function renderMatchCard(match, membre, avecPresence = false) {
   // Reste possible uniquement via Admin → "Gérer le calendrier (matchs)"
   // (cf. ouvrirModifierMatchParId, admin.js).
 
-  // ── Live (13/07/2026, demande Remi) — alimenté par sync-pfc-live ──
-  // Badge "EN DIRECT" sur les statuts API-Football indiquant un match en
-  // cours (1ère mi-temps, mi-temps, 2ème mi-temps, prolongations...).
-  const STATUTS_EN_COURS_API = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE'];
-  const enDirect = STATUTS_EN_COURS_API.includes(match.statut);
-  const badgeLive = enDirect ? `<span class="badge badge-rouge" style="font-size:10px;animation:pulse 1.5s infinite;">🔴 EN DIRECT</span>` : '';
-
-  let buteursHtml = '';
-  if (Array.isArray(match.buteurs) && match.buteurs.length) {
-    buteursHtml = `<div style="margin-top:6px;font-size:11px;color:var(--gris);text-align:center;">` +
-      match.buteurs.map(b => `⚽ ${b.time?.elapsed ?? '?'}' ${esc(b.player?.name || '?')} (${esc(b.team?.name || '?')})`).join(' · ') +
-      `</div>`;
-  }
-  const compoDispoHtml = (Array.isArray(match.compositions) && match.compositions.length && !enDirect && !score)
-    ? `<div style="font-size:10px;color:var(--bleu-clair);text-align:center;margin-top:4px;">📋 Compositions disponibles</div>` : '';
-
   // Mise en page façon calendrier officiel LFP : logo domicile à gauche,
   // "VS" au centre, logo extérieur à droite, nom de l'équipe sous chaque logo.
   const logoImg = (url) => url
@@ -254,7 +238,7 @@ function renderMatchCard(match, membre, avecPresence = false) {
   return `<div class="card" style="margin-bottom:10px;border-left:3px solid ${match.statut_date==='a_confirmer'?'#F59E0B':'#10B981'};">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
       <span style="font-size:11px;color:var(--gris);">${match.journee ? 'J'+match.journee+' · ' : ''}${date}${heure ? ' · '+heure : ''}</span>
-      <div style="display:flex;gap:4px;align-items:center;">${badgeLive}${typeLabel}</div>
+      ${typeLabel}
     </div>
     <div style="display:flex;align-items:center;justify-content:center;gap:18px;padding:10px 0;">
       <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:90px;">
@@ -268,8 +252,6 @@ function renderMatchCard(match, membre, avecPresence = false) {
       </div>
     </div>
     ${score}
-    ${buteursHtml}
-    ${compoDispoHtml}
     ${heure ? `<div style="font-size:12px;color:var(--bleu-clair);text-align:center;font-weight:600;">🕐 Coup d'envoi ${heure}</div>` : ''}
     ${match.stade ? `<div style="font-size:11px;color:var(--gris);text-align:center;margin-top:2px;">📍 ${esc(match.stade)}</div>` : ''}
     <div style="margin-top:8px;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;">
