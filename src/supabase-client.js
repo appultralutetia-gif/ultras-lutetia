@@ -1479,22 +1479,50 @@ async function getMesStats() {
 // tout en faisant apparaître une vague de "nouveaux participants"
 // aujourd'hui, alors que les présences réelles datent de plusieurs mois.
 // ============================================================
-async function getStatsTifo() {
-  const [sessionsRes, inscriptionsRes, popRes, sectionsRes] = await Promise.all([
-    sb.from('sessions_tifo').select('id, nom, date, statut, type_session, lieu'),
+// ============================================================
+// STATS TIFO (12/07/2026, complétée le 12/07/2026 — demande Remi) — pour
+// l'onglet dédié de la page Stats Admin. Tout calculé côté client à
+// partir de requêtes brutes (sessions, présences+statut/section/rôles du
+// membre, population Confirmé+Draft, cellule Tifo, sections actives) —
+// volume faible (dizaines de lignes par saison), pas besoin de RPC
+// dédiée pour l'instant.
+//
+// Point d'attention pour les calculs basés sur le temps (nouveaux
+// participants, décrocheurs, évolution mensuelle) : on utilise la DATE
+// DE LA SESSION (sessions_tifo.date), jamais inscriptions_session.
+// created_at — sinon un import massif d'historique fausserait tout en
+// faisant apparaître une vague de "nouveaux participants" au moment de
+// l'import, alors que les présences réelles datent de plusieurs mois.
+//
+// @param {string|null} saison — filtre optionnel (ex: '2026-2027').
+// null = toutes saisons confondues.
+// ============================================================
+async function getStatsTifo(saison = null) {
+  let sessionsQuery = sb.from('sessions_tifo').select('id, nom, date, statut, type_session, lieu, saison, capacite_max');
+  if (saison) sessionsQuery = sessionsQuery.eq('saison', saison);
+
+  const [sessionsRes, inscriptionsRes, popRes, celluleTifoRes, sectionsRes] = await Promise.all([
+    sessionsQuery,
     sb.from('inscriptions_session')
-      .select('id, session_id, membre_id, statut, membre:membres(prenom, nom, pseudo_telegram, statut, section_id)'),
+      .select('id, session_id, membre_id, statut, membre:membres(prenom, nom, pseudo_telegram, statut, section_id, roles_app)'),
     sb.from('membres').select('id, statut, section_id').in('statut', ['confirme', 'draft']),
+    sb.from('membres').select('id, statut').contains('roles_app', ['cellule_tifo']),
     sb.from('sections').select('id, nom').eq('actif', true),
   ]);
   if (sessionsRes.error) throw sessionsRes.error;
   if (inscriptionsRes.error) throw inscriptionsRes.error;
   if (popRes.error) throw popRes.error;
+  if (celluleTifoRes.error) throw celluleTifoRes.error;
   if (sectionsRes.error) throw sectionsRes.error;
 
   const sessions = sessionsRes.data || [];
-  const inscriptions = inscriptionsRes.data || []; // tous statuts (present/absent/inscrit)
+  const sessionIds = new Set(sessions.map(s => s.id));
+  // Filtre par saison appliqué en repli côté client sur les inscriptions
+  // (la table inscriptions_session n'a pas de colonne saison propre — on
+  // se base sur l'appartenance de session_id à la liste déjà filtrée).
+  const inscriptions = (inscriptionsRes.data || []).filter(i => sessionIds.has(i.session_id));
   const population = popRes.data || []; // Confirmés + Draft uniquement
+  const celluleTifo = celluleTifoRes.data || [];
   const sections = sectionsRes.data || [];
 
   const sessionById = new Map(sessions.map(s => [s.id, s]));
@@ -1530,15 +1558,26 @@ async function getStatsTifo() {
   const nbSansSession = population.length - popAvecSession.size;
   const tauxAvecSession = population.length ? popAvecSession.size / population.length : 0;
 
-  const buckets = { '0': 0, '1': 0, '2': 0, '3-4': 0, '5+': 0 };
-  for (const m of population) {
-    const nb = parMembre.get(m.id)?.nb || 0;
-    if (nb === 0) buckets['0']++;
-    else if (nb === 1) buckets['1']++;
-    else if (nb === 2) buckets['2']++;
-    else if (nb <= 4) buckets['3-4']++;
-    else buckets['5+']++;
+  function calculerBuckets(sousPopulation) {
+    const b = { '0': 0, '1': 0, '2': 0, '3-4': 0, '5+': 0 };
+    for (const m of sousPopulation) {
+      const nb = parMembre.get(m.id)?.nb || 0;
+      if (nb === 0) b['0']++;
+      else if (nb === 1) b['1']++;
+      else if (nb === 2) b['2']++;
+      else if (nb <= 4) b['3-4']++;
+      else b['5+']++;
+    }
+    return b;
   }
+  const buckets = calculerBuckets(population);
+  // KPI #6 (12/07/2026, demande Remi) : mêmes tranches, séparées
+  // Confirmé / Draft — révèle si le décrochage touche plutôt l'un ou
+  // l'autre plutôt qu'un chiffre global qui les mélange.
+  const bucketsParStatut = {
+    confirme: calculerBuckets(population.filter(m => m.statut === 'confirme')),
+    draft: calculerBuckets(population.filter(m => m.statut === 'draft')),
+  };
 
   // ── Répartition ──────────────────────────────────────────────
   const repartitionType = sessions.reduce((acc, s) => { acc[s.type_session] = (acc[s.type_session] || 0) + 1; return acc; }, {});
@@ -1560,12 +1599,73 @@ async function getStatsTifo() {
     if (new Date(premiereDate) >= il30j) nouveauxParticipants++;
   }
 
+  // KPI #1 (12/07/2026) — taux de rétention : parmi ceux qui sont venus
+  // au moins une fois, quelle proportion est revenue au moins une
+  // deuxième fois. Mesure l'engagement réel, pas juste la découverte.
+  const nbAuMoinsUne = parMembre.size;
+  const nbAuMoinsDeux = [...parMembre.values()].filter(e => e.nb >= 2).length;
+  const tauxRetention = nbAuMoinsUne ? nbAuMoinsDeux / nbAuMoinsUne : 0;
+
+  // KPI #2 (12/07/2026) — décrocheurs : au moins une présence, mais la
+  // plus RÉCENTE remonte à plus de 45 jours (~ 1,5 mois, cohérent avec un
+  // rythme de session toutes les 2 à 4 semaines observé). Repose sur
+  // sessions_tifo.date, jamais sur "aujourd'hui" par rapport à une
+  // session future non encore passée (filtré via sess?.date déjà passé
+  // au moment de l'ajout dans entry.dates, cf. boucle plus haut — inclut
+  // en théorie des dates futures si une présence était déjà enregistrée
+  // par erreur sur une session à venir, cas limite ignoré ici).
+  const SEUIL_DECROCHAGE_JOURS = 45;
+  const seuilDecrochage = new Date(aujourdHui.getTime() - SEUIL_DECROCHAGE_JOURS * 24 * 3600 * 1000);
+  const decrocheurs = [];
+  for (const entry of parMembre.values()) {
+    if (!entry.dates.length) continue;
+    const derniereDate = entry.dates.reduce((max, d) => (d > max ? d : max), entry.dates[0]);
+    if (new Date(derniereDate) < seuilDecrochage) {
+      decrocheurs.push({ membre: entry.membre, nb: entry.nb, derniereDate });
+    }
+  }
+  decrocheurs.sort((a, b) => b.derniereDate.localeCompare(a.derniereDate)); // décroché le plus récemment en premier
+
+  // KPI #3 (12/07/2026) — cadence réelle : nombre moyen de jours entre
+  // deux sessions consécutives (toutes confondues, à venir incluses si
+  // elles ont une date, pour refléter le rythme d'organisation prévu
+  // autant que passé).
+  const sessionsTrieesCadence = [...sessions].filter(s => s.date).sort((a, b) => a.date.localeCompare(b.date));
+  let cadenceMoyenneJours = null;
+  if (sessionsTrieesCadence.length >= 2) {
+    let totalJours = 0;
+    for (let i = 1; i < sessionsTrieesCadence.length; i++) {
+      totalJours += (new Date(sessionsTrieesCadence[i].date) - new Date(sessionsTrieesCadence[i - 1].date)) / (24 * 3600 * 1000);
+    }
+    cadenceMoyenneJours = totalJours / (sessionsTrieesCadence.length - 1);
+  }
+
+  // KPI #4 (12/07/2026) — participation de la cellule Tifo elle-même :
+  // sur l'ensemble des membres ayant le rôle cellule_tifo, quelle
+  // proportion a au moins une présence enregistrée sur la période.
+  const celluleTifoAvecPresence = celluleTifo.filter(m => parMembre.has(m.id)).length;
+  const tauxParticipationCelluleTifo = celluleTifo.length ? celluleTifoAvecPresence / celluleTifo.length : null;
+
+  // KPI #5 (12/07/2026) — taux de remplissage moyen : seulement sur les
+  // sessions où une capacité a été renseignée (capacite_max) — les
+  // autres n'ont simplement pas de seuil à comparer, donc exclues du
+  // calcul plutôt que faussées à 0%.
+  const sessionsAvecCapacite = sessions.filter(s => s.capacite_max);
+  let tauxRemplissageMoyen = null;
+  if (sessionsAvecCapacite.length) {
+    const totalPct = sessionsAvecCapacite.reduce((sum, s) => {
+      const nb = presencesParSession.get(s.id) || 0;
+      return sum + Math.min(1, nb / s.capacite_max);
+    }, 0);
+    tauxRemplissageMoyen = totalPct / sessionsAvecCapacite.length;
+  }
+
   // ── Évolution ────────────────────────────────────────────────
-  // Timeline unifiée (12/07/2026) : les deux séries doivent partager le
-  // même axe des mois pour être affichées sur UNE courbe combinée — sinon
-  // un mois avec une session mais 0 présence (ex: une session à venir
-  // pas encore passée) apparaît dans l'une des deux séries mais pas
-  // l'autre, ce qui décale les points si on les traite indépendamment.
+  // Timeline unifiée : les deux séries doivent partager le même axe des
+  // mois pour être affichées sur UNE courbe combinée — sinon un mois avec
+  // une session mais 0 présence (ex: une session à venir pas encore
+  // passée) apparaît dans l'une des deux séries mais pas l'autre, ce qui
+  // décale les points si on les traite indépendamment.
   const parMoisPresences = new Map();
   for (const p of presences) {
     const sess = sessionById.get(p.session_id);
@@ -1591,9 +1691,6 @@ async function getStatsTifo() {
       return dernierCumul; // report du cumul si le mois n'a pas de nouvelle session
     }),
   };
-  // Conservés pour rétrocompatibilité éventuelle d'un ancien appelant.
-  const evolutionMensuelle = tousMois.map(m => [m, parMoisPresences.get(m) || 0]);
-  const cumulEvolution = evolution.mois.map((m, i) => [m, evolution.cumulUniques[i]]);
 
   // ── Classement des sections ──────────────────────────────────
   const sectionById = new Map(sections.map(s => [s.id, s.nom]));
@@ -1610,13 +1707,35 @@ async function getStatsTifo() {
     .sort((a, b) => b.nbPresences - a.nbPresences);
 
   return {
+    saison: saison || 'toutes',
     totalSessions, sessionsAVenir, sessionsTerminees, totalPresences, membresActifs,
     moyennePresencesParSession, sessionTop: sessionTop ? { nom: sessionTop.nom, nb: sessionTopNb } : null,
-    nbSansSession, tauxAvecSession, populationTotal: population.length, buckets,
+    nbSansSession, tauxAvecSession, populationTotal: population.length, buckets, bucketsParStatut,
     repartitionType, repartitionLieu, presencesParStatut,
     classement, tauxNoShow, nbAbsents: absents.length, nbResolus: resolus.length,
-    nouveauxParticipants, evolution, evolutionMensuelle, cumulEvolution, classementSections,
+    nouveauxParticipants, tauxRetention, decrocheurs, cadenceMoyenneJours,
+    tauxParticipationCelluleTifo, celluleTifoTotal: celluleTifo.length, celluleTifoAvecPresence,
+    tauxRemplissageMoyen, nbSessionsAvecCapacite: sessionsAvecCapacite.length,
+    evolution, classementSections,
+    // Détail brut des présences (12/07/2026) — utilisé côté admin.js pour
+    // recalculer le classement filtré par type de session sans nouvel
+    // aller-retour serveur au clic (cf. calculerClassementFiltreTifo).
+    presencesDetail: presences.map(p => ({
+      membre_id: p.membre_id, membre: p.membre,
+      type: sessionById.get(p.session_id)?.type_session,
+    })),
   };
+}
+
+// Liste des saisons distinctes présentes en base (12/07/2026) — alimente
+// le sélecteur de saison de l'onglet Stats Tifo. Triée la plus récente
+// en premier (tri texte décroissant, fonctionne tant que le format reste
+// "AAAA-AAAA").
+async function getSaisonsTifoDisponibles() {
+  const { data, error } = await sb.from('sessions_tifo').select('saison');
+  if (error) throw error;
+  const saisons = [...new Set((data || []).map(s => s.saison).filter(Boolean))];
+  return saisons.sort((a, b) => b.localeCompare(a));
 }
 
 
@@ -2625,7 +2744,7 @@ window.UL = {
   // Connexion en tant que (Admin)
   genererLienConnexionAdmin,
   // Stats
-  getStats, getMesStats, getStatsTifo,
+  getStats, getMesStats, getStatsTifo, getSaisonsTifoDisponibles,
   getMaPresenceMatch, declarerPresenceMatch, annulerPresenceMatch,
   // Matos
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
