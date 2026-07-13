@@ -527,7 +527,14 @@
 // sync-classement-ligue1 (source football-data.org, gratuite). Bouton
 // "🔄 Rafraîchir" manuel réservé Admin/Bureau. Nécessite le secret
 // FOOTBALL_DATA_API_KEY côté Supabase (à poser par Remi, cf. message).
-const CACHE_NAME = 'ul-v91';
+// v92 (13/07/2026) : CACHE_NAME bumpé (v91 → v92) — bascule Ligue 1 vers
+// API-Football avec système de synchro "intelligent" (crons fréquents
+// mais auto-gated, ne consomment le quota que dans les fenêtres
+// pertinentes) : classement (toutes les 15 min si match L1 en cours),
+// suivi live PFC (compo ~45 min avant, score+buteurs+stats toutes les
+// 8 min pendant le match). Carte match affiche désormais le badge "EN
+// DIRECT", les buteurs, et un indicateur "Compositions disponibles".
+const CACHE_NAME = 'ul-v92';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
