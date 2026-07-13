@@ -697,3 +697,30 @@ select option { background: var(--navy); color: var(--blanc); }
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface-4); border-radius: 2px; }
+
+/* ── Export PDF Stats Tifo (12/07/2026) ────────────────────────
+   Zone dédiée, remplie dynamiquement par exporterPdfStatsTifo() juste
+   avant window.print(). Approche "conteneur cloné" plutôt que masquer
+   toute la mise en page existante via CSS — plus robuste, aucun risque
+   d'oublier un sélecteur si la structure de l'app change ailleurs.  */
+#zoneImpressionStatsTifo { display: none; }
+@media print {
+  body > *:not(#zoneImpressionStatsTifo) { display: none !important; }
+  #zoneImpressionStatsTifo {
+    display: block !important;
+    position: static;
+    background: #fff;
+    color: #000;
+    padding: 20px;
+  }
+  #zoneImpressionStatsTifo * {
+    color: #000 !important;
+    background: transparent !important;
+    border-color: #ccc !important;
+    box-shadow: none !important;
+  }
+  #zoneImpressionStatsTifo svg text { fill: #000 !important; }
+  #zoneImpressionStatsTifo svg line,
+  #zoneImpressionStatsTifo svg polyline { stroke: #666 !important; }
+  #zoneImpressionStatsTifo .card { break-inside: avoid; margin-bottom: 16px !important; }
+}
