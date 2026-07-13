@@ -33,6 +33,7 @@ function formatHeureCourte(horaireStr) {
 
 async function loadCalendrier() {
   document.getElementById('calendrierListe').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  loadClassementLigue1(); // en parallèle, indépendant du reste du calendrier
   try {
     const [matchs, evenements, deplacements] = await Promise.all([
       UL.getMatchs(),
@@ -48,6 +49,116 @@ async function loadCalendrier() {
     (deplacements || []).forEach(d => { if (d.match_id) depParMatchId[d.match_id] = d; });
     filtrerCalendrier('tous');
   } catch(e) { document.getElementById('calendrierListe').innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
+}
+
+// ─── CLASSEMENT LIGUE 1 (13/07/2026, demande Remi) ─────────────
+// Replié par défaut (juste la ligne Paris FC en aperçu) — cliquer
+// l'en-tête déplie le classement complet. Auto-actualisé par le cron
+// serveur ; ce chargement ne fait que LIRE la dernière version connue.
+let _classementLigue1Cache = [];
+let _classementLigue1Ouvert = false;
+
+async function loadClassementLigue1() {
+  const el = document.getElementById('classementLigue1Container');
+  if (!el) return;
+  try {
+    _classementLigue1Cache = await UL.getClassementLigue1();
+    renderClassementLigue1();
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = '';
+  }
+}
+
+function toggleClassementLigue1() {
+  _classementLigue1Ouvert = !_classementLigue1Ouvert;
+  renderClassementLigue1();
+}
+
+async function doRafraichirClassementLigue1(btn) {
+  const texteOriginal = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳…';
+  try {
+    await UL.syncClassementLigue1Manuel();
+    await loadClassementLigue1();
+    _classementLigue1Ouvert = true;
+    renderClassementLigue1();
+    toast('Classement mis à jour ✅', 'success');
+  } catch(e) {
+    toast(e.message || 'Erreur synchro classement', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = texteOriginal;
+  }
+}
+
+function renderClassementLigue1() {
+  const el = document.getElementById('classementLigue1Container');
+  if (!el) return;
+  const c = _classementLigue1Cache;
+  if (!c.length) { el.innerHTML = ''; return; }
+
+  const m = UL.getCurrentMembre();
+  const parisFc = c.find(r => /paris\s*fc/i.test(r.equipe) || /paris\s*fc/i.test(r.equipe_court || ''));
+  const derniereMaj = c[0]?.updated_at
+    ? new Date(c[0].updated_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  const ligneApercu = parisFc ? `
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--bleu-clair);">#${parisFc.position}</span>
+      ${parisFc.logo_url ? `<img src="${parisFc.logo_url}" alt="" style="width:22px;height:22px;object-fit:contain;">` : ''}
+      <span style="font-weight:600;">${esc(parisFc.equipe)}</span>
+      <span style="color:var(--gris);font-size:13px;">${parisFc.points} pts</span>
+    </div>` : `<span style="color:var(--gris);">Classement Ligue 1</span>`;
+
+  const tableauComplet = `
+    <div style="margin-top:10px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr style="color:var(--gris);text-align:left;border-bottom:1px solid var(--border);">
+            <th style="padding:4px 6px;">#</th>
+            <th style="padding:4px 6px;">Équipe</th>
+            <th style="padding:4px 6px;text-align:center;">J</th>
+            <th style="padding:4px 6px;text-align:center;">V</th>
+            <th style="padding:4px 6px;text-align:center;">N</th>
+            <th style="padding:4px 6px;text-align:center;">D</th>
+            <th style="padding:4px 6px;text-align:center;">+/-</th>
+            <th style="padding:4px 6px;text-align:center;">Pts</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${c.map(r => {
+            const estParisFc = /paris\s*fc/i.test(r.equipe) || /paris\s*fc/i.test(r.equipe_court || '');
+            return `
+            <tr style="border-bottom:1px solid rgba(255,255,255,.05);${estParisFc ? 'background:rgba(26,86,219,.15);' : ''}">
+              <td style="padding:5px 6px;font-weight:700;">${r.position}</td>
+              <td style="padding:5px 6px;${estParisFc ? 'font-weight:700;' : ''}">
+                ${r.logo_url ? `<img src="${r.logo_url}" alt="" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-right:4px;">` : ''}${esc(r.equipe_court || r.equipe)}
+              </td>
+              <td style="padding:5px 6px;text-align:center;">${r.joues}</td>
+              <td style="padding:5px 6px;text-align:center;">${r.victoires}</td>
+              <td style="padding:5px 6px;text-align:center;">${r.nuls}</td>
+              <td style="padding:5px 6px;text-align:center;">${r.defaites}</td>
+              <td style="padding:5px 6px;text-align:center;">${r.diff > 0 ? '+' : ''}${r.diff}</td>
+              <td style="padding:5px 6px;text-align:center;font-weight:700;">${r.points}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+        <span style="font-size:10px;color:var(--gris);">Maj ${derniereMaj} · source football-data.org</span>
+        ${isBureau(m) ? `<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();doRafraichirClassementLigue1(this)">🔄 Rafraîchir</button>` : ''}
+      </div>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="card" style="cursor:pointer;" onclick="toggleClassementLigue1()">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;align-items:center;gap:10px;">🏆 ${ligneApercu}</div>
+        <span style="color:var(--gris);font-size:12px;">${_classementLigue1Ouvert ? '▲' : '▼'}</span>
+      </div>
+      ${_classementLigue1Ouvert ? tableauComplet : ''}
+    </div>`;
 }
 
 function filtrerCalendrier(filtre) {
