@@ -512,7 +512,15 @@
 // cours" (Matos et Sticks, vue "Toutes") triées : commandes en cours
 // groupées en premier, annulées/refusées/reçues après — pour plus de
 // visibilité (demande Remi).
-const CACHE_NAME = 'ul-v89';
+// v90 (12/07/2026) : CACHE_NAME bumpé (v89 → v90) — Stats Tifo très
+// enrichie (demande Remi) : sélecteur de saison (nouvelle colonne
+// sessions_tifo.saison), taux de rétention, décrocheurs (45j+),
+// cadence moyenne entre sessions, participation cellule Tifo, taux de
+// remplissage vs capacité, tranches de sessions faites séparées
+// Confirmé/Draft, classement filtrable par type (clic sur une barre),
+// classement complet ("Voir tout"), comparaison saison précédente,
+// export CSV du classement, export PDF de toute la page (impression).
+const CACHE_NAME = 'ul-v90';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
