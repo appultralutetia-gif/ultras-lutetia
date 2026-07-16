@@ -524,7 +524,8 @@ function renderListeInscritsDepl() {
         ${(i.statut_paiement==='paye_cash'||i.statut_paiement==='paye_ha') ? `
           <span class="badge ${i.present_at?'badge-vert':'badge-orange'}">${i.present_at?'✅ Présent':'⏳ Absent'}</span>` : ''}
         ${i.statut_paiement==='en_attente' ? `
-          <button class="btn btn-sm btn-success" onclick="validerCash('${d.id}','${i.id}')">Cash</button>` : ''}
+          <button class="btn btn-sm btn-success" onclick="validerCash('${d.id}','${i.id}')">Cash</button>
+          <button class="btn btn-sm btn-danger" onclick="annulerInscritAdmin('${d.id}','${i.id}')">Annuler</button>` : ''}
       </div>`;
     }).join('')}
   `;
@@ -533,6 +534,17 @@ function renderListeInscritsDepl() {
 async function validerCash(deplId, inscriptionId) {
   try { await UL.validerPaiementCash(inscriptionId); toast('Paiement cash validé ✅', 'success'); voirInscritsDepl(deplId); }
   catch(e) { toast('Impossible de valider le paiement cash', 'error'); }
+}
+
+// Annulation admin d'une inscription en attente de paiement — uniquement
+// si non payée (cf. annulerInscriptionDeplAdmin, supabase-client.js).
+async function annulerInscritAdmin(deplId, inscriptionId) {
+  if (!confirm('Annuler cette inscription ? Le membre devra se réinscrire si besoin.')) return;
+  try {
+    await UL.annulerInscriptionDeplAdmin(inscriptionId);
+    toast('Inscription annulée ✅', 'success');
+    voirInscritsDepl(deplId);
+  } catch(e) { toast(e.message || 'Impossible d\'annuler cette inscription', 'error'); }
 }
 async function copierListeBus(deplId) {
   try {

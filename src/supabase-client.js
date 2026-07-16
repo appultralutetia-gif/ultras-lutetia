@@ -1198,6 +1198,42 @@ async function rechercherMembrePourAmi(recherche) {
   return data || [];
 }
 
+// Annulation d'une inscription par le membre lui-même — uniquement si
+// le paiement n'est pas encore confirmé (en_attente ou refuse). Une fois
+// payé, seul un admin peut annuler (cf. updateDeplacement côté admin).
+// ⚠️ Migration nécessaire : 'annule' doit exister dans la contrainte CHECK
+// de inscriptions_deplacement.statut_paiement (cf. migration_ajout_annule.sql).
+async function annulerInscriptionDepl(inscriptionId) {
+  const { data: insc, error: fetchErr } = await sb.from('inscriptions_deplacement')
+    .select('statut_paiement, membre_id').eq('id', inscriptionId).single();
+  if (fetchErr) throw fetchErr;
+  if (insc.membre_id !== currentUser.id) throw new Error('Action non autorisée');
+  if (insc.statut_paiement === 'paye_cash' || insc.statut_paiement === 'paye_ha') {
+    throw new Error('Impossible d\'annuler un paiement déjà confirmé — contacte le bureau');
+  }
+  const { error } = await sb.from('inscriptions_deplacement')
+    .update({ statut_paiement: 'annule' })
+    .eq('id', inscriptionId);
+  if (error) throw error;
+  return { success: true };
+}
+
+// Annulation admin d'une inscription (tous statuts non payés) — ne vérifie
+// pas membre_id (l'admin peut annuler pour n'importe qui).
+async function annulerInscriptionDeplAdmin(inscriptionId) {
+  const { data: insc, error: fetchErr } = await sb.from('inscriptions_deplacement')
+    .select('statut_paiement').eq('id', inscriptionId).single();
+  if (fetchErr) throw fetchErr;
+  if (insc.statut_paiement === 'paye_cash' || insc.statut_paiement === 'paye_ha') {
+    throw new Error('Impossible d\'annuler un paiement déjà confirmé');
+  }
+  const { error } = await sb.from('inscriptions_deplacement')
+    .update({ statut_paiement: 'annule' })
+    .eq('id', inscriptionId);
+  if (error) throw error;
+  return { success: true };
+}
+
 // Relance de paiement pour une inscription DÉJÀ existante (refusée ou en
 // attente) — forme d'appel strictement identique à l'ancien comportement
 // (avant l'ajout des amis/invités), pour continuer à fonctionner sans
@@ -2745,6 +2781,7 @@ window.UL = {
   getMesAmis, getDemandesAmitieRecues, getDemandesAmitieEnvoyees, repondreDemandeAmitie, annulerDemandeAmitie,
   envoyerDemandeAmitie, rechercherMembrePourAmi,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
+  annulerInscriptionDepl, annulerInscriptionDeplAdmin,
   // Annonces
   getAnnonces, publierAnnonce,
   // Codes de réabonnement

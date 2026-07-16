@@ -252,8 +252,22 @@ function renderMesCommandes(commandes) {
       ${livraisonEstimee ? `<div style="font-size:12px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(livraisonEstimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
       ${c.mode_paiement === 'helloasso' && (c.statut === 'refuse' || c.statut === 'en_attente') ? `
       <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="doReessayerCommande('${c.commande_items?.[0]?.produit_id||''}')">${c.statut === 'refuse' ? '🔄 Relancer le paiement' : '💳 Reprendre le paiement'}</button>` : ''}
+      ${c.statut === 'en_attente' ? `
+      <button class="btn btn-sm btn-danger" style="width:100%;margin-top:6px;" onclick="doAnnulerCommande('${c.id}')">❌ Annuler</button>` : ''}
     </div>`;
   }).join('');
+}
+
+// Annulation par le membre lui-même (uniquement si en_attente) — cash
+// ou HelloAsso abandonné. L'admin peut annuler depuis la vue Gestion
+// (bouton déjà présent dans renderToutesCommandes).
+async function doAnnulerCommande(commandeId) {
+  if (!confirm('Annuler cette commande ? Cette action est irréversible.')) return;
+  try {
+    await UL.updateCommandeStatut(commandeId, 'annulee');
+    toast('Commande annulée', 'success');
+    loadMatos();
+  } catch(e) { toast(e.message || 'Impossible d\'annuler cette commande', 'error'); }
 }
 
 // Un membre dont le paiement HelloAsso a été refusé doit pouvoir relancer
@@ -310,7 +324,7 @@ function renderToutesCommandes(commandes) {
   });
 
   el.innerHTML = barreSelection + commandesTriees.map(c => `
-    <div class="card" style="margin-bottom:8px;">
+    <div class="card" style="margin-bottom:8px;${c.statut==='en_attente'?'opacity:.65;border-left:3px solid #F59E0B;':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <div style="display:flex;align-items:center;gap:8px;">
           ${c.statut === 'precommande_validee' ? `<input type="checkbox" ${commandesSelectionneesReception.has(c.id)?'checked':''} onclick="toggleSelectionCommande('${c.id}')">` : ''}
@@ -831,9 +845,15 @@ function renderGestionCommandes() {
   if (!el) return; // onglet pas encore dans le DOM au tout premier chargement
   const rows = getRowsGestionFiltrees();
 
-  const nbPrecommandes = rows.filter(r => r.mode === 'precommande').length;
-  recapEl.textContent = `${rows.length} ligne${rows.length > 1 ? 's' : ''}` +
-    (nbPrecommandes ? ` · dont ${nbPrecommandes} précommande${nbPrecommandes > 1 ? 's' : ''}` : '');
+  // Seules les commandes avec un paiement confirmé comptent dans les
+  // précommandes — une ligne 'en_attente' (paiement abandonné ou en cours)
+  // ne doit pas gonfler artificiellement le nombre de lots à préparer.
+  const rowsPayees = rows.filter(r => r.statut !== 'en_attente');
+  const nbPrecommandes = rowsPayees.filter(r => r.mode === 'precommande').length;
+  const nbEnAttente = rows.length - rowsPayees.length;
+  recapEl.textContent = `${rowsPayees.length} ligne${rowsPayees.length > 1 ? 's' : ''}` +
+    (nbPrecommandes ? ` · dont ${nbPrecommandes} précommande${nbPrecommandes > 1 ? 's' : ''}` : '') +
+    (nbEnAttente ? ` · ${nbEnAttente} en attente de paiement (non comptées)` : '');
 
   if (!rows.length) { el.innerHTML = '<div class="empty-state"><div>📋</div>Rien à préparer</div>'; return; }
 
@@ -1184,7 +1204,19 @@ function renderMesSticks(distribs) {
       ${d.stick?.mode === 'precommande' && d.stick?.precommande_livraison_estimee ? `<div style="font-size:12px;color:var(--bleu-clair);margin-top:4px;">📅 Livraison estimée : ${new Date(d.stick.precommande_livraison_estimee).toLocaleDateString('fr-FR', { day:'numeric', month:'long' })}</div>` : ''}
       ${d.mode_paiement === 'helloasso' && (d.statut === 'refuse' || d.statut === 'en_attente') ? `
       <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px;" onclick="ouvrirCommanderStick('${d.stick_id}')">${d.statut === 'refuse' ? '🔄 Relancer le paiement' : '💳 Reprendre le paiement'}</button>` : ''}
+      ${d.statut === 'en_attente' ? `
+      <button class="btn btn-sm btn-danger" style="width:100%;margin-top:6px;" onclick="doAnnulerDistrib('${d.id}')">❌ Annuler</button>` : ''}
     </div>`).join('');
+}
+
+// Annulation stick par le membre lui-même (uniquement si en_attente).
+async function doAnnulerDistrib(distribId) {
+  if (!confirm('Annuler cette commande de stick ? Cette action est irréversible.')) return;
+  try {
+    await UL.updateDistribStatut(distribId, 'annulee');
+    toast('Commande annulée', 'success');
+    loadSticks();
+  } catch(e) { toast(e.message || 'Impossible d\'annuler', 'error'); }
 }
 
 let distribsSelectionneesReception = new Set();
@@ -1216,7 +1248,7 @@ function renderToutesDistribs(distribs) {
   });
 
   el.innerHTML = barreSelection + distribsTriees.slice(0,30).map(d => `
-    <div class="card" style="margin-bottom:6px;padding:12px;">
+    <div class="card" style="margin-bottom:6px;padding:12px;${d.statut==='en_attente'?'opacity:.65;border-left:3px solid #F59E0B;':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div style="display:flex;align-items:center;gap:8px;">
           ${d.statut === 'precommande_validee' ? `<input type="checkbox" ${distribsSelectionneesReception.has(d.id)?'checked':''} onclick="toggleSelectionDistrib('${d.id}')">` : ''}
