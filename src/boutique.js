@@ -258,9 +258,7 @@ function renderMesCommandes(commandes) {
   }).join('');
 }
 
-// Annulation par le membre lui-même (uniquement si en_attente) — cash
-// ou HelloAsso abandonné. L'admin peut annuler depuis la vue Gestion
-// (bouton déjà présent dans renderToutesCommandes).
+// Annulation par le membre lui-même (uniquement si en_attente).
 async function doAnnulerCommande(commandeId) {
   if (!confirm('Annuler cette commande ? Cette action est irréversible.')) return;
   try {
@@ -845,9 +843,8 @@ function renderGestionCommandes() {
   if (!el) return; // onglet pas encore dans le DOM au tout premier chargement
   const rows = getRowsGestionFiltrees();
 
-  // Seules les commandes avec un paiement confirmé comptent dans les
-  // précommandes — une ligne 'en_attente' (paiement abandonné ou en cours)
-  // ne doit pas gonfler artificiellement le nombre de lots à préparer.
+  // Seules les commandes avec un paiement confirmé comptent —
+  // une ligne 'en_attente' ne doit pas gonfler les chiffres.
   const rowsPayees = rows.filter(r => r.statut !== 'en_attente');
   const nbPrecommandes = rowsPayees.filter(r => r.mode === 'precommande').length;
   const nbEnAttente = rows.length - rowsPayees.length;
@@ -858,7 +855,8 @@ function renderGestionCommandes() {
   if (!rows.length) { el.innerHTML = '<div class="empty-state"><div>📋</div>Rien à préparer</div>'; return; }
 
   if (vueGestionCommandes === 'article') {
-    const groupes = grouperParArticle(rows);
+    // Vue par article : uniquement les payés — en_attente exclus du comptage.
+    const groupes = grouperParArticle(rowsPayees);
     el.innerHTML = groupes.map(g => `
       <div class="card" style="margin-bottom:8px;padding:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
