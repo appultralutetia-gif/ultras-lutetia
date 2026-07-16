@@ -17,7 +17,23 @@ function filtrerMembres() {
 function renderMembres(membres) {
   const el = document.getElementById('membresList');
   if (!membres.length) { el.innerHTML = '<div class="empty-state"><div>👥</div>Aucun membre</div>'; return; }
-  el.innerHTML = membres.map(m => `
+  el.innerHTML = membres.map(m => {
+    // Compte anonymisé (RGPD) : plus aucune action possible (déjà
+    // supprimé/vidé, non ré-actionnable). On l'affiche en gris, sans
+    // boutons, juste pour garder une trace visible qu'il a existé.
+    if (estMembreSupprime(m)) {
+      return `
+    <div class="membre-card" style="opacity:.55;">
+      <div class="membre-card-header">
+        <div class="avatar">🗑</div>
+        <div style="flex:1;min-width:0;">
+          <div class="membre-name">Compte supprimé</div>
+          <div class="membre-meta">@${esc(m.pseudo_telegram)} · compte anonymisé (RGPD)</div>
+        </div>
+      </div>
+    </div>`;
+    }
+    return `
     <div class="membre-card">
       <div class="membre-card-header">
         <div class="avatar">${((esc(m.prenom)||'?')[0]+(esc(m.nom)||'?')[0]).toUpperCase()}</div>
@@ -39,7 +55,8 @@ function renderMembres(membres) {
         </button>
         <button class="btn btn-sm btn-danger" aria-label="Supprimer ${esc(m.prenom||'')} ${esc(m.nom||'')}" onclick="supprimerMembre('${m.id}','${esc(m.prenom||'')} ${esc(m.nom||'')}')">🗑 Supprimer</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 // Roles fonctionnels définis pour le modal
 const ROLES_DEFS = [
@@ -588,6 +605,17 @@ async function doSupprimerMatch(id) {
 // silencieux...) — d'où des versions divergentes selon l'écran. Les deux
 // emplacements appellent désormais CETTE fonction, avec leurs propres
 // ids de conteneur/badge — plus qu'une seule implémentation à maintenir.
+// Un membre anonymisé (RGPD, cf. supprimerMembre / UL.supprimerMembre)
+// prend un pseudo_telegram préfixé 'supprimé_' et un prenom '[Supprimé]'.
+// Comme il n'y a pas de colonne dédiée en base pour marquer la
+// suppression, ce préfixe est le seul repère fiable pour le distinguer
+// d'un vrai membre. Utilisé pour l'exclure de la liste des demandes en
+// attente : sinon un compte anonymisé (statut sympathisant + !actif)
+// réapparaît indéfiniment comme une "nouvelle demande à valider".
+function estMembreSupprime(m) {
+  return (m.pseudo_telegram || '').startsWith('supprimé_');
+}
+
 async function loadDemandesAdmin(idListe = 'demandesListeAdmin', idBadge = 'demandesBadge2') {
   try {
     const tous = await UL.getAllMembres();
@@ -596,7 +624,11 @@ async function loadDemandesAdmin(idListe = 'demandesListeAdmin', idBadge = 'dema
     // changement ont encore statut='sympathisant' et sont toujours en
     // attente (!actif). Les deux valeurs sont donc acceptées ici, pour ne
     // pas faire disparaître ces demandes déjà en cours.
-    const demandes = tous.filter(m => (m.statut === 'visiteur' || m.statut === 'sympathisant') && !m.actif);
+    // !estMembreSupprime : un compte anonymisé (RGPD) garde statut
+    // 'sympathisant' + actif=false, exactement le profil d'une demande en
+    // attente — sans ce filtre, il réapparaît ici en boucle avec tous les
+    // boutons de validation actifs (bug repéré 16/07/2026).
+    const demandes = tous.filter(m => (m.statut === 'visiteur' || m.statut === 'sympathisant') && !m.actif && !estMembreSupprime(m));
     const badge = document.getElementById(idBadge);
     if (badge) {
       badge.textContent = demandes.length + ' en attente';
@@ -849,7 +881,10 @@ async function loadMembresComite() {
       m._evalCourante = evals[m.id] || {};
       m._participation = participations[m.id] || { tifoPresent: 0, tifoAbsent: 0, deplPaye: 0, deplNonPaye: 0 };
     });
-    _allMembresComite = membres;
+    // Les comptes anonymisés (RGPD) n'ont plus rien d'exploitable pour le
+    // Comité (ni notation, ni blocage utile) — on les retire de la liste
+    // et donc des exports Telegram/CSV, qui portent sur cette même source.
+    _allMembresComite = membres.filter(m => !estMembreSupprime(m));
 
     const selSection = document.getElementById('filterSectionComite');
     selSection.innerHTML = '<option value="">Toutes sections</option>' +
