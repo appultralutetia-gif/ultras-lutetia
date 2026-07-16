@@ -1794,37 +1794,24 @@ async function getProduits() {
   if (!membre) return [];
   const statut = membre.statut;
   const sectionId = membre.section_id;
-  // Admin/Bureau/Membre Cellule sont identifiés via roles_app[] (isAdmin/
-  // isBureau/isCellule, définis dans app.js), PAS via membre.statut — qui
-  // ne contient que 'sympathisant'/'draft'/'confirme'. L'ancienne version
-  // comparait statut à 'admin'/'bureau'/'membre_cellule', des valeurs que
-  // ce champ ne prend jamais : un Admin/Bureau n'ayant que son rôle dans
-  // roles_app (cas normal) tombait alors dans la branche restreinte.
   const isAdminBureauCellule = isAdmin(membre) || isBureau(membre) || isCellule(membre);
-  // Brouillon (12/07/2026, précision demande Remi) : distinct de
-  // isAdminBureauCellule ci-dessus (qui reste générique "n'importe quelle
-  // cellule", utilisé pour le bypass niveau_acces, INCHANGÉ) — un
-  // brouillon Matos doit être visible par Admin/Bureau/cellule Matos
-  // précisément, pas par la cellule Sticks ou Tifo par exemple.
   const voitBrouillon = hasCelluleMatos(membre);
   const { data, error } = await sb.from('produits')
     .select('*, section:sections(id, nom)')
     .eq('statut', 'disponible')
     .order('nom');
   if (error) throw error;
-  // ⚠️ Modèle changé (07/07/2026, demande Remi) : Matos utilise désormais
-  // la même typologie à 3 niveaux que Sticks (tous/draft_confirme/confirme,
-  // tous deux restreints à la section de l'article) au lieu de l'ancien
-  // modèle à 2 niveaux (tous/section, où "section" restait visible à TOUS
-  // les Confirmés quelle que soit leur section — incohérent avec Sticks).
   return (data || []).filter(p => {
-    // Statut "Brouillon" (10/07/2026, précisé 12/07/2026) : cellule Matos
-    // uniquement (cf. voitBrouillon ci-dessus), pas n'importe quelle
-    // cellule.
     if (p.visible_membres === false && !voitBrouillon) return false;
     if (isAdminBureauCellule) return true;
     if (p.niveau_acces === 'tous') return true;
-    const memeSection = sectionId && p.section_id === sectionId;
+    // "Ultra Lutetia" est la section "parapluie" : son contenu est visible
+    // par TOUS les membres quelle que soit leur propre section — les
+    // autres sections restent strictement privées à leurs membres (cf.
+    // matrice de visibilité, demande Remi 15/07/2026 — même règle que
+    // getSticks()).
+    const sectionEstUltraLutetia = p.section?.nom?.toLowerCase() === 'ultra lutetia';
+    const memeSection = sectionEstUltraLutetia || (sectionId && p.section_id === sectionId);
     if (p.niveau_acces === 'draft_confirme') {
       return memeSection && (statut === 'draft' || statut === 'confirme');
     }
@@ -2111,10 +2098,7 @@ async function getSticks() {
   if (!membre) return [];
   const statut = membre.statut;
   const sectionId = membre.section_id;
-  // Détection via roles_app[] (isAdmin/isBureau/isCellule), pas via statut.
   const isAdminBureauCellule = isAdmin(membre) || isBureau(membre) || isCellule(membre);
-  // Brouillon (12/07/2026) — cellule Sticks précisément, cf. commentaire
-  // équivalent dans getProduits().
   const voitBrouillon = hasCelluleSticks(membre);
   const { data, error } = await sb.from('sticks_catalogue')
     .select('*, section:sections(id, nom)')
@@ -2122,16 +2106,15 @@ async function getSticks() {
     .order('nom');
   if (error) throw error;
   return (data || []).filter(s => {
-    // Statut "Brouillon" (10/07/2026, précisé 12/07/2026) — cellule Sticks
-    // uniquement, cf. getProduits().
     if (s.visible_membres === false && !voitBrouillon) return false;
     if (isAdminBureauCellule) return true;
     if (s.niveau_acces === 'tous') return true;
-    // 'draft_confirme' et 'confirme' sont tous deux restreints à la
-    // section du stick — la différence est le statut minimum requis :
-    // - draft_confirme : Draft ou Confirmé de cette section
-    // - confirme       : Confirmé de cette section uniquement
-    const memeSection = sectionId && s.section_id === sectionId;
+    // "Ultra Lutetia" est la section "parapluie" : son contenu est visible
+    // par TOUS les membres quelle que soit leur propre section — les
+    // autres sections restent strictement privées à leurs membres (cf.
+    // matrice de visibilité, demande Remi 15/07/2026).
+    const sectionEstUltraLutetia = s.section?.nom?.toLowerCase() === 'ultra lutetia';
+    const memeSection = sectionEstUltraLutetia || (sectionId && s.section_id === sectionId);
     if (s.niveau_acces === 'draft_confirme') {
       return memeSection && (statut === 'draft' || statut === 'confirme');
     }
@@ -2141,7 +2124,6 @@ async function getSticks() {
     return false;
   });
 }
-
 async function getStickById(id) {
   const { data, error } = await sb.from('sticks_catalogue')
     .select('*, section:sections(id, nom)')
