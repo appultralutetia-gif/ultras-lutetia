@@ -50,11 +50,6 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 let currentMembre = null;
 
-// Callback optionnel assigné par app.js (window.UL_ON_PASSWORD_RECOVERY = fn).
-// On ne peut pas se fier à la lecture manuelle de window.location.hash : le SDK
-// supabase-js parse et nettoie le hash automatiquement, souvent avant même que
-// notre code DOMContentLoaded ne s'exécute. L'événement 'PASSWORD_RECOVERY' du
-// SDK est la seule source fiable pour détecter un clic sur le lien de reset.
 sb.auth.onAuthStateChange((event, session) => {
   if (event === 'PASSWORD_RECOVERY') {
     if (typeof window.UL_ON_PASSWORD_RECOVERY === 'function') {
@@ -76,22 +71,13 @@ async function initSession() {
 // AUTH
 // ============================================================
 
-// Normalise un pseudo Telegram pour comparaison/stockage :
-// retire @, espaces insécables/multiples, trim. La casse est gérée
-// séparément via .ilike() au login pour rester insensible à la casse
-// sans perdre la casse d'origine stockée en base (affichage inchangé).
 function normalizePseudo(pseudoTelegram) {
   return (pseudoTelegram || '')
     .replace(/@/g, '')
-    .replace(/[\u00A0\u202F\s]+/g, ' ') // espaces insécables/multiples → un seul espace normal
+    .replace(/[\u00A0\u202F\s]+/g, ' ')
     .trim();
 }
 
-// Résout un pseudo Telegram en email via l'Edge Function resolve-pseudo
-// (la table membres est protégée par RLS, lecture réservée à 'authenticated' —
-// impossible de lire l'email directement avant connexion avec le client anon).
-// Utilisée par loginByTelegram() (sans emailADoubleVerifier) et
-// demanderResetMdp() (avec, pour exiger pseudo + email cohérents).
 async function resolvePseudoToEmail(pseudoTelegram, emailADoubleVerifier) {
   const pseudo = normalizePseudo(pseudoTelegram);
   if (!pseudo) throw new Error('Pseudo Telegram requis');
@@ -103,17 +89,11 @@ async function resolvePseudoToEmail(pseudoTelegram, emailADoubleVerifier) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'apikey': SUPABASE_PUBLISHABLE_KEY, // format sb_publishable_... requis par withSupabase
+      'apikey': SUPABASE_PUBLISHABLE_KEY,
     },
     body: JSON.stringify(payload),
   });
   const body = await resp.json();
-  // L'Edge Function peut répondre HTTP 200 même en cas d'échec applicatif
-  // (message + code dans le corps plutôt qu'un vrai statut d'erreur) — ne
-  // jamais se fier uniquement à resp.ok : vérifier aussi que body.email
-  // est bien présent, sinon on continue avec un email undefined qui finit
-  // par faire planter signInWithPassword plus loin avec une erreur trompeuse
-  // ("No API key found in request") qui n'a rien à voir avec la vraie cause.
   if (!resp.ok || !body.email) {
     throw new Error(body.message || body.error || 'Identifiants incorrects');
   }
@@ -139,16 +119,9 @@ async function loginByTelegram(pseudoTelegram, password) {
   return { success: true, membre: currentMembre };
 }
 
-// Envoie l'email de réinitialisation de mot de passe via Supabase Auth.
-// Double vérification : pseudo ET email doivent correspondre au même membre,
-// pour empêcher qu'un tiers connaissant seulement le pseudo (visible dans
-// l'app) déclenche un reset sur le compte d'un autre membre.
-// redirectTo passe par le même mécanisme de callback que la confirmation
-// d'inscription (404.html → ultras-lutetia/?...#access_token&type=recovery),
-// que app.js détecte au démarrage pour afficher le modal de reset.
 async function demanderResetMdp(pseudoTelegram, emailSaisi) {
   if (!emailSaisi || !emailSaisi.trim()) throw new Error('Email requis');
-  const email = await resolvePseudoToEmail(pseudoTelegram, emailSaisi); // laisse throw si pseudo/email ne correspondent pas
+  const email = await resolvePseudoToEmail(pseudoTelegram, emailSaisi);
 
   const { error } = await sb.auth.resetPasswordForEmail(email, {
     redirectTo: 'https://appultralutetia-gif.github.io/ultras-lutetia/',
@@ -158,7 +131,6 @@ async function demanderResetMdp(pseudoTelegram, emailSaisi) {
 }
 
 async function inscription(data) {
-  // Utilise le vrai email fourni à l'inscription
   if (!data.email) throw new Error('Email obligatoire');
 
   const { data: authData, error: authError } = await sb.auth.signUp({
@@ -175,20 +147,9 @@ async function inscription(data) {
     email: data.email,
     ville: data.ville || null,
     code_postal: data.codePostal || null,
-    statut: 'visiteur', // défaut changé le 10/07/2026 (demande Remi) — était 'sympathisant'
+    statut: 'visiteur',
   };
 
-  // ⚠️ Corrigé 09/07/2026 (bug rapporté par Remi : "insert or update on
-  // table 'membres' violates foreign key constraint 'membres_id_fkey'"
-  // juste après l'inscription). Cause connue côté Supabase : la ligne
-  // auth.users vient tout juste d'être créée par le service Auth, mais
-  // elle n'est pas toujours immédiatement visible côté API REST/Postgres
-  // au moment de cet insert suivant (latence de réplication interne,
-  // quelques centaines de ms) — un problème de timing, pas de données.
-  // Réessayé automatiquement (jusqu'à 3 fois, délai croissant) UNIQUEMENT
-  // pour ce code d'erreur précis (23503 = violation de clé étrangère) —
-  // toute autre erreur (ex: pseudo déjà pris) échoue immédiatement, sans
-  // attente inutile.
   let dernierError = null;
   for (let tentative = 0; tentative < 3; tentative++) {
     const { error: membreError } = await sb.from('membres').insert(payload);
@@ -200,20 +161,6 @@ async function inscription(data) {
   throw new Error(dernierError?.message || 'Impossible de créer le compte');
 }
 
-// Vérifie le code reçu par email à l'inscription (8 chiffres par défaut
-// côté Supabase). Remplace
-// le lien cliquable historique — voir BUGS.md : les liens de confirmation
-// cliquables étaient parfois consommés automatiquement par des scanners
-// de sécurité côté destinataire avant que le membre ne clique lui-même,
-// via le SMTP custom Brevo (dont le tracking de clics ne peut pas être
-// désactivé sur le canal transactionnel). Le template "Confirm signup"
-// dans Supabase doit utiliser {{ .Token }} au lieu du lien classique pour
-// que ce code soit bien envoyé dans l'email.
-// IMPORTANT : type doit être 'email', pas 'signup' — 'signup'/'magiclink'
-// sont dépréciés côté verifyOtp pour une vérification par email (la doc
-// Supabase et plusieurs guides à jour confirment 'email' comme type
-// correct ; 'signup' donnait un message trompeur "Token has expired or
-// is invalid" même avec un code tout juste reçu et jamais utilisé).
 async function verifierCodeInscription(email, code) {
   const { data, error } = await sb.auth.verifyOtp({
     email,
@@ -221,16 +168,10 @@ async function verifierCodeInscription(email, code) {
     type: 'email',
   });
   if (error) throw new Error(error.message || 'Code invalide ou expiré');
-  // verifyOtp ouvre une session active, mais le compte reste actif=false
-  // tant que Bureau n'a pas validé (workflow inchangé) — on déconnecte
-  // donc immédiatement pour forcer un retour à l'écran de login normal,
-  // plutôt que de laisser une session "fantôme" en mémoire.
   await sb.auth.signOut();
   return { success: true };
 }
 
-// Renvoie un nouveau code (limité par Supabase à une demande
-// par 60 secondes par défaut — voir Auth > Providers > Email > rate limits).
 async function renvoyerCodeInscription(email) {
   const { error } = await sb.auth.resend({
     type: 'signup',
@@ -307,10 +248,6 @@ async function updateSectionMembre(membreId, sectionId) {
   return updateMembre(membreId, { section_id: sectionId });
 }
 
-// ─── Évaluations par cellule (Tifo, Déplacement, Comité) ──────
-// Catégories : 'tifo' | 'deplacement' | 'comite_sympa' | 'comite_draft'
-// Une ligne = une notation horodatée. La note "courante" d'une
-// catégorie pour un membre = la ligne la plus récente.
 async function noterMembre(membreId, categorie, note) {
   if (!['tifo', 'comite_sympa', 'comite_draft'].includes(categorie)) {
     throw new Error('Catégorie de notation invalide');
@@ -326,8 +263,6 @@ async function noterMembre(membreId, categorie, note) {
   return { success: true };
 }
 
-// Retourne la note courante par catégorie pour un membre, ex :
-// { tifo: 2, deplacement: 1, comite_sympa: null, comite_draft: null }
 async function getEvaluationsMembre(membreId) {
   const { data, error } = await sb.from('evaluations')
     .select('categorie, note, created_at')
@@ -341,10 +276,6 @@ async function getEvaluationsMembre(membreId) {
   return courantes;
 }
 
-// Version batch de getEvaluationsMembre — une seule requête pour N membres
-// (utilisée par les listes d'évaluation Tifo/Comité, pour éviter un N+1
-// si on appelait getEvaluationsMembre membre par membre).
-// Retourne : { [membreId]: { tifo: 2, comite_sympa: null, ... } }
 async function getEvaluationsCourantesBatch(membreIds) {
   if (!membreIds || !membreIds.length) return {};
   const { data, error } = await sb.from('evaluations')
@@ -360,14 +291,6 @@ async function getEvaluationsCourantesBatch(membreIds) {
   return parMembre;
 }
 
-// Compteurs de participation Tifo/Déplacement pour N membres en une
-// seule requête par table (utilisé par la page Membres Comité, pour
-// donner un contexte objectif d'engagement avant notation) :
-// { [membreId]: { tifoPresent, tifoAbsent, deplPaye, deplNonPaye } }
-// Tifo : 'present' = présence confirmée, 'absent' = no-show réel —
-// 'inscrit' (en attente de traitement) n'est compté dans aucun des deux.
-// Déplacement : 'paye_cash'/'paye_ha' = payé, 'en_attente' = non
-// payé (assimilé à un no-show, cf. demande explicite Comité de passage).
 async function getParticipationBatch(membreIds) {
   if (!membreIds || !membreIds.length) return {};
   const [{ data: sessions, error: e1 }, { data: depls, error: e2 }] = await Promise.all([
@@ -391,7 +314,6 @@ async function getParticipationBatch(membreIds) {
   return parMembre;
 }
 
-// Historique complet d'une catégorie pour un membre (qui a noté, quand)
 async function getHistoriqueEvaluation(membreId, categorie) {
   const { data, error } = await sb.from('evaluations')
     .select('*, notateur:membres!evaluations_notee_par_fkey(prenom, nom, pseudo_telegram)')
@@ -407,7 +329,6 @@ async function toggleBlocageMembre(membreId, actif) {
 }
 
 async function adminResetPassword(membreId, newPassword) {
-  // Nécessite une Edge Function Supabase en prod
   return { success: true, message: 'Non implémenté' };
 }
 
@@ -415,14 +336,12 @@ async function updateMembreMdp(membreId, newPassword) {
   const { data: membre } = await sb.from('membres')
     .select('email').eq('id', membreId).single();
   if (!membre?.email) throw new Error('Email introuvable pour ce membre');
-  // Envoyer un email de reset — seule option sans Edge Function
   const { error } = await sb.auth.resetPasswordForEmail(membre.email);
   if (error) throw error;
   return { success: true };
 }
 
 async function supprimerMembre(membreId) {
-  // Suppression logique : désactiver + anonymiser les données personnelles
   const { error } = await sb.from('membres')
     .update({
       actif: false,
@@ -436,21 +355,10 @@ async function supprimerMembre(membreId) {
   return { success: true };
 }
 
-// Évaluations : voir noterMembre / getEvaluationsMembre / getHistoriqueEvaluation
-// (système par catégorie + historique, cf. table evaluations)
-
 // ============================================================
-// QR CODE MEMBRE — présence Déplacement / retrait Matos / retrait Stick
+// QR CODE MEMBRE
 // ============================================================
-// Un QR fixe par membre (Profil), distinct du qr_code par-inscription
-// Déplacement existant (généré à la confirmation de paiement HelloAsso/
-// Cash, cf. validerPaiementCash/validerPaiementHelloAsso plus haut) — les
-// deux coexistent, aucune modification de la chaîne HelloAsso ici.
 
-// Génère un token aléatoire au format UL-MBR-{16 car.} — préfixe distinct
-// de UL-{...} (Cash) et UL-HA-{...} (HelloAsso) pour qu'un scan puisse
-// immédiatement reconnaître un QR membre d'un QR d'inscription si les
-// deux types sont un jour scannés dans le même flux par erreur.
 function genererTokenQrMembre() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let suffixe = '';
@@ -460,10 +368,6 @@ function genererTokenQrMembre() {
   return `UL-MBR-${suffixe}`;
 }
 
-// Retourne le QR code du membre courant, en le générant à la demande
-// (lazy) s'il n'existe pas encore — pas de backfill en masse à la
-// migration, chaque membre obtient son token au premier chargement de
-// son Profil après déploiement.
 async function getOrCreateQrCodeMembre() {
   if (currentMembre?.qr_code_membre) return currentMembre.qr_code_membre;
 
@@ -474,13 +378,10 @@ async function getOrCreateQrCodeMembre() {
     .select('qr_code_membre')
     .single();
   if (error) throw error;
-  currentMembre = await getMembre(currentUser.id); // resynchronise le cache local
+  currentMembre = await getMembre(currentUser.id);
   return data.qr_code_membre;
 }
 
-// Résout un code scanné (ou saisi manuellement) vers la fiche membre
-// correspondante. Retourne null si le code ne correspond à aucun membre
-// (code invalide, mal recopié, ou QR d'un autre type scanné par erreur).
 async function getMembreParQrCode(code) {
   const trimmed = (code || '').trim();
   if (!trimmed) return null;
@@ -492,23 +393,6 @@ async function getMembreParQrCode(code) {
   return data || null;
 }
 
-// Confirme la présence physique d'un ou plusieurs participants à un
-// déplacement (scan le jour J), distincte du statut de paiement.
-//
-// ⚠️ Refonte 09/07/2026 (demande Remi) : depuis l'inscription multi-
-// personnes, on ne scanne plus le QR du PARTICIPANT lui-même mais celui
-// du PAYEUR — un seul scan peut donc concerner plusieurs lignes
-// inscriptions_deplacement d'un coup (soi + amis + invités payés
-// ensemble). Cette fonction prend directement une liste d'inscriptionIds
-// (résolue côté scan.js à partir du payeur_id scanné) plutôt qu'un
-// membre_id unique — un invité hors app n'a de toute façon pas de
-// membre_id sur lequel chercher.
-//
-// Par défaut, bloque si le paiement n'est pas confirmé (statut
-// 'en_attente' ou 'refuse') — passer force=true pour le cas réel
-// "paiement cash collecté sur le quai au dernier moment", décision
-// laissée à la personne qui scanne plutôt qu'un blocage strict sans
-// recours.
 async function confirmerPresencesDeplacement(inscriptionIds, force = false) {
   if (!Array.isArray(inscriptionIds) || !inscriptionIds.length) {
     throw new Error('Aucune personne sélectionnée');
@@ -532,12 +416,6 @@ async function confirmerPresencesDeplacement(inscriptionIds, force = false) {
   return { success: true, nb: inscriptionIds.length };
 }
 
-// Régénère le QR d'un membre (perte/partage accidentel) — invalide
-// l'ancien token puisqu'il est remplacé, pas de table d'historique des
-// tokens révoqués pour cette première version. Réservée Admin/Bureau,
-// le contrôle de droit se fait côté UI (cf. admin.js) — cette fonction
-// ne revérifie pas elle-même le rôle de l'appelant, comme le reste de
-// ce fichier (le RLS Supabase est la vraie barrière de sécurité).
 async function regenererQrCodeMembre(membreId) {
   const token = genererTokenQrMembre();
   const { data, error } = await sb.from('membres')
@@ -558,15 +436,6 @@ async function getSections() {
   if (error) throw error;
   return data || [];
 }
-
-// getCellules() / rattacherCellule() ont été supprimées — système parallèle
-// basé sur la table membres_cellules, jamais branché à aucun bouton de
-// l'UI, qui faisait doublon avec roles_app[] (qui gère nativement le
-// multi-cellule : un membre peut avoir plusieurs entrées dans son tableau
-// roles_app, chaque hasCellule*() étant un test indépendant — voir
-// applyRights() dans app.js). rattacherCellule tentait en plus d'écrire
-// membre.statut = 'membre_cellule', une valeur que le reste de l'app ne
-// gère jamais (statut ne prend que 'sympathisant'/'draft'/'confirme').
 
 // ============================================================
 // CALENDRIER
@@ -593,9 +462,6 @@ async function getEvenement(id) {
   return data;
 }
 
-// data attendu (cf. doSauvegarderEvenement dans calendrier.js) :
-// { nom, type, date, heure, lieu, description, lien_helloasso }
-// id fourni → update, id absent → création.
 async function saveEvenement(data, id = null) {
   if (id) {
     const { data: updated, error } = await sb.from('evenements')
@@ -621,12 +487,6 @@ async function addMatch(matchData) {
   return data;
 }
 
-// Mise à jour générique d'un match (édition libre de tous les champs),
-// distincte de confirmerDateMatch (qui ne touche que date/horaire/stade et
-// force statut_date à 'confirmee') et de saisirScoreMatch (scores
-// uniquement) — celles-ci restent utilisées pour leurs actions rapides
-// dédiées sur la carte calendrier ; updateMatch sert au formulaire
-// d'édition complète.
 async function updateMatch(id, data) {
   const { data: result, error } = await sb.from('matchs')
     .update(data)
@@ -643,14 +503,6 @@ async function getMatchs() {
   return data || [];
 }
 
-// ============================================================
-// CLASSEMENT LIGUE 1 (13/07/2026, demande Remi) — synchronisé
-// automatiquement toutes les 3h par un cron Supabase (pg_cron + pg_net)
-// qui appelle l'Edge Function sync-classement-ligue1 (source :
-// football-data.org). Le front ne fait jamais d'appel direct à l'API
-// externe — uniquement lecture de la table déjà synchronisée, RLS
-// ouverte à tout membre connecté.
-// ============================================================
 async function getClassementLigue1() {
   const { data, error } = await sb.from('classement_ligue1')
     .select('*')
@@ -659,9 +511,6 @@ async function getClassementLigue1() {
   return data || [];
 }
 
-// Déclenchement manuel (13/07/2026) — bouton "🔄 Rafraîchir" réservé
-// Admin/Bureau, pour forcer une synchro immédiate sans attendre le
-// prochain passage du cron (ex: juste après un match).
 async function syncClassementLigue1Manuel() {
   const { data, error } = await sb.functions.invoke('sync-classement-ligue1', { body: {} });
   if (error) throw error;
@@ -682,10 +531,6 @@ async function saisirScoreMatch(id, scoreDomicile, scoreExterieur) {
   return data;
 }
 
-// Confirme la date + horaire d'un match (Bureau+). statut_date passe de
-// 'a_confirmer' à 'confirmee'. Permet aussi d'ajuster date/horaire/stade
-// dans la même action si la LFP les a modifiés au moment de la confirmation
-// officielle (TV, sécurité, etc.).
 async function confirmerDateMatch(id, { date, horaire, stade } = {}) {
   const update = { statut_date: 'confirmee' };
   if (date) update.date = date;
@@ -698,8 +543,6 @@ async function confirmerDateMatch(id, { date, horaire, stade } = {}) {
   return data;
 }
 
-// Repasse un match confirmé en "à confirmer" (erreur de saisie, annonce
-// LFP annulée, etc.) — Bureau+.
 async function rouvrirConfirmationMatch(id) {
   const { data, error } = await sb.from('matchs')
     .update({ statut_date: 'a_confirmer' })
@@ -713,10 +556,6 @@ async function rouvrirConfirmationMatch(id) {
 // ============================================================
 
 async function getCharteActive() {
-  // La validité est vérifiée côté requête (pas seulement côté client) :
-  // une charte "active" mais dont la date_fin_validite est dépassée n'est
-  // jamais retournée. Robuste même si le flag `active` n'a pas encore été
-  // basculé manuellement par un admin au changement de saison.
   const today = new Date().toISOString().split('T')[0];
   const { data, error } = await sb.from('chartes')
     .select('*')
@@ -729,16 +568,9 @@ async function getCharteActive() {
   return data;
 }
 
-// Vérifie si le membre courant a signé LA charte active en cours (pas une
-// charte antérieure expirée). C'est la seule source de vérité utilisée pour
-// bloquer/débloquer l'accès à l'app — ne jamais se fier uniquement au flag
-// dénormalisé `membres.charte_signee`, qui ne distingue pas "a signé une
-// charte" de "a signé LA charte en cours de validité".
 async function checkConformiteCharte() {
   const charteActive = await getCharteActive();
   if (!charteActive) {
-    // Pas de charte active configurée → on ne bloque pas (évite un bug
-    // de config qui rendrait l'app inutilisable pour tout le monde).
     return { conforme: true, charteActive: null };
   }
   const { data: signature, error } = await sb.from('signatures_charte')
@@ -755,14 +587,7 @@ async function signerCharte(charteId) {
     membre_id: currentUser.id,
     charte_id: charteId,
   });
-  if (error && error.code !== '23505') throw error; // 23505 = duplicate, already signed
-  // Mettre à jour le membre (flag dénormalisé, pratique pour l'affichage
-  // rapide côté admin/liste, mais jamais utilisé seul pour le blocage —
-  // voir checkConformiteCharte()). Uniquement `charte_signee` : c'est la
-  // seule colonne confirmée exister dans `membres` (cf. bug du même type
-  // que `cree_par`/`updated_at`/`etoiles` — voir BUGS.md). La date exacte
-  // de signature est disponible via signatures_charte.signed_at, pas
-  // besoin de la dénormaliser en plus sur membres.
+  if (error && error.code !== '23505') throw error;
   await updateMembre(currentUser.id, {
     charte_signee: true,
   });
@@ -781,19 +606,6 @@ async function getMembresNonSignataires() {
   return data || [];
 }
 
-// Publie une nouvelle version de la charte (édition de contenu par le
-// Bureau/Admin). Ne modifie JAMAIS la ligne existante en place : crée
-// une nouvelle ligne `chartes` active et désactive l'ancienne. C'est
-// ce qui garantit, sans aucune logique supplémentaire, que toutes les
-// signatures existantes deviennent automatiquement invalides — voir
-// checkConformiteCharte() qui compare l'id de la charte signée à l'id
-// de la charte active courante. Chaque membre devra donc resigner.
-//
-// Pas de vraie transaction multi-statements disponible côté client
-// PostgREST : on désactive d'abord l'ancienne, puis on insère la
-// nouvelle. Si l'insertion échoue après la désactivation, on retente
-// de réactiver l'ancienne pour ne pas laisser l'app sans charte active
-// (le pire des deux scénarios : tout le monde bloqué sans recours).
 async function publierNouvelleCharte({ nom, contenu, dateFin }) {
   const ancienne = await getCharteActive();
 
@@ -811,8 +623,6 @@ async function publierNouvelleCharte({ nom, contenu, dateFin }) {
   }).select().single();
 
   if (error) {
-    // Rollback manuel : on réactive l'ancienne pour éviter un état où
-    // personne n'a de charte active à signer.
     if (ancienne) {
       await sb.from('chartes').update({ active: true }).eq('id', ancienne.id);
     }
@@ -887,10 +697,6 @@ async function desinscrire(sessionId) {
   return { success: true };
 }
 
-// Action admin (Cellule Tifo+) : désinscrit un autre membre que soi-même
-// — cf. doDesinscrireAdmin dans tifos.js, bouton "✕" sur la liste des
-// inscrits. Même requête que desinscrire(), avec membreId explicite au
-// lieu de currentUser.id.
 async function desinscrireMembreSession(sessionId, membreId) {
   const { error } = await sb.from('inscriptions_session')
     .delete()
@@ -939,7 +745,6 @@ async function openSession(sessionId) {
 }
 
 async function closeSession(sessionId) {
-  // Marquer les inscrits non présents comme absents
   await sb.from('inscriptions_session')
     .update({ statut: 'absent' })
     .eq('session_id', sessionId)
@@ -952,9 +757,6 @@ async function closeSession(sessionId) {
 }
 
 async function deleteSession(sessionId) {
-  // Supprime d'abord les inscriptions liées (indépendant d'une éventuelle
-  // cascade FK non configurée côté base — évite une erreur de contrainte
-  // 23503 si des membres sont/étaient inscrits).
   const { error: errInscriptions } = await sb.from('inscriptions_session')
     .delete()
     .eq('session_id', sessionId);
@@ -1006,15 +808,6 @@ async function getPizzaOrders(sessionId) {
 // DÉPLACEMENTS
 // ============================================================
 
-// ⚠️ Avant le 24/06/2026, cette fonction ne renvoyait que les lignes brutes
-// de `deplacements` — ni _inscrits (nombre réel d'inscrits) ni monInscrit
-// (statut du membre courant) n'étaient calculés ici, alors que
-// renderDeplCard() dans deplacements.js lit déjà d._inscrits depuis
-// toujours pour la barre de progression des places (bug latent : la barre
-// affichait systématiquement 0/places_max, jamais le vrai nombre). Les deux
-// champs sont désormais calculés pour chaque déplacement de la liste, ce
-// qui permet aussi d'afficher sur la carte le bon bouton (M'inscrire /
-// paiement en cours / payé / refusé) sans devoir ouvrir la modal de détail.
 async function getDeplacements(upcoming = true) {
   const today = new Date().toISOString().split('T')[0];
   let query = sb.from('deplacements')
@@ -1023,22 +816,12 @@ async function getDeplacements(upcoming = true) {
   if (upcoming) query = query.gte('date_match', today);
   const { data, error } = await query;
   if (error) throw error;
-  // Statut "Brouillon" (10/07/2026) : un déplacement avec visible_membres
-  // = false n'est renvoyé qu'à la cellule Déplacement (+ Bureau/Admin,
-  // déjà inclus dans hasCelluleDepl) — utile pour tester un vrai paiement
-  // HelloAsso avant d'exposer le déplacement à tous les membres. Aucun
-  // filtre pour eux : ils continuent de tout voir comme avant.
   const membre = currentMembre;
   const voitLesBrouillons = membre && hasCelluleDepl(membre);
   const visibles = voitLesBrouillons ? (data || []) : (data || []).filter(d => d.visible_membres !== false);
   return await _enrichirDeplacements(visibles);
 }
 
-// Factorise l'enrichissement _inscrits/monInscrit pour getDeplacements —
-// (l'ancienne getDeplacementsHistorique, retirée le 09/07/2026 : le
-// découpage à venir/historique se fait désormais côté front par statut
-// effectif — cf. estHistoriqueDepl, deplacements.js — plus par date côté
-// serveur, donc plus besoin d'une requête "historique" séparée ici).
 async function _enrichirDeplacements(depls) {
   if (!depls.length) return depls;
   const { data: inscriptions } = await sb.from('inscriptions_deplacement')
@@ -1054,18 +837,6 @@ async function _enrichirDeplacements(depls) {
   });
 }
 
-// ⚠️ Bug corrigé le 24/06/2026 (PGRST201) : depuis l'ajout de la colonne
-// valide_par (qui référence elle aussi membres(id)), inscriptions_deplacement
-// a DEUX clés étrangères vers membres (membre_id et valide_par). PostgREST
-// ne peut plus deviner laquelle utiliser pour l'embed implicite
-// membre:membres(...) et renvoie une erreur PGRST201 (relation ambiguë),
-// silencieusement absorbée ici par `inscrits || []` — résultat : data
-// devenait null, masqué comme un simple "aucun inscrit". La syntaxe
-// membres!inscriptions_deplacement_membre_id_fkey(...) précise explicitement
-// quelle FK suivre (celle du membre inscrit, pas celle du validateur).
-// Statut d'une seule inscription déplacement, par id — utilisé
-// uniquement par la pop-up de confirmation au retour de HelloAsso (08/07/
-// 2026), pas besoin de la liste complète pour ce cas précis.
 async function getStatutInscriptionDepl(id) {
   const { data, error } = await sb.from('inscriptions_deplacement')
     .select('statut_paiement, deplacement:deplacements(adversaire)')
@@ -1092,16 +863,10 @@ async function getDeplacement(id) {
   return { deplacement: data, inscrits: inscrits || [], monInscrit, nbInscrits };
 }
 
-// Quota par PAYEUR (pas par participant) — un membre peut avoir réservé
-// plusieurs places sur plusieurs commandes séparées pour le même
-// déplacement (lui + des amis à des moments différents) ; le total
-// compte toutes les lignes où il est payeur_id, pas seulement membre_id
-// (cf. migration_deplacements_avance.sql — mirroir du quota Sticks/Matos,
-// getMonQuotaStick).
 async function getMonQuotaDepl(deplacementId) {
   const { data: d } = await sb.from('deplacements')
     .select('quota_par_membre').eq('id', deplacementId).single();
-  if (!d?.quota_par_membre) return null; // pas de quota configuré
+  if (!d?.quota_par_membre) return null;
   const { data: mesInscriptions } = await sb.from('inscriptions_deplacement')
     .select('id')
     .eq('deplacement_id', deplacementId)
@@ -1110,25 +875,14 @@ async function getMonQuotaDepl(deplacementId) {
   return { quota: d.quota_par_membre, utilise, restant: d.quota_par_membre - utilise };
 }
 
-// ⚠️ Remplacée le 09/07/2026 (demande Remi) : renvoyait auparavant TOUS
-// les membres actifs, ce qui exposait la liste complète des membres à
-// n'importe qui (et pas seulement leur pseudo). Ne renvoie désormais que
-// les amitiés CONFIRMÉES du membre connecté — cf. getMesAmis() ci-dessous.
 async function getMembresPourAmisDepl() {
   return await getMesAmis();
 }
 
 // ============================================================
-// AMITIÉS ("Mes amis") — demande Remi 09/07/2026
+// AMITIÉS
 // ============================================================
-// Deux FK vers membres sur la même table (demandeur_id, destinataire_id)
-// — comme documenté en tête de ce fichier pour inscriptions_deplacement,
-// contrainte explicite nécessaire dès le premier embed pour éviter une
-// erreur PGRST201 (relation ambiguë).
 
-// Amis confirmés (statut 'acceptee') — renvoie toujours "l'autre
-// personne" de la relation, peu importe qui avait envoyé la demande à
-// qui à l'origine.
 async function getMesAmis() {
   const { data, error } = await sb.from('amities')
     .select(`
@@ -1182,11 +936,6 @@ async function envoyerDemandeAmitie(destinataireId) {
   return data;
 }
 
-// Recherche par PSEUDO uniquement (jamais par nom/prénom dans la requête
-// elle-même) — chercher quelqu'un par son nom irait à l'encontre de la
-// confidentialité demandée. nom/prenom sont quand même renvoyés dans le
-// résultat : c'est l'affichage (nomAfficheMembre, app.js) qui décide de
-// les montrer ou non selon que le membre connecté est Bureau/Admin.
 async function rechercherMembrePourAmi(recherche) {
   const { data, error } = await sb.from('membres')
     .select('id, pseudo_telegram, nom, prenom')
@@ -1198,11 +947,6 @@ async function rechercherMembrePourAmi(recherche) {
   return data || [];
 }
 
-// Annulation d'une inscription par le membre lui-même — uniquement si
-// le paiement n'est pas encore confirmé (en_attente ou refuse). Une fois
-// payé, seul un admin peut annuler (cf. updateDeplacement côté admin).
-// ⚠️ Migration nécessaire : 'annule' doit exister dans la contrainte CHECK
-// de inscriptions_deplacement.statut_paiement (cf. migration_ajout_annule.sql).
 async function annulerInscriptionDepl(inscriptionId) {
   const { data: insc, error: fetchErr } = await sb.from('inscriptions_deplacement')
     .select('statut_paiement, membre_id').eq('id', inscriptionId).single();
@@ -1218,8 +962,6 @@ async function annulerInscriptionDepl(inscriptionId) {
   return { success: true };
 }
 
-// Annulation admin d'une inscription (tous statuts non payés) — ne vérifie
-// pas membre_id (l'admin peut annuler pour n'importe qui).
 async function annulerInscriptionDeplAdmin(inscriptionId) {
   const { data: insc, error: fetchErr } = await sb.from('inscriptions_deplacement')
     .select('statut_paiement').eq('id', inscriptionId).single();
@@ -1234,10 +976,6 @@ async function annulerInscriptionDeplAdmin(inscriptionId) {
   return { success: true };
 }
 
-// Relance de paiement pour une inscription DÉJÀ existante (refusée ou en
-// attente) — forme d'appel strictement identique à l'ancien comportement
-// (avant l'ajout des amis/invités), pour continuer à fonctionner sans
-// attendre la moindre évolution de l'Edge Function côté serveur.
 async function relancerPaiementDeplacement(deplacementId) {
   const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
     body: { deplacementId },
@@ -1248,24 +986,6 @@ async function relancerPaiementDeplacement(deplacementId) {
   return data;
 }
 
-// ⚠️ Nécessite une évolution de l'Edge Function helloasso-create-checkout
-// (non incluse ici — son code source n'a pas été fourni dans cette
-// session). Jusqu'ici elle prenait { deplacementId } et créait UNE ligne
-// inscriptions_deplacement pour currentUser, pour un montant = prix_total.
-// Contrat attendu désormais, uniquement pour une TOUTE NOUVELLE
-// inscription (jamais pour relancer un paiement existant — cf.
-// relancerPaiementDeplacement ci-dessus, qui reste inchangée) : appel
-// avec { deplacementId, participants }, où participants est un tableau :
-//   { type: 'moi' }
-//   { type: 'ami', membreId: '...' }
-//   { type: 'invite', nom: '...', prenom: '...', email: '...' }
-// → côté serveur, créer UNE ligne inscriptions_deplacement par
-// participant (membre_id renseigné pour 'moi'/'ami', invite_* pour
-// 'invite'), toutes avec payeur_id = currentUser.id, et un montant
-// HelloAsso total = prix_total × participants.length. Le reste du flux
-// (webhook, statuts paye_ha/refuse/rembourse) ne change pas de logique,
-// juste appliqué à plusieurs lignes au lieu d'une avec la même référence
-// de paiement.
 async function demanderInscriptionDeplacementHelloAsso(deplacementId, participants) {
   const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
     body: { deplacementId, participants },
@@ -1276,9 +996,6 @@ async function demanderInscriptionDeplacementHelloAsso(deplacementId, participan
   return data;
 }
 
-// ⚠️ Changé le 09/07/2026 (demande Remi, multi-personnes) : prenait avant
-// (deplacementId, membreId) — ne fonctionne plus pour un invité hors app
-// (pas de membre_id). Identifie directement la ligne par inscriptionId.
 async function validerPaiementCash(inscriptionId) {
   const { data: inscription, error: fetchError } = await sb.from('inscriptions_deplacement')
     .select('id, membre_id').eq('id', inscriptionId).single();
@@ -1293,17 +1010,11 @@ async function validerPaiementCash(inscriptionId) {
     })
     .eq('id', inscriptionId);
   if (error) throw error;
-  // Pas d'évaluation à recalculer pour un invité hors app (pas de compte).
   if (inscription.membre_id) recalculerEvaluationDeplacement(inscription.membre_id);
   return { success: true, qrCode };
 }
 
 async function validerPaiementHelloAsso(deplacementId, membreId) {
-  // ⚠️ Avant le 21/06/2026 cette fonction écrivait 'paye_helloasso', valeur
-  // qui n'a JAMAIS existé dans la contrainte CHECK réelle de la table
-  // (seule 'paye_ha' est autorisée) — tout appel à cette fonction aurait dû
-  // échouer avec une violation de contrainte. Corrigé en même temps que
-  // l'intégration HelloAsso Checkout (cf. TODO_HELLOASSO.md).
   const qrCode = `UL-HA-${Date.now()}-${membreId.slice(0,6).toUpperCase()}`;
   const { error } = await sb.from('inscriptions_deplacement')
     .update({
@@ -1315,12 +1026,10 @@ async function validerPaiementHelloAsso(deplacementId, membreId) {
     .eq('deplacement_id', deplacementId)
     .eq('membre_id', membreId);
   if (error) throw error;
-  recalculerEvaluationDeplacement(membreId); // best-effort, ne bloque pas la validation
+  recalculerEvaluationDeplacement(membreId);
   return { success: true, qrCode };
 }
 
-// Appelle l'Edge Function qui recalcule la note "déplacement" (service_role, bypass RLS).
-// Volontairement non bloquant : un échec ici ne doit jamais empêcher la validation du paiement.
 async function recalculerEvaluationDeplacement(membreId) {
   try {
     const resp = await sb.functions.invoke('update-evaluation-deplacement', {
@@ -1368,28 +1077,10 @@ async function getListeBusTelegram(deplacementId) {
 }
 
 // ============================================================
-// MATOS / STICKS / COTISATIONS
-// ============================================================
-// Les implémentations vivent dans les sections "BOUTIQUE — MATOS",
-// "BOUTIQUE — STICKS" et "BOUTIQUE — COTISATIONS" plus bas dans ce
-// fichier. Une première génération de fonctions (passerCommande(items),
-// getMesCommandes, getSticksCatalogue, distribuerStick, getMaCotisation,
-// validerCotisation) vivait ici : dupliquée, avec un bug de détection
-// Admin/Bureau, et jamais appelée par aucun module depuis le split en
-// app.js/tifos.js/deplacements.js/boutique.js/calendrier.js/admin.js/
-// profil.js. Supprimée pour ne garder qu'une seule implémentation par
-// fonction — les versions corrigées ci-dessous.
-
-// ============================================================
 // ANNONCES
 // ============================================================
 
 async function getAnnonces() {
-  // Schéma réel confirmé le 09/07/2026 (information_schema.columns) :
-  // annonces = id, titre, contenu, categorie, created_at. Ni actif ni
-  // publie_par n'existent — filtre et enrichissement auteur retirés en
-  // conséquence (l'auteur n'était de toute façon jamais affiché nulle
-  // part côté front).
   const { data, error } = await sb.from('annonces')
     .select('*')
     .order('created_at', { ascending: false })
@@ -1399,11 +1090,6 @@ async function getAnnonces() {
 }
 
 async function publierAnnonce(titre, contenu, categorie = 'info') {
-  // Schéma réel confirmé le 09/07/2026 (information_schema.columns) :
-  // annonces = id, titre, contenu, categorie, created_at. Ni cellule_id,
-  // ni actif, ni publie_par n'existent — les trois ont été retirés au fil
-  // des corrections précédentes (deviner colonne par colonne s'est avéré
-  // trop lent ; la vraie liste de colonnes règle tout d'un coup).
   const { error } = await sb.from('annonces').insert({
     titre, contenu, categorie,
   });
@@ -1412,27 +1098,15 @@ async function publierAnnonce(titre, contenu, categorie = 'info') {
 }
 
 // ============================================================
-// CODES DE RÉABONNEMENT (Cartage 26-27, page "Mon (ré)abonnement")
+// CODES DE RÉABONNEMENT
 // ============================================================
-// Passe par des fonctions Postgres security definer (cf. migration_
-// reabonnement_page.sql) plutôt que par une requête directe sur la table
-// codes_reabonnement : cette table contient les emails/noms de TOUS les
-// payeurs, jamais consultable en direct par un membre.
 
-// Retrouve le(s) code(s) de réabonnement associé(s) à l'email du membre
-// connecté — remplace la saisie manuelle : l'app affiche directement le
-// code au lieu de demander au membre de le retaper (cf. migration_
-// reabonnement_page.sql, retour Remi 09/07/2026 "je ne vois pas les
-// codes").
 async function getMesCodesReabonnement() {
   const { data, error } = await sb.rpc('get_mes_codes_reabonnement');
   if (error) throw error;
   return data || [];
 }
 
-// Statut global (Bureau/Admin peut masquer la page "Mon (ré)abonnement"
-// en dehors de la période de campagne) — lecture publique, table à une
-// seule ligne (parametres_reabonnement).
 async function getStatutReabonnement() {
   const { data, error } = await sb.from('parametres_reabonnement').select('ouvert').eq('id', 1).single();
   if (error) throw error;
@@ -1445,22 +1119,12 @@ async function setReabonnementOuvert(ouvert) {
   return data;
 }
 
-// Recherche Bureau/Admin d'un code (par nom/prénom/email/code) — pour
-// vérifier qu'une personne a bien un code sans attendre qu'elle se
-// connecte elle-même sur "Mon (ré)abonnement". Le rôle est vérifié côté
-// serveur (cf. migration_admin_recherche_code.sql) : un membre non
-// Bureau/Admin obtient toujours un tableau vide.
 async function rechercherCodeReabonnementAdmin(recherche) {
   const { data, error } = await sb.rpc('admin_rechercher_code_reabonnement', { p_recherche: (recherche||'').trim() });
   if (error) throw error;
   return data || [];
 }
 
-// Toute la table en un appel (Bureau/Admin/Comité) — pour affichage
-// direct du code sur chaque carte membre (page Comité de passage) au
-// lieu d'une recherche au cas par cas, cf. migration_liste_codes_
-// reabonnement.sql (retour Remi 09/07/2026, "il faudrait surtout avoir
-// le code ici").
 async function listerCodesReabonnementAdmin() {
   const { data, error } = await sb.rpc('admin_lister_codes_reabonnement');
   if (error) throw error;
@@ -1470,10 +1134,7 @@ async function listerCodesReabonnementAdmin() {
 // ============================================================
 // CONNEXION EN TANT QUE (Admin uniquement)
 // ============================================================
-// Passe par l'Edge Function admin-generer-lien-connexion (service_role,
-// seule habilitée à générer un vrai lien de connexion pour n'importe quel
-// compte) — jamais de service_role côté client. Le rôle admin_app est
-// revérifié côté serveur, indépendamment de ce que montre l'UI.
+
 async function genererLienConnexionAdmin(membreId) {
   const { data, error } = await sb.functions.invoke('admin-generer-lien-connexion', {
     body: { membreId },
@@ -1481,7 +1142,7 @@ async function genererLienConnexionAdmin(membreId) {
   if (error) throw new Error(error.message || 'Impossible de générer le lien');
   if (data?.error) throw new Error(data.error);
   if (!data?.lien) throw new Error('Réponse invalide du serveur');
-  return data; // { success, lien, cible: { prenom, nom, email } }
+  return data;
 }
 
 // ============================================================
@@ -1505,11 +1166,6 @@ async function getStats() {
   };
 }
 
-// ⚠️ Refonte 09/07/2026 (demande Remi) : "Matchs (saison)" doit être le
-// total de présences PERSONNELLES (domicile + extérieur), pas le nombre
-// de matchs au calendrier de la saison — corrigé après un premier essai
-// qui comptait tous les matchs programmés, sans rapport avec l'assiduité
-// du membre.
 async function getMesStats() {
   const [presencesTifo, presencesDomicile, presencesExterieur] = await Promise.all([
     sb.from('inscriptions_session').select('id', { count: 'exact', head: true }).eq('membre_id', currentUser.id).eq('statut','present'),
@@ -1526,38 +1182,6 @@ async function getMesStats() {
   };
 }
 
-// ============================================================
-// STATS TIFO (12/07/2026, demande Remi) — pour l'onglet dédié de la page
-// Stats Admin. Tout calculé côté client à partir de 4 requêtes brutes
-// (sessions, présences+statut/section du membre, population Confirmé+
-// Draft, sections actives) — volume faible (dizaines de lignes par
-// saison), pas besoin de RPC dédiée pour l'instant.
-//
-// Point d'attention pour les calculs basés sur le temps (nouveaux
-// participants, évolution mensuelle) : on utilise la DATE DE LA SESSION
-// (sessions_tifo.date), jamais inscriptions_session.created_at — sinon
-// un import massif d'historique (comme celui du 12/07/2026) fausserait
-// tout en faisant apparaître une vague de "nouveaux participants"
-// aujourd'hui, alors que les présences réelles datent de plusieurs mois.
-// ============================================================
-// ============================================================
-// STATS TIFO (12/07/2026, complétée le 12/07/2026 — demande Remi) — pour
-// l'onglet dédié de la page Stats Admin. Tout calculé côté client à
-// partir de requêtes brutes (sessions, présences+statut/section/rôles du
-// membre, population Confirmé+Draft, cellule Tifo, sections actives) —
-// volume faible (dizaines de lignes par saison), pas besoin de RPC
-// dédiée pour l'instant.
-//
-// Point d'attention pour les calculs basés sur le temps (nouveaux
-// participants, décrocheurs, évolution mensuelle) : on utilise la DATE
-// DE LA SESSION (sessions_tifo.date), jamais inscriptions_session.
-// created_at — sinon un import massif d'historique fausserait tout en
-// faisant apparaître une vague de "nouveaux participants" au moment de
-// l'import, alors que les présences réelles datent de plusieurs mois.
-//
-// @param {string|null} saison — filtre optionnel (ex: '2026-2027').
-// null = toutes saisons confondues.
-// ============================================================
 async function getStatsTifo(saison = null) {
   let sessionsQuery = sb.from('sessions_tifo').select('id, nom, date, statut, type_session, lieu, saison, capacite_max');
   if (saison) sessionsQuery = sessionsQuery.eq('saison', saison);
@@ -1578,24 +1202,20 @@ async function getStatsTifo(saison = null) {
 
   const sessions = sessionsRes.data || [];
   const sessionIds = new Set(sessions.map(s => s.id));
-  // Filtre par saison appliqué en repli côté client sur les inscriptions
-  // (la table inscriptions_session n'a pas de colonne saison propre — on
-  // se base sur l'appartenance de session_id à la liste déjà filtrée).
   const inscriptions = (inscriptionsRes.data || []).filter(i => sessionIds.has(i.session_id));
-  const population = popRes.data || []; // Confirmés + Draft uniquement
+  const population = popRes.data || [];
   const celluleTifo = celluleTifoRes.data || [];
   const sections = sectionsRes.data || [];
 
   const sessionById = new Map(sessions.map(s => [s.id, s]));
   const presences = inscriptions.filter(i => i.statut === 'present');
 
-  // ── Vue d'ensemble ──────────────────────────────────────────
   const totalSessions = sessions.length;
   const sessionsAVenir = sessions.filter(s => s.statut === 'a_venir').length;
   const sessionsTerminees = sessions.filter(s => s.statut === 'terminee').length;
   const totalPresences = presences.length;
 
-  const parMembre = new Map(); // membre_id -> { membre, nb, dates:[] }
+  const parMembre = new Map();
   for (const p of presences) {
     if (!p.membre_id) continue;
     if (!parMembre.has(p.membre_id)) parMembre.set(p.membre_id, { membre: p.membre, nb: 0, dates: [] });
@@ -1632,20 +1252,15 @@ async function getStatsTifo(saison = null) {
     return b;
   }
   const buckets = calculerBuckets(population);
-  // KPI #6 (12/07/2026, demande Remi) : mêmes tranches, séparées
-  // Confirmé / Draft — révèle si le décrochage touche plutôt l'un ou
-  // l'autre plutôt qu'un chiffre global qui les mélange.
   const bucketsParStatut = {
     confirme: calculerBuckets(population.filter(m => m.statut === 'confirme')),
     draft: calculerBuckets(population.filter(m => m.statut === 'draft')),
   };
 
-  // ── Répartition ──────────────────────────────────────────────
   const repartitionType = sessions.reduce((acc, s) => { acc[s.type_session] = (acc[s.type_session] || 0) + 1; return acc; }, {});
   const repartitionLieu = sessions.reduce((acc, s) => { const l = s.lieu || 'Non renseigné'; acc[l] = (acc[l] || 0) + 1; return acc; }, {});
   const presencesParStatut = presences.reduce((acc, p) => { const st = p.membre?.statut || 'inconnu'; acc[st] = (acc[st] || 0) + 1; return acc; }, {});
 
-  // ── Classement & assiduité ──────────────────────────────────
   const classement = [...parMembre.values()].sort((a, b) => b.nb - a.nb);
   const resolus = inscriptions.filter(i => i.statut === 'present' || i.statut === 'absent');
   const absents = inscriptions.filter(i => i.statut === 'absent');
@@ -1660,21 +1275,10 @@ async function getStatsTifo(saison = null) {
     if (new Date(premiereDate) >= il30j) nouveauxParticipants++;
   }
 
-  // KPI #1 (12/07/2026) — taux de rétention : parmi ceux qui sont venus
-  // au moins une fois, quelle proportion est revenue au moins une
-  // deuxième fois. Mesure l'engagement réel, pas juste la découverte.
   const nbAuMoinsUne = parMembre.size;
   const nbAuMoinsDeux = [...parMembre.values()].filter(e => e.nb >= 2).length;
   const tauxRetention = nbAuMoinsUne ? nbAuMoinsDeux / nbAuMoinsUne : 0;
 
-  // KPI #2 (12/07/2026) — décrocheurs : au moins une présence, mais la
-  // plus RÉCENTE remonte à plus de 45 jours (~ 1,5 mois, cohérent avec un
-  // rythme de session toutes les 2 à 4 semaines observé). Repose sur
-  // sessions_tifo.date, jamais sur "aujourd'hui" par rapport à une
-  // session future non encore passée (filtré via sess?.date déjà passé
-  // au moment de l'ajout dans entry.dates, cf. boucle plus haut — inclut
-  // en théorie des dates futures si une présence était déjà enregistrée
-  // par erreur sur une session à venir, cas limite ignoré ici).
   const SEUIL_DECROCHAGE_JOURS = 45;
   const seuilDecrochage = new Date(aujourdHui.getTime() - SEUIL_DECROCHAGE_JOURS * 24 * 3600 * 1000);
   const decrocheurs = [];
@@ -1685,12 +1289,8 @@ async function getStatsTifo(saison = null) {
       decrocheurs.push({ membre: entry.membre, nb: entry.nb, derniereDate });
     }
   }
-  decrocheurs.sort((a, b) => b.derniereDate.localeCompare(a.derniereDate)); // décroché le plus récemment en premier
+  decrocheurs.sort((a, b) => b.derniereDate.localeCompare(a.derniereDate));
 
-  // KPI #3 (12/07/2026) — cadence réelle : nombre moyen de jours entre
-  // deux sessions consécutives (toutes confondues, à venir incluses si
-  // elles ont une date, pour refléter le rythme d'organisation prévu
-  // autant que passé).
   const sessionsTrieesCadence = [...sessions].filter(s => s.date).sort((a, b) => a.date.localeCompare(b.date));
   let cadenceMoyenneJours = null;
   if (sessionsTrieesCadence.length >= 2) {
@@ -1701,16 +1301,9 @@ async function getStatsTifo(saison = null) {
     cadenceMoyenneJours = totalJours / (sessionsTrieesCadence.length - 1);
   }
 
-  // KPI #4 (12/07/2026) — participation de la cellule Tifo elle-même :
-  // sur l'ensemble des membres ayant le rôle cellule_tifo, quelle
-  // proportion a au moins une présence enregistrée sur la période.
   const celluleTifoAvecPresence = celluleTifo.filter(m => parMembre.has(m.id)).length;
   const tauxParticipationCelluleTifo = celluleTifo.length ? celluleTifoAvecPresence / celluleTifo.length : null;
 
-  // KPI #5 (12/07/2026) — taux de remplissage moyen : seulement sur les
-  // sessions où une capacité a été renseignée (capacite_max) — les
-  // autres n'ont simplement pas de seuil à comparer, donc exclues du
-  // calcul plutôt que faussées à 0%.
   const sessionsAvecCapacite = sessions.filter(s => s.capacite_max);
   let tauxRemplissageMoyen = null;
   if (sessionsAvecCapacite.length) {
@@ -1721,12 +1314,6 @@ async function getStatsTifo(saison = null) {
     tauxRemplissageMoyen = totalPct / sessionsAvecCapacite.length;
   }
 
-  // ── Évolution ────────────────────────────────────────────────
-  // Timeline unifiée : les deux séries doivent partager le même axe des
-  // mois pour être affichées sur UNE courbe combinée — sinon un mois avec
-  // une session mais 0 présence (ex: une session à venir pas encore
-  // passée) apparaît dans l'une des deux séries mais pas l'autre, ce qui
-  // décale les points si on les traite indépendamment.
   const parMoisPresences = new Map();
   for (const p of presences) {
     const sess = sessionById.get(p.session_id);
@@ -1749,11 +1336,10 @@ async function getStatsTifo(saison = null) {
     presences: tousMois.map(m => parMoisPresences.get(m) || 0),
     cumulUniques: tousMois.map(m => {
       if (parMoisCumul.has(m)) dernierCumul = parMoisCumul.get(m);
-      return dernierCumul; // report du cumul si le mois n'a pas de nouvelle session
+      return dernierCumul;
     }),
   };
 
-  // ── Classement des sections ──────────────────────────────────
   const sectionById = new Map(sections.map(s => [s.id, s.nom]));
   const parSection = new Map();
   for (const p of presences) {
@@ -1778,9 +1364,6 @@ async function getStatsTifo(saison = null) {
     tauxParticipationCelluleTifo, celluleTifoTotal: celluleTifo.length, celluleTifoAvecPresence,
     tauxRemplissageMoyen, nbSessionsAvecCapacite: sessionsAvecCapacite.length,
     evolution, classementSections,
-    // Détail brut des présences (12/07/2026) — utilisé côté admin.js pour
-    // recalculer le classement filtré par type de session sans nouvel
-    // aller-retour serveur au clic (cf. calculerClassementFiltreTifo).
     presencesDetail: presences.map(p => ({
       membre_id: p.membre_id, membre: p.membre,
       type: sessionById.get(p.session_id)?.type_session,
@@ -1788,10 +1371,6 @@ async function getStatsTifo(saison = null) {
   };
 }
 
-// Liste des saisons distinctes présentes en base (12/07/2026) — alimente
-// le sélecteur de saison de l'onglet Stats Tifo. Triée la plus récente
-// en premier (tri texte décroissant, fonctionne tant que le format reste
-// "AAAA-AAAA").
 async function getSaisonsTifoDisponibles() {
   const { data, error } = await sb.from('sessions_tifo').select('saison');
   if (error) throw error;
@@ -1841,11 +1420,6 @@ async function getProduits() {
     if (p.visible_membres === false && !voitBrouillon) return false;
     if (isAdminBureauCellule) return true;
     if (p.niveau_acces === 'tous') return true;
-    // "Ultra Lutetia" est la section "parapluie" : son contenu est visible
-    // par TOUS les membres quelle que soit leur propre section — les
-    // autres sections restent strictement privées à leurs membres (cf.
-    // matrice de visibilité, demande Remi 15/07/2026 — même règle que
-    // getSticks()).
     const sectionEstUltraLutetia = p.section?.nom?.toLowerCase() === 'ultra lutetia';
     const memeSection = sectionEstUltraLutetia || (sectionId && p.section_id === sectionId);
     if (p.niveau_acces === 'draft_confirme') {
@@ -1884,12 +1458,6 @@ async function archiverProduit(id) {
   return updateProduit(id, { statut: 'archive' });
 }
 
-// Commande CASH uniquement — le paiement HelloAsso passe désormais par
-// l'Edge Function helloasso-create-checkout (cf. demanderCommandeHelloAsso
-// ci-dessous), qui crée elle-même la commande côté serveur. Cash n'est
-// autorisé que pour un article en mode 'stock' (règle actée le 05/07/2026 —
-// pour un article en précommande, il faut une preuve de paiement en amont
-// de la réception, donc HelloAsso obligatoire).
 async function passerCommande(produitId, taille, quantite = 1) {
   const produit = await getProduitById(produitId);
   if (!produit) throw new Error('Article introuvable');
@@ -1915,14 +1483,6 @@ async function passerCommande(produitId, taille, quantite = 1) {
     mode_paiement: 'cash',
   }).select().single();
   if (error) throw error;
-  // ⚠️ BUG CORRIGÉ (07/07/2026) : cet insert n'était jamais vérifié —
-  // cause réelle trouvée le 07/07/2026 : la colonne prix_unitaire
-  // n'existait pas sur commande_items (cf.
-  // migration_commande_items_prix_unitaire.sql), donc l'insert échouait
-  // en silence à chaque fois depuis l'introduction du mode HelloAsso pour
-  // Matos — la commande partait quand même sans aucune ligne d'article.
-  // Corrigé pour vérifier l'erreur et annuler proprement la commande si
-  // l'insertion des lignes échoue.
   const { error: itemError } = await sb.from('commande_items').insert({
     commande_id: commande.id,
     produit_id: produitId,
@@ -1937,14 +1497,6 @@ async function passerCommande(produitId, taille, quantite = 1) {
   return commande;
 }
 
-// Achat Cash enregistré par un admin AU NOM d'un membre (nouveau, 05/07/2026
-// — bouton "💵 Cash" de la page Admin "Gérer la boutique matos"), même
-// principe que distribuerStickAdmin pour les Sticks : le paiement étant
-// déjà encaissé sur-le-champ par l'admin, la commande part directement en
-// 'disponible' (pas de 'en_attente') — reste à confirmer le retrait par
-// scan QR (cf. scan.js, contexte 'matos') ou par le bouton manuel de
-// filet de secours. Cash réservé aux articles en mode 'stock' (même règle
-// que passerCommande).
 async function distribuerProduitAdmin(produitId, membreId, taille, quantite = 1) {
   const produit = await getProduitById(produitId);
   if (!produit) throw new Error('Article introuvable');
@@ -1970,9 +1522,6 @@ async function distribuerProduitAdmin(produitId, membreId, taille, quantite = 1)
     mode_paiement: 'cash',
   }).select().single();
   if (error) throw error;
-  // ⚠️ BUG CORRIGÉ (07/07/2026) — même correctif que passerCommande
-  // ci-dessus : vérification d'erreur + annulation de la commande si
-  // l'insertion des lignes échoue.
   const { error: itemError } = await sb.from('commande_items').insert({
     commande_id: commande.id,
     produit_id: produitId,
@@ -1986,9 +1535,6 @@ async function distribuerProduitAdmin(produitId, membreId, taille, quantite = 1)
   }
   return commande;
 }
-// Commande HelloAsso — délègue entièrement à l'Edge Function (elle crée
-// la commande + commande_item côté serveur, contrairement à passerCommande
-// qui le fait ici). Retourne { redirectUrl } pour que le front redirige.
 async function demanderCommandeHelloAsso(produitId, taille, quantite = 1) {
   const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
     body: { produitId, taille, quantite },
@@ -1999,17 +1545,6 @@ async function demanderCommandeHelloAsso(produitId, taille, quantite = 1) {
   return data;
 }
 
-// ⚠️ Point ouvert (07/07/2026, signalé par Remi) : l'article commandé
-// n'apparaissait pas dans "Mes commandes" côté membre, alors que le prix/
-// statut/date s'affichaient bien. Hypothèse la plus probable : la table
-// commande_items a RLS activé sans policy de lecture pour le membre
-// propriétaire (contrairement à sticks_distribution, qui n'a pas ce
-// problème — l'article y est directement sur la ligne, sans table
-// enfant séparée à traverser). Voir migration_rls_commande_items.sql —
-// ajoute la policy manquante. Si le problème persiste après avoir exécuté
-// cette migration, il faudra vérifier les policies existantes de plus
-// près (peut-être une policy déjà présente mais mal écrite plutôt
-// qu'absente).
 async function getMesCommandes() {
   const { data, error } = await sb.from('commandes')
     .select('*, commande_items(*, produit:produits(nom, photo_url, categorie, mode, precommande_livraison_estimee))')
@@ -2019,19 +1554,6 @@ async function getMesCommandes() {
   return data || [];
 }
 
-// ⚠️ BUG CORRIGÉ (07/07/2026) — même cause que celle déjà rencontrée et
-// corrigée sur getAllDistributions() le 05/07/2026 : depuis l'ajout de la
-// colonne receptionnee_par (référençant elle aussi membres(id)) lors de
-// la restructuration Matos/Sticks, la table commandes a DEUX clés
-// étrangères vers membres (membre_id ET receptionnee_par). Sans préciser
-// laquelle utiliser, PostgREST refuse la requête avec une erreur
-// d'ambiguïté (statut 300) — non catchée ici (seul `data` était
-// déstructuré, jamais `error`), donc getAllCommandes() retournait []  en
-// silence. Symptôme observé : "Mes commandes" (getMesCommandes, qui ne
-// fait pas ce join) affichait bien les commandes du membre, mais aucune
-// commande n'apparaissait jamais dans la page Admin → Gestion, même en
-// filtrant "En cours". Corrigé en précisant la contrainte FK exacte — on
-// veut le membre auteur de la commande, pas l'admin qui l'a réceptionnée.
 async function getAllCommandes() {
   const { data, error } = await sb.from('commandes')
     .select('*, membre:membres!commandes_membre_id_fkey(nom, prenom, pseudo_telegram), commande_items(*, produit:produits(nom, mode))')
@@ -2042,19 +1564,6 @@ async function getAllCommandes() {
 }
 
 async function updateCommandeStatut(commandeId, statut) {
-  // ⚠️ BUG CORRIGÉ (05/07/2026) : la décrémentation se faisait ici à la
-  // transition en_attente→disponible/precommande_validee — ce qui
-  // fonctionnait pour le Cash (confirmé côté client via
-  // confirmerPaiementCashCommande, qui appelle bien cette fonction JS),
-  // mais JAMAIS pour HelloAsso : la confirmation de paiement HelloAsso
-  // passe par l'Edge Function helloasso-webhook, du code Deno serveur
-  // totalement séparé qui ne peut pas appeler cette fonction JS — un
-  // achat Matos payé en HelloAsso ne décrémentait donc jamais le stock.
-  // Déplacé sur la transition vers 'distribue' (déclenchée uniquement par
-  // le scan ou la confirmation manuelle admin, toujours côté client quel
-  // que soit le mode de paiement d'origine) — unifié avec le
-  // comportement déjà correct de Sticks (validerPaiementStick décrémente
-  // au même moment, cf. supabase-client.js).
   if (statut === 'distribue') {
     const { data: commandeActuelle } = await sb.from('commandes')
       .select('statut, commande_items(produit_id, quantite)')
@@ -2071,13 +1580,6 @@ async function updateCommandeStatut(commandeId, statut) {
       }
     }
   }
-  // ⚠️ BUG CORRIGÉ (07/07/2026) : cet update écrivait aussi updated_at,
-  // colonne qui n'existe pas sur commandes (jamais ajoutée en migration) —
-  // PostgREST rejetait l'update entier ("Could not find the 'updated_at'
-  // column"), bloquant le scan de retrait Matos ("Confirmer retrait"), qui
-  // n'avait jamais été testé en conditions réelles jusqu'ici. Rien ne lit
-  // ce champ ailleurs dans le code, donc simplement retiré plutôt que
-  // d'ajouter la colonne pour rien.
   const { error } = await sb.from('commandes')
     .update({ statut })
     .eq('id', commandeId);
@@ -2085,18 +1587,10 @@ async function updateCommandeStatut(commandeId, statut) {
   return { success: true };
 }
 
-// Confirme le paiement Cash d'une commande 'en_attente' (stock uniquement,
-// cf. passerCommande) — passe directement en 'disponible', pas d'étape
-// 'precommande_validee' possible ici puisque Cash est refusé pour les
-// précommandes en amont.
 async function confirmerPaiementCashCommande(commandeId) {
   return updateCommandeStatut(commandeId, 'disponible');
 }
 
-// Action admin "réceptionné" — UNIQUEMENT pour une commande en
-// 'precommande_validee' (payée, en attente de réception physique). Passe
-// en 'disponible', prête pour le scan. Ne décrémente rien (déjà fait au
-// passage en 'precommande_validee', cf. updateCommandeStatut ci-dessus).
 async function receptionnerCommande(commandeId) {
   const { error } = await sb.from('commandes')
     .update({
@@ -2109,10 +1603,6 @@ async function receptionnerCommande(commandeId) {
   return { success: true };
 }
 
-// Statut intermédiaire "préparé" (07/07/2026, demande Remi) — un sac déjà
-// fait à l'avance, pas encore remis physiquement au membre. Purement
-// informatif pour l'équipe qui prépare, aucun changement d'affichage
-// côté membre (toujours "Disponible — à retirer" tant que non scanné).
 async function marquerCommandePreparee(commandeId) {
   const { error } = await sb.from('commandes')
     .update({
@@ -2145,10 +1635,6 @@ async function getSticks() {
     if (s.visible_membres === false && !voitBrouillon) return false;
     if (isAdminBureauCellule) return true;
     if (s.niveau_acces === 'tous') return true;
-    // "Ultra Lutetia" est la section "parapluie" : son contenu est visible
-    // par TOUS les membres quelle que soit leur propre section — les
-    // autres sections restent strictement privées à leurs membres (cf.
-    // matrice de visibilité, demande Remi 15/07/2026).
     const sectionEstUltraLutetia = s.section?.nom?.toLowerCase() === 'ultra lutetia';
     const memeSection = sectionEstUltraLutetia || (sectionId && s.section_id === sectionId);
     if (s.niveau_acces === 'draft_confirme') {
@@ -2188,7 +1674,7 @@ async function updateStick(id, updates) {
 async function getMonQuotaStick(stickId) {
   const { data: stick } = await sb.from('sticks_catalogue')
     .select('quota_par_membre').eq('id', stickId).single();
-  if (!stick?.quota_par_membre) return null; // pas de quota
+  if (!stick?.quota_par_membre) return null;
   const { data: distribs } = await sb.from('sticks_distribution')
     .select('quantite')
     .eq('stick_id', stickId)
@@ -2197,12 +1683,6 @@ async function getMonQuotaStick(stickId) {
   return { quota: stick.quota_par_membre, utilise: total, restant: stick.quota_par_membre - total };
 }
 
-// Demande HelloAsso — délègue à l'Edge Function (crée la ligne
-// sticks_distribution côté serveur, comme pour Matos). Remplace l'ancienne
-// demanderStick() qui créait la ligne ici mais n'était jamais réellement
-// appelée par le front (le seul chemin HelloAsso actif jusqu'ici était un
-// lien statique, cf. plan_helloasso.md §3 — Sticks HelloAsso confirmé le
-// 05/07/2026).
 async function demanderStickHelloAsso(stickId, quantite = 1) {
   const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
     body: { stickId, quantite },
@@ -2223,12 +1703,6 @@ async function getMesSticks() {
 }
 
 async function distribuerStickAdmin(stickId, membreId, quantite, modePaiement = 'cash') {
-  // Cash réservé aux articles en mode 'stock' (règle du 05/07/2026 — une
-  // précommande exige une preuve de paiement HelloAsso en amont). Le
-  // paiement étant déjà encaissé par l'admin au moment de cette action,
-  // la ligne part directement en 'disponible' (pas de 'en_attente' ici,
-  // contrairement au flux HelloAsso membre) — reste à scanner pour
-  // confirmer la remise physique.
   const { data: stick } = await sb.from('sticks_catalogue')
     .select('quota_par_membre, stock, mode').eq('id', stickId).single();
   if (modePaiement === 'cash' && stick?.mode === 'precommande') {
@@ -2254,26 +1728,11 @@ async function distribuerStickAdmin(stickId, membreId, quantite, modePaiement = 
   return { success: true };
 }
 
-// Confirme une distribution Stick et décrémente le stock — point d'entrée
-// unique utilisé par le scan QR (validerPaiementStick, déjà existante,
-// inchangée) ET par le bouton manuel de filet de secours (mêmes garanties
-// d'idempotence : jamais décrémenté deux fois si déjà confirmée).
-// Alias volontaire de validerPaiementStick pour un nommage plus clair côté
-// scan/bouton manuel, sans dupliquer la logique.
 async function confirmerDistributionStick(distribId) {
   return validerPaiementStick(distribId);
 }
 
 async function getAllDistributions() {
-  // ⚠️ sticks_distribution a deux FK vers membres (membre_id ET
-  // distribue_par) — sans préciser laquelle, PostgREST refuse la requête
-  // avec une erreur d'ambiguïté (statut 300), jamais détectée avant
-  // l'introduction du scan QR car personne n'avait encore appelé cette
-  // fonction en conditions réelles. getAllDistributions() retournait donc
-  // systématiquement [] en silence (pas de gestion d'erreur), masquant
-  // complètement le problème. Corrigé en précisant la contrainte FK
-  // exacte (membre:membres!sticks_distribution_membre_id_fkey) — on veut
-  // bien le membre destinataire, pas la personne qui a distribué.
   const { data, error } = await sb.from('sticks_distribution')
     .select('*, stick:sticks_catalogue(nom, categorie, prix, mode, lot), membre:membres!sticks_distribution_membre_id_fkey(nom, prenom, pseudo_telegram)')
     .order('created_at', { ascending: false })
@@ -2282,8 +1741,6 @@ async function getAllDistributions() {
   return data || [];
 }
 
-// Action admin "réceptionné" — UNIQUEMENT pour une distribution en
-// 'precommande_validee'. Équivalent Sticks de receptionnerCommande.
 async function receptionnerStick(distribId) {
   const { error } = await sb.from('sticks_distribution')
     .update({
@@ -2308,10 +1765,6 @@ async function marquerStickPrepare(distribId) {
   return { success: true };
 }
 
-// Changement de statut générique (Annuler notamment) — équivalent Sticks
-// de updateCommandeStatut. Pas de décrémentation de stock ici : elle est
-// gérée par validerPaiementStick au moment de 'distribue', pas concernée
-// par une annulation.
 async function updateDistribStatut(distribId, statut) {
   const { error } = await sb.from('sticks_distribution')
     .update({ statut })
@@ -2321,32 +1774,15 @@ async function updateDistribStatut(distribId, statut) {
 }
 
 async function validerPaiementStick(distribId) {
-  // ⚠️ Avant le 21/06/2026 cette fonction écrivait toujours
-  // statut:'paye_helloasso', incohérent avec le reste de l'UI qui affiche
-  // 'distribue' comme statut final de remise (cf. boutique.js,
-  // renderMesSticks/renderToutesDistribs) — un Stick confirmé via le mode
-  // Cash se serait donc retrouvé avec un statut "paye_helloasso" trompeur.
-  // Corrigé pour écrire 'distribue', cohérent quel que soit le
-  // mode_paiement d'origine (cash ou helloasso) — c'est désormais le
-  // statut final commun aux deux flux, confirmé par scan ou bouton manuel.
   const { data: distrib } = await sb.from('sticks_distribution')
     .select('stick_id, quantite, statut').eq('id', distribId).single();
   if (distrib && distrib.statut !== 'disponible' && distrib.statut !== 'prepare' && distrib.statut !== 'distribue') {
-    // Sécurité : on ne confirme une remise que depuis 'disponible'/'prepare'
-    // (payé et prêt, préparé à l'avance ou non) — un scan sur une ligne
-    // encore 'en_attente' ou 'precommande_validee' serait un état
-    // incohérent (ne devrait jamais arriver via l'UI normale, qui ne
-    // propose au scan que ces lignes-là, cf. scan.js). Un statut déjà
-    // 'distribue' est accepté sans erreur (idempotence en cas de
-    // double-clic).
     throw new Error('Cette remise n\'est pas encore disponible (paiement non confirmé ou précommande non réceptionnée)');
   }
   const { error } = await sb.from('sticks_distribution')
     .update({ statut: 'distribue' })
     .eq('id', distribId);
   if (error) throw error;
-  // Décrémentation au moment de la confirmation — jamais si déjà confirmée
-  // avant (évite une double décrémentation en cas de double-clic/rappel).
   if (distrib && distrib.statut !== 'distribue') {
     const { data: stick } = await sb.from('sticks_catalogue')
       .select('stock').eq('id', distrib.stick_id).single();
@@ -2360,25 +1796,10 @@ async function validerPaiementStick(distribId) {
 }
 
 // ============================================================
-// BOUTIQUE — CARTAGE (catalogue d'articles, comme Matos/Sticks)
-// ────────────────────────────────────────────────────────────
-// Remplace le 07/07/2026 l'ancien système (lien HelloAsso statique dans
-// config_asso + validation manuelle admin, table cotisations) par un
-// vrai catalogue permettant plusieurs types de cartage en parallèle
-// (ex: 2 tarifs différents), chacun avec son propre Checkout API
-// HelloAsso automatisé — même principe que Matos/Sticks. L'ancienne
-// table cotisations et les clés config_asso cotisation_* sont conservées
-// en base (non supprimées) mais ne sont plus utilisées par le code
-// ci-dessous.
+// BOUTIQUE — CARTAGE
 // ============================================================
 
 async function getCartageCatalogue() {
-  // Statut "Brouillon" (12/07/2026, précision demande Remi) : admin +
-  // bureau + cellule concernée précisément — pas de "cellule Cartage"
-  // dédiée dans le projet, donc cellule Comité (déjà responsable du
-  // périmètre réabonnement/cartage ailleurs dans l'app, cf.
-  // pageGererCartage et recherche admin de code) fait office de cellule
-  // de référence ici.
   const membre = currentMembre;
   const voitLesBrouillons = membre && hasCelluleComite(membre);
   const { data, error } = await sb.from('cartage_catalogue')
@@ -2413,11 +1834,6 @@ async function archiverCartage(id) {
   return updateCartage(id, { statut: 'archive' });
 }
 
-// Mes paiements de cartage (vue membre, "Cotisation") — remplace
-// getMaCotisation. Retourne l'historique (pour repérer un éventuel
-// en_attente/refuse à relancer) + le statut "à jour" tiré directement de
-// membres.cotisation_a_jour (mis à jour par le webhook ou la validation
-// admin Cash/HA).
 async function getMesPaiementsCartage() {
   const { data: paiements } = await sb.from('cartage_paiements')
     .select('*, cartage:cartage_catalogue(nom, prix)')
@@ -2426,9 +1842,6 @@ async function getMesPaiementsCartage() {
   return { paiements: paiements || [], aJour: !!currentMembre?.cotisation_a_jour };
 }
 
-// Paiement HelloAsso automatisé — délègue entièrement à l'Edge Function
-// (elle crée/réutilise la ligne cartage_paiements, comme pour Matos/
-// Sticks/Déplacements).
 async function demanderCartageHelloAsso(cartageId) {
   const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
     body: { cartageId },
@@ -2439,9 +1852,6 @@ async function demanderCartageHelloAsso(cartageId) {
   return data;
 }
 
-// Validation Cash/HA par un admin — nécessite de préciser QUEL cartage
-// (plusieurs types possibles désormais), contrairement à l'ancien
-// système où il n'y en avait qu'un seul.
 async function validerCartageCash(membreId, cartageId) {
   const { data: cartage } = await sb.from('cartage_catalogue').select('*').eq('id', cartageId).single();
   if (!cartage) throw new Error('Cartage introuvable');
@@ -2478,19 +1888,6 @@ async function validerCartageHelloAssoManuel(membreId, cartageId) {
   return { success: true };
 }
 
-// Suivi des paiements (page Admin "Gérer le cartage") — pour chaque
-// membre, on ramène son paiement de cartage le plus récent (pour savoir
-// s'il a un en_attente/refuse en cours), en plus du flag cotisation_a_jour
-// qui reste la source de vérité pour "à jour" ou non.
-// ⚠️ BUG CORRIGÉ (07/07/2026) — même cause que les bugs déjà rencontrés
-// sur getAllDistributions() et getAllCommandes() : cartage_paiements a
-// DEUX clés étrangères vers membres (membre_id ET valide_par), donc
-// l'embed cartage_paiements(...) depuis membres est ambigu pour
-// PostgREST sans préciser laquelle utiliser — la requête ENTIÈRE échouait
-// (pas juste un filtrage partiel), et comme `error` n'était pas vérifié,
-// ça retournait [] en silence ("0 membres" affiché alors que des
-// paiements existaient bien). Corrigé en précisant la contrainte exacte —
-// on veut le membre PAYEUR, pas l'admin qui a validé le paiement.
 async function getAllCartagePaiements() {
   const { data, error } = await sb.from('membres')
     .select('id, nom, prenom, pseudo_telegram, email, statut, cotisation_a_jour, charte_signee, section:sections(nom), cartage_paiements!cartage_paiements_membre_id_fkey(statut, montant, mode_paiement, paye_at, cartage:cartage_catalogue(nom), created_at)')
@@ -2512,7 +1909,6 @@ async function compressImage(file, maxWidthPx = 800, qualite = 0.75) {
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      // Calculer les nouvelles dimensions en gardant le ratio
       let { width, height } = img;
       if (width > maxWidthPx) {
         height = Math.round((height * maxWidthPx) / width);
@@ -2526,7 +1922,6 @@ async function compressImage(file, maxWidthPx = 800, qualite = 0.75) {
       canvas.toBlob(
         blob => {
           if (!blob) return reject(new Error('Compression échouée'));
-          // Créer un nouveau File avec le bon nom
           const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
             type: 'image/jpeg', lastModified: Date.now()
           });
@@ -2542,9 +1937,8 @@ async function compressImage(file, maxWidthPx = 800, qualite = 0.75) {
 }
 
 async function uploadPhoto(file, bucket, fileName, maxWidth = 800, qualite = 0.75) {
-  // 1. Compression automatique avant upload
   let fileToUpload = file;
-  const MAX_SIZE_KB = 100; // au-delà de 100KB on compresse
+  const MAX_SIZE_KB = 100;
   if (file.size > MAX_SIZE_KB * 1024) {
     try {
       fileToUpload = await compressImage(file, maxWidth, qualite);
@@ -2555,7 +1949,6 @@ async function uploadPhoto(file, bucket, fileName, maxWidth = 800, qualite = 0.7
     }
   }
 
-  // 2. Sanitize filename
   const cleanName = fileName.normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]/gi, '-')
@@ -2573,7 +1966,6 @@ async function uploadPhoto(file, bucket, fileName, maxWidth = 800, qualite = 0.7
 }
 
 async function uploadPhotoMatos(file, produitNom) {
-  // 400px max, ratio carré optimisé pour affichage vignette boutique
   return uploadPhoto(file, 'matos', produitNom, 400, 0.80);
 }
 
@@ -2581,8 +1973,6 @@ async function uploadPhotoStick(file, stickNom) {
   return uploadPhoto(file, 'sticks', stickNom, 400, 0.80);
 }
 
-// Réutilise le bucket 'matos' (pas de bucket dédié à créer) — préfixe
-// "cartage-" dans le nom de fichier pour rester lisible côté Storage.
 async function uploadPhotoCartage(file, cartageNom) {
   return uploadPhoto(file, 'matos', `cartage-${cartageNom}`, 400, 0.80);
 }
@@ -2604,28 +1994,9 @@ async function updatePhotoStick(stickId, visuelUrl) {
 }
 
 // ============================================================
-// NOTIFICATIONS PUSH (générique — utilisable pour tout type d'alerte)
+// NOTIFICATIONS PUSH
 // ============================================================
-//
-// Principe en 2 temps :
-// 1. Côté navigateur (ce fichier) : demander la permission au membre,
-//    créer un "abonnement push" via le Service Worker, l'enregistrer dans
-//    la table push_subscriptions (cf. migration_notifications_push.sql).
-// 2. Côté serveur (Edge Function send-push-notification, à déployer
-//    séparément) : envoyer réellement la notification à un membre donné,
-//    quel que soit l'événement qui la déclenche (validation de compte,
-//    rappel de déplacement, nouvelle annonce, etc. — un seul point d'envoi
-//    générique, réutilisable pour tous les cas futurs).
-//
-// IMPORTANT iOS : sur iPhone/iPad, les notifications ne fonctionnent que
-// si l'app a été installée sur l'écran d'accueil (Safari → Partager →
-// Sur l'écran d'accueil) — impossible de les activer depuis un simple
-// onglet Safari. Sur Android/Chrome, aucune installation n'est requise.
 
-// Convertit la clé publique VAPID (texte base64url, cf. UL_CONFIG dans
-// config.js) au format binaire attendu par PushManager.subscribe().
-// Étape technique obligatoire — sans cette conversion, le navigateur
-// rejette la clé.
 function _urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -2635,16 +2006,10 @@ function _urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-// true si ce navigateur sait techniquement faire du push (indépendant de
-// la permission accordée ou non — sert à savoir si on doit même proposer
-// le bouton "Activer les notifications" à ce membre sur cet appareil).
 function notificationsPushSupportees() {
   return 'serviceWorker' in navigator && 'PushManager' in window;
 }
 
-// État actuel pour CET appareil (pas pour le membre en général — un même
-// membre peut avoir activé sur son téléphone et pas sur sa tablette).
-// Retourne 'non-supporte' | 'refuse' | 'active' | 'inactif'.
 async function getStatutNotificationsPush() {
   if (!notificationsPushSupportees()) return 'non-supporte';
   if (Notification.permission === 'denied') return 'refuse';
@@ -2653,11 +2018,6 @@ async function getStatutNotificationsPush() {
   return sub ? 'active' : 'inactif';
 }
 
-// Demande la permission (déclenche la popup native du navigateur — doit
-// être appelée depuis un clic explicite du membre, jamais automatiquement
-// au chargement de la page, sous peine d'être bloquée par le navigateur)
-// puis crée et enregistre l'abonnement. À appeler depuis un bouton
-// "Activer les notifications" dans l'UI (page Profil par ex.).
 async function activerNotificationsPush() {
   if (!notificationsPushSupportees()) {
     throw new Error('Notifications non supportées sur cet appareil/navigateur');
@@ -2670,14 +2030,11 @@ async function activerNotificationsPush() {
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
     sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true, // obligatoire : on s'engage à toujours montrer une notif visible
+      userVisibleOnly: true,
       applicationServerKey: _urlBase64ToUint8Array(UL_CONFIG.VAPID_PUBLIC_KEY),
     });
   }
   const json = sub.toJSON();
-  // upsert sur endpoint (unique) : si ce même appareil se réabonne (ex:
-  // après avoir révoqué puis ré-autorisé), on remplace la ligne existante
-  // plutôt que d'en créer une seconde orpheline.
   const { error } = await sb.from('push_subscriptions').upsert({
     membre_id: currentUser.id,
     endpoint: json.endpoint,
@@ -2688,8 +2045,6 @@ async function activerNotificationsPush() {
   return true;
 }
 
-// Désactive les notifications sur CET appareil uniquement (désinscrit le
-// navigateur + supprime la ligne correspondante en base).
 async function desactiverNotificationsPush() {
   if (!notificationsPushSupportees()) return true;
   const reg = await navigator.serviceWorker.ready;
@@ -2702,16 +2057,6 @@ async function desactiverNotificationsPush() {
   return true;
 }
 
-// Déclenche l'envoi d'une notification push à un membre, via l'Edge
-// Function send-push-notification (cf. supabase/functions/send-push-notification/
-// — à déployer séparément, voir GUIDE_NOTIFICATIONS_PUSH.md). Générique :
-// n'importe quel code de l'app peut appeler cette fonction pour n'importe
-// quel motif (validation de compte, rappel de déplacement, etc.), il
-// suffit de fournir titre + texte. url (optionnelle) est la page ouverte
-// si le membre tape sur la notification (ex: '/ultras-lutetia/').
-// Échoue silencieusement par design : un problème d'envoi de notification
-// ne doit jamais faire échouer l'action métier qui la déclenche (ex: la
-// validation d'un membre doit réussir même si l'envoi de la notif échoue).
 async function envoyerNotificationPush(membreId, titre, corps, url = null) {
   try {
     const { error } = await sb.functions.invoke('send-push-notification', {
@@ -2723,15 +2068,6 @@ async function envoyerNotificationPush(membreId, titre, corps, url = null) {
   }
 }
 
-// Notification "nouveau contenu" envoyée à TOUS les membres ayant le
-// droit de voir ce contenu (pas une personne précise) — déplacement,
-// session tifo, article matos, ou stick. Le calcul des destinataires est
-// fait côté serveur (Edge Function send-push-notification-groupe), pas
-// ici : on transmet seulement le critère de ciblage (cible, niveauAcces,
-// sectionId), jamais une liste de membreId calculée dans le navigateur.
-// cible : 'tous' (déplacement) | 'tifo' (session) | 'matos' | 'sticks'.
-// Échoue silencieusement par design, comme envoyerNotificationPush — un
-// souci d'envoi ne doit jamais faire échouer la création du contenu.
 async function envoyerNotificationPushGroupe({ cible, titre, corps, url = null, niveauAcces = null, sectionId = null }) {
   try {
     const { error } = await sb.functions.invoke('send-push-notification-groupe', {
@@ -2749,70 +2085,50 @@ async function envoyerNotificationPushGroupe({ cible, titre, corps, url = null, 
 
 window.UL = {
   initSession,
-  // Auth
   loginByTelegram, logout, changePassword, inscription, demanderResetMdp,
   verifierCodeInscription, renvoyerCodeInscription,
-  // Membres
   getMembre, getAllMembres, updateMembre, updateStatutMembre,
   updateSectionMembre, toggleBlocageMembre,
   noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
   getParticipationBatch,
   adminResetPassword, updateMembreMdp, supprimerMembre,
-  // QR Code Membre
   getOrCreateQrCodeMembre, getMembreParQrCode, confirmerPresencesDeplacement, regenererQrCodeMembre,
-  // Référentiels
   getSections,
-  // Calendrier
   getCalendar, addMatch, updateMatch, getMatchs, deleteMatch,
   getClassementLigue1, syncClassementLigue1Manuel,
   saisirScoreMatch, confirmerDateMatch, rouvrirConfirmationMatch,
   getEvenements, getEvenement, saveEvenement, deleteEvenement,
-  // Charte
   getCharteActive, signerCharte, getMembresNonSignataires, checkConformiteCharte, publierNouvelleCharte,
-  // Sessions Tifo
   getUpcomingSessions, getPastSessions, getSessionDetails,
   inscrire, desinscrire, desinscrireMembreSession, validerPresence, savePizzaChoice,
   createSession, openSession, closeSession, deleteSession,
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
-  // Déplacements
   getDeplacements, getDeplacement, getStatutInscriptionDepl,
   getMonQuotaDepl, getMembresPourAmisDepl, relancerPaiementDeplacement, demanderInscriptionDeplacementHelloAsso,
-  // Amitiés
   getMesAmis, getDemandesAmitieRecues, getDemandesAmitieEnvoyees, repondreDemandeAmitie, annulerDemandeAmitie,
   envoyerDemandeAmitie, rechercherMembrePourAmi,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
   annulerInscriptionDepl, annulerInscriptionDeplAdmin,
-  // Annonces
   getAnnonces, publierAnnonce,
-  // Codes de réabonnement
   getMesCodesReabonnement, getStatutReabonnement, setReabonnementOuvert, rechercherCodeReabonnementAdmin, listerCodesReabonnementAdmin,
-  // Connexion en tant que (Admin)
   genererLienConnexionAdmin,
-  // Stats
   getStats, getMesStats, getStatsTifo, getSaisonsTifoDisponibles,
   getMaPresenceMatch, declarerPresenceMatch, annulerPresenceMatch,
-  // Matos
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
   passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande, marquerCommandePreparee, distribuerProduitAdmin,
   getMesCommandes, getAllCommandes, updateCommandeStatut,
-  // Sticks
   getSticks, getStickById, createStick, updateStick, getMonQuotaStick,
   demanderStickHelloAsso, receptionnerStick, marquerStickPrepare, updateDistribStatut, getMesSticks,
   distribuerStickAdmin, getAllDistributions, validerPaiementStick, confirmerDistributionStick,
-  // Cartage
   getCartageCatalogue, getAllCartageCatalogue, createCartage, updateCartage, archiverCartage,
   getMesAchats,
   getMesPaiementsCartage, demanderCartageHelloAsso,
   validerCartageCash, validerCartageHelloAssoManuel, getAllCartagePaiements,
-  // Storage / Upload
   uploadPhotoMatos, uploadPhotoStick, uploadPhotoCartage, updatePhotoMatos, updatePhotoStick,
-  // Email
   envoyerEmailValidation,
-  // Notifications push
   notificationsPushSupportees, getStatutNotificationsPush,
   activerNotificationsPush, desactiverNotificationsPush,
   envoyerNotificationPush, envoyerNotificationPushGroupe,
-  // Direct Supabase access
   sb, getCurrentUser: () => currentUser, getCurrentMembre: () => currentMembre,
 };
 
@@ -2821,51 +2137,48 @@ window.UL = {
 // ============================================================
 
 // ── HISTORIQUE D'ACHATS ────────────────────────────────────────
-// Récupère l'ensemble des achats d'un membre (déplacements, matos,
-// sticks, cartage) triés par date décroissante. Utilisé par la page
-// "Mon historique d'achats" accessible depuis le Profil.
+// ⚠️ AJOUT 17/07/2026 (demande Remi — "Réf. HelloAsso" affichée ne
+// correspond pas au numéro de commande visible sur le reçu HelloAsso) :
+// chaque sous-requête sélectionne désormais aussi numero_commande_ha
+// (capturé par helloasso-webhook à la confirmation du paiement, vérifié
+// sur un vrai paiement le 17/07/2026 : data.order.id = numéro de commande
+// réel). Champ ajouté dans l'objet achat final ; profil.js/loadHistorique
+// l'utilise en priorité sur checkout_intent_id, avec repli automatique
+// pour les paiements antérieurs à cet ajout (numero_commande_ha alors
+// null pour ceux-là).
 async function getMesAchats() {
   const uid = currentUser?.id;
   if (!uid) throw new Error('Non connecté');
 
-  // Requêtes séquentielles plutôt que Promise.all pour éviter les erreurs
-  // 400 en cascade qui bloquent le rendu — chaque requête est isolée.
   const results = { depl: [], matos: [], sticks: [], cartage: [] };
 
   try {
-    // Déplacements — FK: deplacement_id → deplacements(adversaire, ville)
-    // 'inscriptions_deplacement' n'a pas de colonne montant propre,
-    // le prix est dans deplacements.prix_total ou prix_bus.
     const { data } = await sb.from('inscriptions_deplacement')
-      .select('id, statut_paiement, created_at, checkout_intent_id, deplacements(adversaire, ville, date_match, prix_total)')
+      .select('id, statut_paiement, created_at, checkout_intent_id, numero_commande_ha, deplacements(adversaire, ville, date_match, prix_total)')
       .eq('membre_id', uid)
       .order('created_at', { ascending: false });
     results.depl = data || [];
   } catch(e) { console.warn('getMesAchats: depl', e); }
 
   try {
-    // Matos — colonne total (pas montant_total)
     const { data } = await sb.from('commandes')
-      .select('id, statut, total, created_at, checkout_intent_id, commande_items(quantite, prix_unitaire, produits(nom))')
+      .select('id, statut, total, created_at, checkout_intent_id, numero_commande_ha, commande_items(quantite, prix_unitaire, produits(nom))')
       .eq('membre_id', uid)
       .order('created_at', { ascending: false });
     results.matos = data || [];
   } catch(e) { console.warn('getMesAchats: matos', e); }
 
   try {
-    // Sticks — pas de prix_unitaire sur sticks_distribution, on utilise
-    // le prix du catalogue si disponible
     const { data } = await sb.from('sticks_distribution')
-      .select('id, statut, quantite, created_at, checkout_intent_id, sticks_catalogue(nom, lot, prix)')
+      .select('id, statut, quantite, created_at, checkout_intent_id, numero_commande_ha, sticks_catalogue(nom, lot, prix)')
       .eq('membre_id', uid)
       .order('created_at', { ascending: false });
     results.sticks = data || [];
   } catch(e) { console.warn('getMesAchats: sticks', e); }
 
   try {
-    // Cartage — FK: cartage_id → cartage_catalogue(nom)
     const { data } = await sb.from('cartage_paiements')
-      .select('id, statut, montant, created_at, checkout_intent_id, cartage_catalogue(nom)')
+      .select('id, statut, montant, created_at, checkout_intent_id, numero_commande_ha, cartage_catalogue(nom)')
       .eq('membre_id', uid)
       .order('created_at', { ascending: false });
     results.cartage = data || [];
@@ -2880,6 +2193,7 @@ async function getMesAchats() {
     montant: d.deplacements?.prix_total || null,
     statut: d.statut_paiement,
     checkout_intent_id: d.checkout_intent_id,
+    numero_commande_ha: d.numero_commande_ha,
   }));
 
   results.matos.forEach(c => {
@@ -2891,6 +2205,7 @@ async function getMesAchats() {
       montant: c.total,
       statut: c.statut,
       checkout_intent_id: c.checkout_intent_id,
+      numero_commande_ha: c.numero_commande_ha,
     });
   });
 
@@ -2901,6 +2216,7 @@ async function getMesAchats() {
     montant: d.sticks_catalogue?.prix ? d.sticks_catalogue.prix * d.quantite : null,
     statut: d.statut,
     checkout_intent_id: d.checkout_intent_id,
+    numero_commande_ha: d.numero_commande_ha,
   }));
 
   results.cartage.forEach(p => achats.push({
@@ -2910,6 +2226,7 @@ async function getMesAchats() {
     montant: p.montant,
     statut: p.statut,
     checkout_intent_id: p.checkout_intent_id,
+    numero_commande_ha: p.numero_commande_ha,
   }));
 
   achats.sort((a, b) => new Date(b.date) - new Date(a.date));
