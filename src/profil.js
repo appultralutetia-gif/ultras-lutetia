@@ -362,7 +362,14 @@ async function loadHistorique() {
 
     el.innerHTML = achats.map(a => {
       const date = new Date(a.date).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' });
-      const montant = a.montant != null ? `${(a.montant/100).toFixed(2).replace('.',',')} €` : '';
+      // ⚠️ FIX 17/07/2026 (bug rapporté par Remi : montants affichés 100×
+      // trop petits, ex. 15 € → 0,15 €) : getMesAchats() (supabase-client.js)
+      // renvoie déjà un montant en EUROS pour les 4 types (deplacement,
+      // matos, stick, cartage — cf. commandes.total, sticks_catalogue.prix,
+      // cartage_catalogue.prix, deplacements.prix_total, tous saisis en
+      // euros côté admin, jamais en centimes). La division par 100
+      // ci-dessous supposait à tort un stockage en centimes — retirée.
+      const montant = a.montant != null ? `${Number(a.montant).toFixed(2).replace('.',',')} €` : '';
       const statut = statutLabel[a.statut] || a.statut || '';
       const ref = a.checkout_intent_id ? `<span style="font-size:10px;color:var(--gris);">Réf. HelloAsso : ${a.checkout_intent_id}</span>` : '';
       const attestBtn = isPaye(a.statut) ? `<button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="genererAttestation('${a.id}','${a.type}','${esc(a.nom)}','${date}','${montant}','${a.checkout_intent_id||''}')">📄 Attestation</button>` : '';
