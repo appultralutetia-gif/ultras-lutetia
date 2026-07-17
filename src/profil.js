@@ -371,8 +371,17 @@ async function loadHistorique() {
       // ci-dessous supposait à tort un stockage en centimes — retirée.
       const montant = a.montant != null ? `${Number(a.montant).toFixed(2).replace('.',',')} €` : '';
       const statut = statutLabel[a.statut] || a.statut || '';
-      const ref = a.checkout_intent_id ? `<span style="font-size:10px;color:var(--gris);">Réf. HelloAsso : ${a.checkout_intent_id}</span>` : '';
-      const attestBtn = isPaye(a.statut) ? `<button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="genererAttestation('${a.id}','${a.type}','${esc(a.nom)}','${date}','${montant}','${a.checkout_intent_id||''}')">📄 Attestation</button>` : '';
+      // ⚠️ FIX 17/07/2026 (demande Remi) : numero_commande_ha (numéro de
+      // commande définitif HelloAsso, capturé à la confirmation du
+      // paiement — cf. supabase-client.js/getMesAchats) affiché en
+      // priorité, car c'est LE numéro visible sur le reçu HelloAsso du
+      // membre (ex: "Commande n°188000117"). checkout_intent_id (ID de
+      // l'intention de paiement, capturé à la CRÉATION, différent du
+      // numéro final) reste en repli pour les paiements antérieurs à cet
+      // ajout, où numero_commande_ha est encore null.
+      const refNumero = a.numero_commande_ha || a.checkout_intent_id;
+      const ref = refNumero ? `<span style="font-size:10px;color:var(--gris);">Réf. HelloAsso : ${refNumero}</span>` : '';
+      const attestBtn = isPaye(a.statut) ? `<button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="genererAttestation('${a.id}','${a.type}','${esc(a.nom)}','${date}','${montant}','${refNumero||''}')">📄 Attestation</button>` : '';
       return `
     <div class="card" style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
