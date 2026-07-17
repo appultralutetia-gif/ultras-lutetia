@@ -2828,62 +2828,82 @@ async function getMesAchats() {
   const uid = currentUser?.id;
   if (!uid) throw new Error('Non connecté');
 
-  const [deplRes, matosRes, sticksRes, cartageRes] = await Promise.all([
-    // Déplacements
-    sb.from('inscriptions_deplacement')
-      .select('id, statut_paiement, montant, created_at, checkout_intent_id, deplacements(nom, date_match)')
+  // Requêtes séquentielles plutôt que Promise.all pour éviter les erreurs
+  // 400 en cascade qui bloquent le rendu — chaque requête est isolée.
+  const results = { depl: [], matos: [], sticks: [], cartage: [] };
+
+  try {
+    // Déplacements — FK: deplacement_id → deplacements(adversaire, ville)
+    // 'inscriptions_deplacement' n'a pas de colonne montant propre,
+    // le prix est dans deplacements.prix_total ou prix_bus.
+    const { data } = await sb.from('inscriptions_deplacement')
+      .select('id, statut_paiement, created_at, checkout_intent_id, deplacements(adversaire, ville, date_match, prix_total)')
       .eq('membre_id', uid)
-      .order('created_at', { ascending: false }),
-    // Matos
-    sb.from('commandes')
-      .select('id, statut, montant_total, created_at, checkout_intent_id, commande_items(quantite, prix_unitaire, produits(nom))')
+      .order('created_at', { ascending: false });
+    results.depl = data || [];
+  } catch(e) { console.warn('getMesAchats: depl', e); }
+
+  try {
+    // Matos — colonne total (pas montant_total)
+    const { data } = await sb.from('commandes')
+      .select('id, statut, total, created_at, checkout_intent_id, commande_items(quantite, prix_unitaire, produits(nom))')
       .eq('membre_id', uid)
-      .order('created_at', { ascending: false }),
-    // Sticks
-    sb.from('sticks_distribution')
-      .select('id, statut, quantite, prix_unitaire, created_at, checkout_intent_id, sticks_catalogue(nom, lot)')
+      .order('created_at', { ascending: false });
+    results.matos = data || [];
+  } catch(e) { console.warn('getMesAchats: matos', e); }
+
+  try {
+    // Sticks — pas de prix_unitaire sur sticks_distribution, on utilise
+    // le prix du catalogue si disponible
+    const { data } = await sb.from('sticks_distribution')
+      .select('id, statut, quantite, created_at, checkout_intent_id, sticks_catalogue(nom, lot, prix)')
       .eq('membre_id', uid)
-      .order('created_at', { ascending: false }),
-    // Cartage
-    sb.from('cartage_paiements')
+      .order('created_at', { ascending: false });
+    results.sticks = data || [];
+  } catch(e) { console.warn('getMesAchats: sticks', e); }
+
+  try {
+    // Cartage — FK: cartage_id → cartage_catalogue(nom)
+    const { data } = await sb.from('cartage_paiements')
       .select('id, statut, montant, created_at, checkout_intent_id, cartage_catalogue(nom)')
       .eq('membre_id', uid)
-      .order('created_at', { ascending: false }),
-  ]);
+      .order('created_at', { ascending: false });
+    results.cartage = data || [];
+  } catch(e) { console.warn('getMesAchats: cartage', e); }
 
   const achats = [];
 
-  (deplRes.data || []).forEach(d => achats.push({
+  results.depl.forEach(d => achats.push({
     id: d.id, type: 'deplacement', emoji: '🚌',
-    nom: d.deplacements?.nom || 'Déplacement',
+    nom: d.deplacements ? `${d.deplacements.adversaire || '?'} — ${d.deplacements.ville || ''}`.trim() : 'Déplacement',
     date: d.created_at,
-    montant: d.montant,
+    montant: d.deplacements?.prix_total || null,
     statut: d.statut_paiement,
     checkout_intent_id: d.checkout_intent_id,
   }));
 
-  (matosRes.data || []).forEach(c => {
+  results.matos.forEach(c => {
     const noms = (c.commande_items || []).map(i => `${i.produits?.nom || '?'} ×${i.quantite}`).join(', ');
     achats.push({
       id: c.id, type: 'matos', emoji: '🛍️',
       nom: noms || 'Commande matos',
       date: c.created_at,
-      montant: c.montant_total,
+      montant: c.total,
       statut: c.statut,
       checkout_intent_id: c.checkout_intent_id,
     });
   });
 
-  (sticksRes.data || []).forEach(d => achats.push({
+  results.sticks.forEach(d => achats.push({
     id: d.id, type: 'stick', emoji: '🎟️',
     nom: `${d.sticks_catalogue?.nom || 'Stick'} ×${d.quantite} lot${d.quantite > 1 ? 's' : ''}`,
     date: d.created_at,
-    montant: d.prix_unitaire ? d.prix_unitaire * d.quantite : null,
+    montant: d.sticks_catalogue?.prix ? d.sticks_catalogue.prix * d.quantite : null,
     statut: d.statut,
     checkout_intent_id: d.checkout_intent_id,
   }));
 
-  (cartageRes.data || []).forEach(p => achats.push({
+  results.cartage.forEach(p => achats.push({
     id: p.id, type: 'cartage', emoji: '🗂️',
     nom: p.cartage_catalogue?.nom || 'Cartage',
     date: p.created_at,
@@ -2892,7 +2912,6 @@ async function getMesAchats() {
     checkout_intent_id: p.checkout_intent_id,
   }));
 
-  // Tri global par date décroissante
   achats.sort((a, b) => new Date(b.date) - new Date(a.date));
   return achats;
 }
