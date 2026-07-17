@@ -565,7 +565,13 @@
 //   getComputedStyle().display='none'. La visibilité de ces pages est
 //   désormais entièrement gérée par le système .page/.page.active, comme
 //   toutes les autres pages de l'app.
-const CACHE_NAME = 'ul-v97';
+// v98 (17/07/2026) : CACHE_NAME bumpé (v97 → v98) — profil.js :
+//   loadHistorique() divisait par erreur tous les montants par 100
+//   (`a.montant/100`), comme s'ils étaient stockés en centimes. Or
+//   getMesAchats() (supabase-client.js) renvoie déjà un montant en EUROS
+//   pour les 4 types (deplacement, matos, stick, cartage) — la division
+//   affichait donc 15 € comme 0,15 €. Retirée, montant affiché tel quel.
+const CACHE_NAME = 'ul-v98';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
