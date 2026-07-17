@@ -549,7 +549,14 @@
 //   silencieux (ID dupliqué modalAvertissementHelloAsso supprimé),
 //   getMesAchats corrigé (bons noms de colonnes Supabase), onglet Don
 //   boutique + page Historique d'achats + attestations de paiement.
-const CACHE_NAME = 'ul-v95';
+// v96 (17/07/2026) : CACHE_NAME bumpé (v95 → v96) — app.js : showApp() et
+//   signerCharteGate() appellent désormais explicitement
+//   afficherPage('pageAccueil') avant de charger le contenu de l'accueil,
+//   au lieu de compter sur class="page active" codé en dur dans
+//   index.html. Robustesse : l'affichage de l'accueil ne dépend plus d'un
+//   attribut statique du markup qui pourrait disparaître lors d'un futur
+//   remaniement du HTML.
+const CACHE_NAME = 'ul-v96';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
