@@ -291,6 +291,12 @@
     <div style="margin-top:16px;">
       <button class="btn btn-secondary" onclick="showModal('modalMdp')">Changer mon mot de passe</button>
     </div>
+    <!-- Raccourcis depuis Profil -->
+    <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+      <button class="btn btn-secondary" style="flex:1;" onclick="showPage('pageHistorique');loadHistorique();">📋 Mon historique d'achats</button>
+      <button class="btn btn-secondary" style="flex:1;" onclick="showPage('pageDon')">💝 Faire un don</button>
+    </div>
+
     <div style="margin-top:10px;" id="profilNotifsContainer">
       <!-- Contenu injecté par chargerStatutNotifsProfil() (profil.js) selon
            le statut réel des notifications sur CET appareil : bouton
@@ -403,6 +409,7 @@
       <button class="btn-tab active" id="tabMatos" onclick="switchBoutiqueTab('matos')">🛍️ Matos</button>
       <button class="btn-tab" id="tabSticks" onclick="switchBoutiqueTab('sticks')">🎟️ Sticks</button>
       <button class="btn-tab" id="tabCotisation" onclick="switchBoutiqueTab('cotisation')">🗂️ Cartage</button>
+      <button class="btn-tab" id="tabDon" onclick="switchBoutiqueTab('don')">💝 Don</button>
     </div>
 
     <!-- ─ MATOS ─ -->
@@ -451,6 +458,26 @@
       <!-- Admin : renvoi vers la page dédiée (catalogue + suivi des paiements) -->
       <div id="cotisationAdminLien" style="display:none;margin-top:14px;">
         <button class="btn btn-secondary" style="width:100%;" onclick="showPage('pageGererCartage')">⚙️ Gérer le cartage</button>
+      </div>
+    </div>
+
+    <!-- ── DON ─────────────────────────────────────────────────── -->
+    <div id="sectionDon" style="display:none;">
+      <div class="card" style="text-align:center;padding:24px 16px;">
+        <div style="font-size:48px;margin-bottom:12px;">💝</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.05em;margin-bottom:10px;">Soutenir les Ultras Lutetia</div>
+        <p style="font-size:14px;color:var(--gris);margin-bottom:18px;line-height:1.5;">
+          Ton don contribue directement à financer les tifos, les déplacements et la vie du groupe.<br>
+          Le montant est libre — merci pour ton soutien !
+        </p>
+        <a href="https://www.helloasso.com/associations/ultras-lutetia/formulaires/1"
+           target="_blank" rel="noopener"
+           class="btn btn-primary" style="display:inline-block;padding:14px 28px;font-size:16px;text-decoration:none;">
+          💝 Faire un don via HelloAsso
+        </a>
+        <p style="font-size:11px;color:var(--gris);margin-top:14px;">
+          Tu seras redirigé vers HelloAsso — paiement sécurisé, reçu fiscal disponible.
+        </p>
       </div>
     </div>
 
@@ -681,6 +708,39 @@
       <span id="demandesBadge2" class="badge badge-orange" style="display:none;"></span>
     </div>
     <div id="demandesListeAdmin"></div>
+  </div>
+
+  <!-- ── PAGE HISTORIQUE D'ACHATS (accessible depuis Profil) ────── -->
+  <div id="pageHistorique" class="page" style="display:none;">
+    <div class="card" style="margin-bottom:14px;">
+      <button class="btn btn-sm btn-secondary" onclick="showPage('pageProfil')">← Retour</button>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;margin-left:10px;">📋 Mon historique d'achats</span>
+    </div>
+    <div id="historiqueContainer"></div>
+  </div>
+
+  <!-- ── PAGE DON (accessible depuis Profil et Boutique) ─────────── -->
+  <div id="pageDon" class="page" style="display:none;">
+    <div class="card" style="margin-bottom:14px;">
+      <button class="btn btn-sm btn-secondary" onclick="showPage('pageProfil')">← Retour</button>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em;margin-left:10px;">💝 Faire un don</span>
+    </div>
+    <div class="card" style="text-align:center;padding:24px 16px;">
+      <div style="font-size:48px;margin-bottom:12px;">💝</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.05em;margin-bottom:10px;">Soutenir les Ultras Lutetia</div>
+      <p style="font-size:14px;color:var(--gris);margin-bottom:18px;line-height:1.5;">
+        Ton don contribue directement à financer les tifos, les déplacements et la vie du groupe.<br>
+        Le montant est libre — merci pour ton soutien !
+      </p>
+      <a href="https://www.helloasso.com/associations/ultras-lutetia/formulaires/1"
+         target="_blank" rel="noopener"
+         class="btn btn-primary" style="display:inline-block;padding:14px 28px;font-size:16px;text-decoration:none;">
+        💝 Faire un don via HelloAsso
+      </a>
+      <p style="font-size:11px;color:var(--gris);margin-top:14px;">
+        Tu seras redirigé vers HelloAsso — paiement sécurisé, reçu fiscal disponible.
+      </p>
+    </div>
   </div>
 
   <!-- ── PAGE MON (RÉ)ABONNEMENT (accessible depuis Profil) ────── -->
