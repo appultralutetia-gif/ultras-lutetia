@@ -571,7 +571,17 @@
 //   getMesAchats() (supabase-client.js) renvoie déjà un montant en EUROS
 //   pour les 4 types (deplacement, matos, stick, cartage) — la division
 //   affichait donc 15 € comme 0,15 €. Retirée, montant affiché tel quel.
-const CACHE_NAME = 'ul-v98';
+// v99 (17/07/2026) : CACHE_NAME bumpé (v98 → v99) — supabase-client.js
+//   (getMesAchats) + profil.js (loadHistorique/genererAttestation)
+//   affichent désormais numero_commande_ha (numéro de commande définitif
+//   HelloAsso, capturé côté serveur par helloasso-webhook à la
+//   confirmation du paiement) en priorité sur checkout_intent_id (ID de
+//   l'intention de paiement, différent — cf. cas rapporté par Remi :
+//   app affichait 6547557, reçu HelloAsso affichait n°187972729).
+//   Vérifié sur un vrai paiement le 17/07/2026 : data.order.id du
+//   payload webhook = le bon numéro. Repli automatique sur
+//   checkout_intent_id pour les paiements antérieurs à cet ajout.
+const CACHE_NAME = 'ul-v99';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
