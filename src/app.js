@@ -473,6 +473,18 @@ async function showApp(membre) {
   }
   document.getElementById('charteGate').style.display = 'none';
 
+  // ⚠️ FIX 17/07/2026 : rend explicitement pageAccueil visible (ajoute la
+  // classe .active) avant de charger son contenu. Auparavant on comptait
+  // sur class="page active" codé en dur dans index.html pour pageAccueil
+  // — fragile, puisqu'un futur remaniement du HTML (ajout de nouvelles
+  // pages, suppression d'un doublon d'ID, etc.) peut faire disparaître
+  // cette classe sans qu'aucune erreur JS ne se déclenche : le contenu se
+  // charge bien (annonces, matchs, stats...) mais reste invisible en CSS
+  // (écran noir). En appelant explicitement afficherPage() ici, l'app ne
+  // dépend plus d'un attribut statique du markup pour afficher l'accueil
+  // au démarrage.
+  afficherPage('pageAccueil');
+
   await loadAccueil();
   // ⚠️ Toutes ces vérifications sont enchaînées avec await (08/07/2026) —
   // proposerNotificationsPushSiPertinent() n'était pas attendue avant,
@@ -701,6 +713,7 @@ async function signerCharteGate() {
     toast('Charte signée ✅', 'success');
     document.getElementById('charteGate').style.display = 'none';
     document.getElementById('appContainer').style.display = 'block';
+    afficherPage('pageAccueil');
     await loadAccueil();
   } catch(e) { toast(e.message || 'Impossible de signer la charte', 'error'); }
 }
