@@ -876,32 +876,6 @@
        "contribution volontaire" (~1,20€ en général) qui ne va PAS à
        Ultras Lutetia mais à HelloAsso lui-même. Beaucoup de membres ne
        savent pas qu'ils peuvent la mettre à 0€. -->
-  <div class="modal-overlay" id="modalAvertissementHelloAsso" style="display:none;" onclick="event.stopPropagation()">
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="modal-handle"></div>
-      <h3 class="modal-title">⚠️ Avant de payer</h3>
-      <p style="font-size:14px;line-height:1.5;margin-bottom:14px;">
-        Sur la page HelloAsso, une <strong>contribution volontaire</strong> (souvent environ 1,20€) est ajoutée par défaut au montant. <strong>Elle ne va pas à Ultras Lutetia</strong> — c'est un don pour HelloAsso lui-même. Tu peux la remettre à 0€ si tu le souhaites.
-      </p>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-        <div style="flex:1;background:var(--surface-2);border:1px solid var(--surface-4);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:11px;color:var(--gris);margin-bottom:4px;">Par défaut</div>
-          <div style="font-size:15px;font-weight:700;color:var(--orange);">Contribution : 1,20€</div>
-        </div>
-        <div style="font-size:20px;color:var(--gris);">→</div>
-        <div style="flex:1;background:var(--surface-2);border:1px solid var(--vert);border-radius:10px;padding:10px;text-align:center;">
-          <div style="font-size:11px;color:var(--gris);margin-bottom:4px;">Après modification</div>
-          <div style="font-size:15px;font-weight:700;color:var(--vert);">Contribution : 0€</div>
-        </div>
-      </div>
-      <p style="font-size:13px;color:var(--gris);line-height:1.5;margin-bottom:16px;">
-        Pour la retirer : clique sur <strong>"Modifier"</strong> à côté de cette ligne sur la page HelloAsso, mets le curseur/le montant à <strong>0€</strong>, puis valide — avant de finaliser ton paiement.
-      </p>
-      <button class="btn btn-primary" style="width:100%;" onclick="doContinuerVersHelloAsso()">J'ai compris, continuer vers le paiement</button>
-      <button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="closeModal('modalAvertissementHelloAsso')">Annuler</button>
-    </div>
-  </div>
-
   <!-- Modal Avertissement contribution HelloAsso (07/07/2026) -->
   <div class="modal-overlay" id="modalAvertissementHelloAsso" style="display:none;" onclick="closeModalOutside(event,'modalAvertissementHelloAsso')">
     <div class="modal" onclick="event.stopPropagation()">
