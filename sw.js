@@ -545,7 +545,11 @@
 // superflues supprimées côté base. sync-classement-ligue1 repassée sur
 // football-data.org, cron simple toutes les 15 min. 2 matchs erronés
 // (VfB Stuttgart, Anger) supprimés du calendrier PFC.
-const CACHE_NAME = 'ul-v94';
+// v95 (17/07/2026) : CACHE_NAME bumpé (v94 → v95) — correction crash
+//   silencieux (ID dupliqué modalAvertissementHelloAsso supprimé),
+//   getMesAchats corrigé (bons noms de colonnes Supabase), onglet Don
+//   boutique + page Historique d'achats + attestations de paiement.
+const CACHE_NAME = 'ul-v95';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
