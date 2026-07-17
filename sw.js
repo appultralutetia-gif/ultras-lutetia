@@ -556,7 +556,16 @@
 //   index.html. Robustesse : l'affichage de l'accueil ne dépend plus d'un
 //   attribut statique du markup qui pourrait disparaître lors d'un futur
 //   remaniement du HTML.
-const CACHE_NAME = 'ul-v96';
+// v97 (17/07/2026) : CACHE_NAME bumpé (v96 → v97) — index.html : retrait
+//   du style="display:none;" codé en dur sur #pageHistorique et #pageDon.
+//   Ce style inline avait une priorité CSS supérieure à la règle de
+//   classe .page.active, donc même une fois la classe "active" ajoutée
+//   par afficherPage(), ces 2 pages restaient invisibles (écran noir) —
+//   confirmé en DevTools : className='page active' mais
+//   getComputedStyle().display='none'. La visibilité de ces pages est
+//   désormais entièrement gérée par le système .page/.page.active, comme
+//   toutes les autres pages de l'app.
+const CACHE_NAME = 'ul-v97';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
