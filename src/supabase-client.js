@@ -2801,6 +2801,7 @@ window.UL = {
   distribuerStickAdmin, getAllDistributions, validerPaiementStick, confirmerDistributionStick,
   // Cartage
   getCartageCatalogue, getAllCartageCatalogue, createCartage, updateCartage, archiverCartage,
+  getMesAchats,
   getMesPaiementsCartage, demanderCartageHelloAsso,
   validerCartageCash, validerCartageHelloAssoManuel, getAllCartagePaiements,
   // Storage / Upload
@@ -2818,6 +2819,83 @@ window.UL = {
 // ============================================================
 // EMAIL — Brevo API
 // ============================================================
+
+// ── HISTORIQUE D'ACHATS ────────────────────────────────────────
+// Récupère l'ensemble des achats d'un membre (déplacements, matos,
+// sticks, cartage) triés par date décroissante. Utilisé par la page
+// "Mon historique d'achats" accessible depuis le Profil.
+async function getMesAchats() {
+  const uid = currentUser?.id;
+  if (!uid) throw new Error('Non connecté');
+
+  const [deplRes, matosRes, sticksRes, cartageRes] = await Promise.all([
+    // Déplacements
+    sb.from('inscriptions_deplacement')
+      .select('id, statut_paiement, montant, created_at, checkout_intent_id, deplacements(nom, date_match)')
+      .eq('membre_id', uid)
+      .order('created_at', { ascending: false }),
+    // Matos
+    sb.from('commandes')
+      .select('id, statut, montant_total, created_at, checkout_intent_id, commande_items(quantite, prix_unitaire, produits(nom))')
+      .eq('membre_id', uid)
+      .order('created_at', { ascending: false }),
+    // Sticks
+    sb.from('sticks_distribution')
+      .select('id, statut, quantite, prix_unitaire, created_at, checkout_intent_id, sticks_catalogue(nom, lot)')
+      .eq('membre_id', uid)
+      .order('created_at', { ascending: false }),
+    // Cartage
+    sb.from('cartage_paiements')
+      .select('id, statut, montant, created_at, checkout_intent_id, cartage_catalogue(nom)')
+      .eq('membre_id', uid)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  const achats = [];
+
+  (deplRes.data || []).forEach(d => achats.push({
+    id: d.id, type: 'deplacement', emoji: '🚌',
+    nom: d.deplacements?.nom || 'Déplacement',
+    date: d.created_at,
+    montant: d.montant,
+    statut: d.statut_paiement,
+    checkout_intent_id: d.checkout_intent_id,
+  }));
+
+  (matosRes.data || []).forEach(c => {
+    const noms = (c.commande_items || []).map(i => `${i.produits?.nom || '?'} ×${i.quantite}`).join(', ');
+    achats.push({
+      id: c.id, type: 'matos', emoji: '🛍️',
+      nom: noms || 'Commande matos',
+      date: c.created_at,
+      montant: c.montant_total,
+      statut: c.statut,
+      checkout_intent_id: c.checkout_intent_id,
+    });
+  });
+
+  (sticksRes.data || []).forEach(d => achats.push({
+    id: d.id, type: 'stick', emoji: '🎟️',
+    nom: `${d.sticks_catalogue?.nom || 'Stick'} ×${d.quantite} lot${d.quantite > 1 ? 's' : ''}`,
+    date: d.created_at,
+    montant: d.prix_unitaire ? d.prix_unitaire * d.quantite : null,
+    statut: d.statut,
+    checkout_intent_id: d.checkout_intent_id,
+  }));
+
+  (cartageRes.data || []).forEach(p => achats.push({
+    id: p.id, type: 'cartage', emoji: '🗂️',
+    nom: p.cartage_catalogue?.nom || 'Cartage',
+    date: p.created_at,
+    montant: p.montant,
+    statut: p.statut,
+    checkout_intent_id: p.checkout_intent_id,
+  }));
+
+  // Tri global par date décroissante
+  achats.sort((a, b) => new Date(b.date) - new Date(a.date));
+  return achats;
+}
 
 async function envoyerEmailBrevo({ to, toName, subject, htmlContent }) {
   const resp = await sb.functions.invoke('send-email', {
