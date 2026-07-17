@@ -18,10 +18,10 @@ async function loadBoutique() {
 
 // ── Sous-onglets boutique ──────────────────────────────────────
 function switchBoutiqueTab(tab) {
-  ['sectionMatos','sectionSticks','sectionCotisation'].forEach(id => {
+  ['sectionMatos','sectionSticks','sectionCotisation','sectionDon'].forEach(id => {
     document.getElementById(id).style.display = 'none';
   });
-  ['tabMatos','tabSticks','tabCotisation'].forEach(id => {
+  ['tabMatos','tabSticks','tabCotisation','tabDon'].forEach(id => {
     document.getElementById(id).classList.remove('active');
   });
   document.getElementById('section' + tab.charAt(0).toUpperCase() + tab.slice(1)).style.display = 'block';
