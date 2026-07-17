@@ -330,3 +330,111 @@ async function loadCharte() {
     }
   } catch(e) {}
 }
+
+// ── HISTORIQUE D'ACHATS ────────────────────────────────────────
+// Page accessible depuis le bouton "Mon historique d'achats" dans
+// Profil. Affiche l'ensemble des achats du membre (déplacements,
+// matos, sticks, cartage) triés par date décroissante.
+// Chaque ligne affiche : emoji type · nom · date · montant · statut
+// · référence HelloAsso (checkout_intent_id).
+// Un bouton "📄 Attestation" est disponible pour les lignes payées.
+async function loadHistorique() {
+  const el = document.getElementById('historiqueContainer');
+  if (!el) return;
+  el.innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  try {
+    const achats = await UL.getMesAchats();
+    if (!achats.length) {
+      el.innerHTML = '<div class="empty-state"><div>🛒</div>Aucun achat pour le moment</div>';
+      return;
+    }
+
+    const statutLabel = {
+      paye_ha: '✅ Payé (HelloAsso)', paye_cash: '✅ Payé (cash)',
+      precommande_validee: '✅ Précommande validée',
+      en_attente: '⏳ En attente', refuse: '❌ Refusé',
+      annulee: '🚫 Annulée', annule: '🚫 Annulée',
+      rembourse: '↩️ Remboursé', valide: '✅ Validé',
+      paye: '✅ Payé',
+    };
+
+    const isPaye = s => ['paye_ha','paye_cash','precommande_validee','valide','paye'].includes(s);
+
+    el.innerHTML = achats.map(a => {
+      const date = new Date(a.date).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' });
+      const montant = a.montant != null ? `${(a.montant/100).toFixed(2).replace('.',',')} €` : '';
+      const statut = statutLabel[a.statut] || a.statut || '';
+      const ref = a.checkout_intent_id ? `<span style="font-size:10px;color:var(--gris);">Réf. HelloAsso : ${a.checkout_intent_id}</span>` : '';
+      const attestBtn = isPaye(a.statut) ? `<button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="genererAttestation('${a.id}','${a.type}','${esc(a.nom)}','${date}','${montant}','${a.checkout_intent_id||''}')">📄 Attestation</button>` : '';
+      return `
+    <div class="card" style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:15px;">${a.emoji} ${esc(a.nom)}</div>
+          <div style="font-size:12px;color:var(--gris);margin-top:2px;">${date}${montant ? ' · ' + montant : ''}</div>
+          <div style="font-size:12px;margin-top:2px;">${statut}</div>
+          ${ref ? `<div style="margin-top:4px;">${ref}</div>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--bleu-clair);white-space:nowrap;">${a.type}</div>
+      </div>
+      ${attestBtn}
+    </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state"><div>⚠️</div>Impossible de charger l\'historique</div>';
+    console.error('loadHistorique', e);
+  }
+}
+
+// Génère une attestation de paiement simple en HTML imprimable et
+// ouvre une nouvelle fenêtre pour impression/sauvegarde PDF.
+function genererAttestation(id, type, nom, date, montant, refHelloAsso) {
+  const m = UL.getCurrentMembre();
+  const nomMembre = m ? `${m.prenom || ''} ${m.nom || ''}`.trim() : 'Membre';
+  const emailMembre = m?.email || '';
+  const typeLabel = { deplacement:'Déplacement', matos:'Matos', stick:'Stick', cartage:'Cartage' };
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Attestation de paiement - Ultras Lutetia</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; color: #111; }
+    h1 { color: #1A56DB; font-size: 22px; border-bottom: 2px solid #1A56DB; padding-bottom: 8px; }
+    .logo { font-size: 32px; text-align: center; margin-bottom: 8px; }
+    .asso { text-align: center; font-weight: bold; font-size: 18px; margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    td { padding: 8px 12px; border: 1px solid #ddd; font-size: 14px; }
+    td:first-child { font-weight: bold; background: #f5f7ff; width: 40%; }
+    .footer { font-size: 11px; color: #888; margin-top: 24px; text-align: center; }
+    @media print { button { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="logo">🎭</div>
+  <div class="asso">Ultras Lutetia</div>
+  <h1>Attestation de paiement</h1>
+  <table>
+    <tr><td>Membre</td><td>${nomMembre}</td></tr>
+    ${emailMembre ? `<tr><td>Email</td><td>${emailMembre}</td></tr>` : ''}
+    <tr><td>Type</td><td>${typeLabel[type] || type}</td></tr>
+    <tr><td>Article / Événement</td><td>${nom}</td></tr>
+    <tr><td>Date</td><td>${date}</td></tr>
+    <tr><td>Montant</td><td>${montant || 'N/A'}</td></tr>
+    ${refHelloAsso ? `<tr><td>Réf. HelloAsso</td><td>${refHelloAsso}</td></tr>` : ''}
+  </table>
+  <p style="font-size:13px;margin-top:16px;">Ce document atteste du paiement effectué par le membre ci-dessus dans le cadre de l'activité des <strong>Ultras Lutetia</strong>, groupe de supporters du Paris FC.</p>
+  <div class="footer">
+    Document généré le ${new Date().toLocaleDateString('fr-FR')} · Ultras Lutetia — Paris FC<br>
+    Ce document n'a pas valeur de reçu fiscal.
+  </div>
+  <br>
+  <button onclick="window.print()">🖨️ Imprimer / Sauvegarder en PDF</button>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else toast('Autorisez les popups pour générer l\'attestation', 'warning');
+}
