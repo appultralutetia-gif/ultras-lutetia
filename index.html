@@ -345,6 +345,14 @@
       </select>
       <button class="btn btn-sm btn-secondary" onclick="exporterCsvCartageNonInscrits()" title="Personnes ayant payé le cartage mais sans compte dans l'app">📋 Cartage non inscrits</button>
     </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+      <button class="filter-btn active" id="fcartMTous" onclick="filtrerCartageMembres('tous')">Tous</button>
+      <button class="filter-btn" id="fcartMIncomplets" onclick="filtrerCartageMembres('incomplets')">⚠️ Incomplets</button>
+      <button class="filter-btn" id="fcartMAttente" onclick="filtrerCartageMembres('attente')">⏳ En attente de paiement</button>
+      <button class="filter-btn" id="fcartMPaye" onclick="filtrerCartageMembres('paye')">✅ Payé</button>
+      <button class="filter-btn" id="fcartMSansCartage" onclick="filtrerCartageMembres('sans_cartage')">❌ Cartage non payé</button>
+      <button class="filter-btn" id="fcartMSansCharte" onclick="filtrerCartageMembres('sans_charte')">❌ Charte non signée</button>
+    </div>
     <div id="membresList"></div>
   </div>
 
@@ -830,6 +838,13 @@
         <button class="filter-btn" id="fcartPaye" onclick="filtrerCartage('paye')">✅ Payé</button>
         <button class="filter-btn" id="fcartSansCartage" onclick="filtrerCartage('sans_cartage')">❌ Cartage non payé</button>
         <button class="filter-btn" id="fcartSansCharte" onclick="filtrerCartage('sans_charte')">❌ Charte non signée</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+        <button class="filter-btn active" id="fcartStatutTous" onclick="filtrerCartageStatut('')">Tous statuts</button>
+        <button class="filter-btn" id="fcartStatutVisiteur" onclick="filtrerCartageStatut('visiteur')">🚶 Visiteur</button>
+        <button class="filter-btn" id="fcartStatutSympathisant" onclick="filtrerCartageStatut('sympathisant')">💙 Sympathisant</button>
+        <button class="filter-btn" id="fcartStatutDraft" onclick="filtrerCartageStatut('draft')">🚀 Draft</button>
+        <button class="filter-btn" id="fcartStatutConfirme" onclick="filtrerCartageStatut('confirme')">🏅 Confirmé</button>
       </div>
       <div id="cartageStats" style="display:flex;gap:8px;margin-bottom:14px;font-size:13px;color:var(--gris);flex-wrap:wrap;"></div>
       <button class="btn btn-sm btn-secondary" style="margin-bottom:12px;" onclick="exporterCartageCsv()">📥 Exporter en CSV</button>
