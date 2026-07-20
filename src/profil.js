@@ -49,6 +49,7 @@ async function loadProfil() {
     ${evaluationsHtml}
     <div style="font-size:13px;margin-bottom:6px;">📋 Charte: ${m.charte_signee ? '✅ Signée' : '❌ Non signée'}</div>
     <div style="font-size:13px;">💶 Cartage: ${m.cotisation_a_jour ? '✅ À jour' : '⏳ En attente'}</div>
+    ${m.cartage_depuis ? `<div style="font-size:12px;color:var(--gris);margin-top:2px;">🎫 Carté depuis ${m.cartage_depuis}</div>` : ''}
     <div id="profilReabonnementBtn" style="margin-top:10px;"></div>
     <div style="margin-top:10px;">
       <button class="btn btn-secondary" onclick="showPage('pageAmis');loadAmis()">👥 Mes amis</button>
