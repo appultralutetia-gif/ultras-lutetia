@@ -588,7 +588,12 @@
 //   rouge, bouton "S'inscrire" remplacé par un état bloqué. Fichiers
 //   modifiés : tifos.js, supabase-client.js (notif push aux admins
 //   Cellule Tifo à chaque inscription, cf. notifierAdminsTifoInscription).
-const CACHE_NAME = 'ul-v100';
+// v101 (20/07/2026) : CACHE_NAME bumpé (v100 → v101) — v100 ne corrigeait
+//   le tri "non-complètes en premier" que dans la page Tifos (tifos.js) ;
+//   oubli du widget "Prochaine session tifo" sur l'Accueil (app.js,
+//   loadAccueil), qui appelle aussi getUpcomingSessions() en direct avec
+//   son propre slice(0,2) — même tri appliqué là aussi maintenant.
+const CACHE_NAME = 'ul-v101';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
