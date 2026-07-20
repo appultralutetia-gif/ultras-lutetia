@@ -621,7 +621,15 @@
 //   filtres actifs, comme les autres exports) + nouveau bouton "Export
 //   sans code réabonnement" (CSV : pseudo, prénom, nom, email, statut,
 //   section). Fichiers modifiés : index.html, admin.js.
-const CACHE_NAME = 'ul-v106';
+// v107 (20/07/2026) : CACHE_NAME bumpé (v106 → v107) — Comité de
+//   passage : nouveau filtre toggle "🎫 Sans code réabonnement" (le
+//   compteur X/Y reste basé sur les autres filtres actifs, indépendant
+//   de ce toggle, pour rester lisible même quand il est activé). Gérer
+//   les membres : le(s) code(s) de réabonnement (ou son absence) sont
+//   maintenant affichés sur chaque carte, comme sur le Comité de passage
+//   (chargement des codes ajouté à loadMembres). Fichiers modifiés :
+//   index.html, admin.js.
+const CACHE_NAME = 'ul-v107';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
