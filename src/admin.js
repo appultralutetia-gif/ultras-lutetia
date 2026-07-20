@@ -1100,3 +1100,31 @@ function exporterCsvMembresComite() {
   URL.revokeObjectURL(url);
   toast(`Export CSV généré (${membres.length}) !`, 'success');
 }
+
+// Export CSV — personnes ayant payé le cartage mais n'ayant pas encore de
+// compte dans l'app (demande Remi 20/07/2026). nom/prenom viennent de
+// cartage_preinscriptions ; peuvent être vides pour de très rares entrées
+// historiques (importées avant l'ajout de ces colonnes).
+async function exporterCsvCartageNonInscrits() {
+  try {
+    const lignes_data = await UL.getCartageNonInscrits();
+    if (!lignes_data.length) return toast('Personne en attente — tout le monde est déjà inscrit !', 'success');
+    const entete = ['Nom', 'Prénom', 'Email'];
+    const lignes = lignes_data.map(p => [p.nom || '', p.prenom || '', p.email || '']);
+    // BOM UTF-8 en tête pour qu'Excel reconnaisse l'encodage et affiche
+    // correctement les accents sans réglage manuel à l'ouverture.
+    const csv = '\uFEFF' + [entete, ...lignes].map(l => l.map(csvEscape).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cartage_non_inscrits_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast(`Export CSV généré (${lignes_data.length}) !`, 'success');
+  } catch (e) {
+    toast('Erreur export cartage non inscrits', 'error');
+  }
+}
