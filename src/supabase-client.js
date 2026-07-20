@@ -635,6 +635,20 @@ async function publierNouvelleCharte({ nom, contenu, dateFin }) {
 // SESSIONS TIFO
 // ============================================================
 
+// Liste des paiements cartage en attente de compte (email connu, jamais
+// rattaché à un membre) — utilisée par l'export CSV admin (demande Remi
+// 20/07/2026). nom/prenom peuvent être vides pour de très rares entrées
+// historiques importées avant que ces colonnes n'existent.
+async function getCartageNonInscrits() {
+  const { data, error } = await sb
+    .from('cartage_preinscriptions')
+    .select('nom, prenom, email')
+    .is('membre_id', null)
+    .order('nom', { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return data;
+}
+
 async function getUpcomingSessions() {
   const today = new Date().toISOString().split('T')[0];
   const { data, error } = await sb.from('sessions_tifo')
@@ -2138,7 +2152,7 @@ window.UL = {
   saisirScoreMatch, confirmerDateMatch, rouvrirConfirmationMatch,
   getEvenements, getEvenement, saveEvenement, deleteEvenement,
   getCharteActive, signerCharte, getMembresNonSignataires, checkConformiteCharte, publierNouvelleCharte,
-  getUpcomingSessions, getPastSessions, getSessionDetails,
+  getUpcomingSessions, getPastSessions, getSessionDetails, getCartageNonInscrits,
   inscrire, desinscrire, desinscrireMembreSession, validerPresence, savePizzaChoice,
   createSession, openSession, closeSession, deleteSession,
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
