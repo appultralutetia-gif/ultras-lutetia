@@ -1,13 +1,15 @@
 // ─── MEMBRES (Admin) ──────────────────────────────────────────
+let _filtreCartageMembres = 'tous';
 async function loadMembres() {
   document.getElementById('membresList').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
-    const [membres, codesReabo] = await Promise.all([
+    const [membres, codesReabo, paiementsParMembre] = await Promise.all([
       UL.getAllMembres(),
       // Dégradation silencieuse comme dans loadMembresComite : un souci
       // de droits ne doit jamais bloquer le chargement de la page, juste
       // afficher les cartes sans l'info code.
       UL.listerCodesReabonnementAdmin().catch(() => []),
+      UL.getDerniersPaiementsCartageParMembre().catch(() => ({})),
     ]);
     _codesReaboParEmail = {};
     codesReabo.forEach(c => {
@@ -15,16 +17,36 @@ async function loadMembres() {
       if (!cle) return;
       (_codesReaboParEmail[cle] = _codesReaboParEmail[cle] || []).push(c);
     });
+    membres.forEach(m => { m.dernierPaiementCartage = paiementsParMembre[m.id] || null; });
     allMembres = membres;
     renderMembres(allMembres);
   } catch(e) { toast('Erreur chargement membres', 'error'); }
 }
+function filtrerCartageMembres(filtre) {
+  _filtreCartageMembres = filtre;
+  ['fcartMTous','fcartMIncomplets','fcartMAttente','fcartMPaye','fcartMSansCartage','fcartMSansCharte'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
+  });
+  const aid = {tous:'fcartMTous',incomplets:'fcartMIncomplets',attente:'fcartMAttente',paye:'fcartMPaye',sans_cartage:'fcartMSansCartage',sans_charte:'fcartMSansCharte'}[filtre];
+  if (aid && document.getElementById(aid)) document.getElementById(aid).classList.add('active');
+  filtrerMembres();
+}
 function filtrerMembres() {
   const q = document.getElementById('searchMembre').value.toLowerCase();
   const s = document.getElementById('filterStatut').value;
+  const fc = _filtreCartageMembres;
   renderMembres(allMembres.filter(m => {
     const match = `${m.nom} ${m.prenom} ${m.pseudo_telegram}`.toLowerCase().includes(q);
-    return match && (!s || m.statut === s);
+    if (!match || (s && m.statut !== s)) return false;
+    // Mêmes 6 filtres que "Gérer le cartage" (calendrier.js:filtrerCartage),
+    // réutilisés ici pour que Remi n'ait pas à changer de page.
+    if (fc === 'incomplets' && !(!m.cotisation_a_jour || !m.charte_signee)) return false;
+    if (fc === 'attente' && !(m.dernierPaiementCartage && m.dernierPaiementCartage.statut === 'en_attente')) return false;
+    if (fc === 'paye' && !m.cotisation_a_jour) return false;
+    if (fc === 'sans_cartage' && m.cotisation_a_jour) return false;
+    if (fc === 'sans_charte' && m.charte_signee) return false;
+    return true;
   }));
 }
 function renderMembres(membres) {
