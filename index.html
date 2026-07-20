@@ -379,9 +379,13 @@
       <option value="">Toutes sections</option>
     </select>
 
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
       <button class="btn btn-sm btn-secondary" onclick="copierListeMembresComite()">📋 Liste Telegram</button>
       <button class="btn btn-sm btn-secondary" onclick="exporterCsvMembresComite()">📄 Export CSV</button>
+    </div>
+    <div id="statsCodeReaboComite" style="font-size:12px;color:var(--gris);margin-bottom:10px;"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+      <button class="btn btn-sm btn-secondary" onclick="exporterCsvSansCodeReabonnement()">📄 Export sans code réabonnement</button>
     </div>
 
     <div id="membresComiteList"><div class="empty-state"><div>⏳</div>Chargement…</div></div>
