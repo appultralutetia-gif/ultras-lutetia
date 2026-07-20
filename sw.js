@@ -629,7 +629,16 @@
 //   maintenant affichés sur chaque carte, comme sur le Comité de passage
 //   (chargement des codes ajouté à loadMembres). Fichiers modifiés :
 //   index.html, admin.js.
-const CACHE_NAME = 'ul-v107';
+// v108 (20/07/2026) : CACHE_NAME bumpé (v107 → v108) — Gérer le cartage
+//   (Suivi des paiements) : nouveau filtre statut UL (Visiteur/Sympa/
+//   Draft/Confirmé), combinable avec les filtres existants. Gérer les
+//   membres : les 6 filtres cartage de "Gérer le cartage" (Incomplets,
+//   En attente, Payé, Cartage non payé, Charte non signée) y sont
+//   maintenant disponibles aussi, combinables avec le filtre statut
+//   déjà présent. Fichiers modifiés : index.html, admin.js,
+//   calendrier.js, supabase-client.js (nouvelle fonction
+//   getDerniersPaiementsCartageParMembre).
+const CACHE_NAME = 'ul-v108';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
