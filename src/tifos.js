@@ -75,7 +75,7 @@ function renderTifoCard(s, prefix='') {
         <div class="card-title">${types[s.type_session]||'📋'} ${esc(s.nom)}</div>
         <div class="card-sub">${date}${s.heure?' · '+s.heure.slice(0,5):''} · ${esc(s.lieu)}</div>
         ${s.avec_pizza ? '<div style="font-size:11px;color:var(--pizza);margin-top:4px;">🍕 Tifo pizza</div>' : ''}
-        ${s.capacite_max ? `<div style="font-size:11px;color:var(--gris);margin-top:2px;">👥 ${s._nb_inscrits||0} / ${s.capacite_max} places</div>` : ''}
+        ${s.capacite_max ? `<div style="font-size:11px;color:${(s._nb_inscrits||0) >= s.capacite_max ? 'var(--rouge)' : 'var(--gris)'};margin-top:2px;font-weight:${(s._nb_inscrits||0) >= s.capacite_max ? '700' : '400'};">👥 ${s._nb_inscrits||0} / ${s.capacite_max} places${(s._nb_inscrits||0) >= s.capacite_max ? ' · Complet' : ''}</div>` : ''}
       </div>
       ${badge}
     </div>
@@ -101,7 +101,7 @@ async function loadTifoActions(sessionId, btn, prefix='') {
   const originalText = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
-    const { session: s, monInscrit } = await UL.getSessionDetails(sessionId);
+    const { session: s, inscrits, monInscrit } = await UL.getSessionDetails(sessionId);
     const estInscrit  = !!monInscrit;
     const estPresent  = monInscrit?.statut === 'present';
     const isOpen      = s.statut === 'en_cours';
@@ -109,7 +109,12 @@ async function loadTifoActions(sessionId, btn, prefix='') {
     const el          = document.getElementById('tifoActions_' + prefix + sessionId);
     let html = '';
 
-    if (!estInscrit && isPlanned) {
+    const estComplet = !!s.capacite_max && (inscrits?.length || 0) >= s.capacite_max;
+
+    if (!estInscrit && isPlanned && estComplet) {
+      html = `<div class="info-box" style="text-align:center;margin:0;color:var(--rouge);">🔴 Session complète</div>`;
+
+    } else if (!estInscrit && isPlanned) {
       html = `<button class="btn btn-primary" style="width:100%;" onclick="showConfirmInscription('${s.id}')">
         S'inscrire${s.avec_pizza?' 🍕':''}</button>`;
 
