@@ -1952,6 +1952,21 @@ async function getAllCartagePaiements() {
   });
 }
 
+// Version allégée de ce qui précède : juste le dernier paiement cartage
+// par membre (membre_id -> paiement), pour enrichir une liste de membres
+// déjà chargée par ailleurs (ex. Gérer les membres) sans refaire une
+// requête complète select(*) sur membres.
+async function getDerniersPaiementsCartageParMembre() {
+  const { data, error } = await sb
+    .from('cartage_paiements')
+    .select('membre_id, statut, montant, mode_paiement, paye_at, created_at, cartage:cartage_catalogue(nom)')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  const map = {};
+  (data || []).forEach(p => { if (!map[p.membre_id]) map[p.membre_id] = p; });
+  return map;
+}
+
 // ============================================================
 // STORAGE — Upload photos
 // ============================================================
@@ -2176,7 +2191,7 @@ window.UL = {
   getCartageCatalogue, getAllCartageCatalogue, createCartage, updateCartage, archiverCartage,
   getMesAchats,
   getMesPaiementsCartage, demanderCartageHelloAsso,
-  validerCartageCash, validerCartageHelloAssoManuel, getAllCartagePaiements,
+  validerCartageCash, validerCartageHelloAssoManuel, getAllCartagePaiements, getDerniersPaiementsCartageParMembre,
   uploadPhotoMatos, uploadPhotoStick, uploadPhotoCartage, updatePhotoMatos, updatePhotoStick,
   envoyerEmailValidation,
   notificationsPushSupportees, getStatutNotificationsPush,
