@@ -684,8 +684,47 @@ async function inscrire(sessionId) {
     statut: 'inscrit',
   });
   if (error && error.code === '23505') throw new Error('Déjà inscrit');
+  // Le trigger verifier_quota_session_tifo (Postgres) lève une exception
+  // texte "Session complète (...)" quand capacite_max est atteinte —
+  // remontée telle quelle par PostgREST dans error.message.
+  if (error && /complète/i.test(error.message || '')) throw new Error(error.message);
   if (error) throw error;
+
+  // Notification aux admins Tifo (demande Remi 20/07/2026) — pas
+  // bloquant : une erreur d'envoi ne doit jamais faire échouer
+  // l'inscription elle-même, d'où le catch silencieux.
+  notifierAdminsTifoInscription(sessionId).catch(e => console.warn('Notif admins Tifo non envoyée:', e));
+
   return { success: true };
+}
+
+// Envoie une notification push à chaque membre ayant le rôle Cellule
+// Tifo (ou Bureau/Admin, cf. hasCelluleTifo côté app.js) quand un membre
+// s'inscrit à une session — permet à la cellule de suivre les inscriptions
+// sans avoir à rouvrir l'app. Réutilise envoyerNotificationPush (cible
+// unique, déjà utilisée pour la validation de compte) plutôt que la
+// fonction groupée par droits de contenu (send-push-notification-groupe),
+// qui répond à un besoin différent (notifier les MEMBRES d'un nouveau
+// contenu, pas notifier les ADMINS d'une action d'un membre).
+async function notifierAdminsTifoInscription(sessionId) {
+  const [{ data: session }, { data: inscrit }, { data: admins }] = await Promise.all([
+    sb.from('sessions_tifo').select('nom').eq('id', sessionId).single(),
+    sb.from('membres').select('nom, prenom, pseudo_telegram').eq('id', currentUser.id).single(),
+    sb.from('membres').select('id').overlaps('roles_app', ['admin_app', 'bureau_app', 'cellule_tifo']),
+  ]);
+  if (!admins || !admins.length) return;
+  const nomInscrit = inscrit?.pseudo_telegram || `${inscrit?.prenom || ''} ${inscrit?.nom || ''}`.trim() || 'Un membre';
+  const nomSession = session?.nom || 'un tifo';
+  await Promise.all(
+    admins
+      .filter(a => a.id !== currentUser.id) // pas besoin de se notifier soi-même si on est aussi Cellule Tifo
+      .map(a => envoyerNotificationPush(
+        a.id,
+        '🖌️ Nouvelle inscription Tifo',
+        `${nomInscrit} vient de s'inscrire à "${nomSession}"`,
+        '/ultras-lutetia/'
+      ))
+  );
 }
 
 async function desinscrire(sessionId) {
