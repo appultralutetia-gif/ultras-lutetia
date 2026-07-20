@@ -581,7 +581,14 @@
 //   Vérifié sur un vrai paiement le 17/07/2026 : data.order.id du
 //   payload webhook = le bon numéro. Repli automatique sur
 //   checkout_intent_id pour les paiements antérieurs à cet ajout.
-const CACHE_NAME = 'ul-v99';
+// v100 (20/07/2026) : CACHE_NAME bumpé (v99 → v100) — sessions_tifo :
+//   blocage de l'inscription une fois capacite_max atteint (trigger DB,
+//   inchangé ici) + tifos.js : tri "à venir" avec les sessions non-
+//   complètes en premier (comme les déplacements), badge "Complet" en
+//   rouge, bouton "S'inscrire" remplacé par un état bloqué. Fichiers
+//   modifiés : tifos.js, supabase-client.js (notif push aux admins
+//   Cellule Tifo à chaque inscription, cf. notifierAdminsTifoInscription).
+const CACHE_NAME = 'ul-v100';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
