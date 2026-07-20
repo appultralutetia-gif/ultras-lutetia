@@ -14,6 +14,16 @@ const PINTES = [
   { id: 'sans',     label: 'Sans pinte', emoji: '❌' },
 ];
 
+// Une session est "complète" dès que le nombre d'inscrits atteint sa
+// capacité max (si elle en a une — sinon jamais complète). Centralisé ici
+// pour être utilisé à la fois pour le tri (non-complètes en premier,
+// comme pour les déplacements) et pour l'affichage (badge, blocage du
+// bouton d'inscription).
+function estSessionComplete(s, nbInscrits) {
+  const n = nbInscrits !== undefined ? nbInscrits : (s._nb_inscrits || 0);
+  return !!s.capacite_max && n >= s.capacite_max;
+}
+
 async function refreshTifosActions(sessions, prefix='') {
   await Promise.all(sessions.map(s => loadTifoActions(s.id, null, prefix).catch(() => {})));
 }
@@ -35,6 +45,14 @@ async function loadTifos() {
       UL.getUpcomingSessions(),
       UL.getPastSessions(),
     ]);
+    // Non-complètes en premier (comme pour les déplacements), puis
+    // chronologique dans chaque groupe.
+    sessions.sort((a, b) => {
+      const ca = estSessionComplete(a) ? 1 : 0;
+      const cb = estSessionComplete(b) ? 1 : 0;
+      if (ca !== cb) return ca - cb;
+      return (a.date || '').localeCompare(b.date || '');
+    });
     document.getElementById('tifosListe').innerHTML = sessions.length
       ? sessions.map(s => renderTifoCard(s)).join('')
       : '<div class="empty-state"><div>📋</div>Aucun tifo à venir</div>';
@@ -75,7 +93,7 @@ function renderTifoCard(s, prefix='') {
         <div class="card-title">${types[s.type_session]||'📋'} ${esc(s.nom)}</div>
         <div class="card-sub">${date}${s.heure?' · '+s.heure.slice(0,5):''} · ${esc(s.lieu)}</div>
         ${s.avec_pizza ? '<div style="font-size:11px;color:var(--pizza);margin-top:4px;">🍕 Tifo pizza</div>' : ''}
-        ${s.capacite_max ? `<div style="font-size:11px;color:${(s._nb_inscrits||0) >= s.capacite_max ? 'var(--rouge)' : 'var(--gris)'};margin-top:2px;font-weight:${(s._nb_inscrits||0) >= s.capacite_max ? '700' : '400'};">👥 ${s._nb_inscrits||0} / ${s.capacite_max} places${(s._nb_inscrits||0) >= s.capacite_max ? ' · Complet' : ''}</div>` : ''}
+        ${s.capacite_max ? `<div style="font-size:11px;color:${estSessionComplete(s) ? 'var(--rouge)' : 'var(--gris)'};margin-top:2px;font-weight:${estSessionComplete(s) ? '700' : '400'};">👥 ${s._nb_inscrits||0} / ${s.capacite_max} places${estSessionComplete(s) ? ' · Complet' : ''}</div>` : ''}
       </div>
       ${badge}
     </div>
@@ -109,7 +127,7 @@ async function loadTifoActions(sessionId, btn, prefix='') {
     const el          = document.getElementById('tifoActions_' + prefix + sessionId);
     let html = '';
 
-    const estComplet = !!s.capacite_max && (inscrits?.length || 0) >= s.capacite_max;
+    const estComplet = estSessionComplete(s, inscrits?.length || 0);
 
     if (!estInscrit && isPlanned && estComplet) {
       html = `<div class="info-box" style="text-align:center;margin:0;color:var(--rouge);">🔴 Session complète</div>`;
