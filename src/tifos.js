@@ -94,6 +94,7 @@ function renderTifoCard(s, prefix='') {
         <div class="card-sub">${date}${s.heure?' · '+s.heure.slice(0,5):''} · ${esc(s.lieu)}</div>
         ${s.avec_pizza ? '<div style="font-size:11px;color:var(--pizza);margin-top:4px;">🍕 Tifo pizza</div>' : ''}
         ${s.capacite_max ? `<div style="font-size:11px;color:${estSessionComplete(s) ? 'var(--rouge)' : 'var(--gris)'};margin-top:2px;font-weight:${estSessionComplete(s) ? '700' : '400'};">👥 ${s._nb_inscrits||0} / ${s.capacite_max} places${estSessionComplete(s) ? ' · Complet' : ''}</div>` : ''}
+        ${s.description && hasCelluleTifo(m) ? `<div style="font-size:12px;color:var(--gris);margin-top:6px;white-space:pre-wrap;">📝 ${esc(s.description)}</div>` : ''}
       </div>
       ${badge}
     </div>
