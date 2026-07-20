@@ -593,7 +593,12 @@
 //   oubli du widget "Prochaine session tifo" sur l'Accueil (app.js,
 //   loadAccueil), qui appelle aussi getUpcomingSessions() en direct avec
 //   son propre slice(0,2) — même tri appliqué là aussi maintenant.
-const CACHE_NAME = 'ul-v101';
+// v102 (20/07/2026) : CACHE_NAME bumpé (v101 → v102) — tifos.js : le
+//   champ "description" (déjà en base, déjà dans le formulaire d'édition,
+//   jamais affiché nulle part) apparaît maintenant sur la fiche de
+//   chaque session, uniquement pour Admin/Bureau/Cellule Tifo
+//   (hasCelluleTifo) — un membre simple ne le voit pas.
+const CACHE_NAME = 'ul-v102';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
