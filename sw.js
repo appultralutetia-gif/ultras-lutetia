@@ -605,7 +605,14 @@
 //   modifiés : index.html (bouton), admin.js (exporterCsvCartageNonInscrits),
 //   supabase-client.js (getCartageNonInscrits). Migration DB associée :
 //   ajout des colonnes nom/prenom sur cartage_preinscriptions.
-const CACHE_NAME = 'ul-v103';
+// v104 (20/07/2026) : CACHE_NAME bumpé (v103 → v104) — nouveau champ
+//   membres.cartage_depuis (calculé une fois via script à partir de
+//   l'historique multi-saisons 2022-2023 → 2026-2027, table
+//   cartage_historique), affiché sous forme "Carté depuis XXXX-XXXX" sur
+//   les cartes "Comité de passage" et "Gérer les membres" (admin.js).
+//   Règle : plus vieille saison si continu jusqu'à aujourd'hui, sinon
+//   la saison la plus récente si une saison manque dans l'historique.
+const CACHE_NAME = 'ul-v104';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
