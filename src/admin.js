@@ -965,6 +965,13 @@ function niveauMembreComite(m) {
 // avec un risque de léger écart d'ordre entre affichage et export).
 let _membresComiteTriesAffiches = [];
 
+// Un membre a un code de réabonnement dès que son email (normalisé) a au
+// moins une entrée dans _codesReaboParEmail — réutilise l'index déjà
+// chargé par loadMembresComite, pas d'appel réseau supplémentaire.
+function aUnCodeReabonnement(m) {
+  return !!(_codesReaboParEmail[(m.email||'').trim().toLowerCase()] || []).length;
+}
+
 function renderMembresComiteListe(membres) {
   const el = document.getElementById('membresComiteList');
   const tries = [...membres].sort((a, b) => {
@@ -974,6 +981,15 @@ function renderMembresComiteListe(membres) {
       .localeCompare(`${b.prenom||''} ${b.nom||''}`.trim().toLowerCase());
   });
   _membresComiteTriesAffiches = tries;
+
+  const sansCode = tries.filter(m => !aUnCodeReabonnement(m)).length;
+  const statsEl = document.getElementById('statsCodeReaboComite');
+  if (statsEl) {
+    statsEl.textContent = tries.length
+      ? `🎫 ${sansCode} / ${tries.length} sans code de réabonnement`
+      : '';
+  }
+
   if (!tries.length) { el.innerHTML = '<div class="empty-state"><div>👥</div>Aucun membre</div>'; return; }
   el.innerHTML = tries.map(m => renderMembreComiteCard(m)).join('');
 }
@@ -1132,4 +1148,28 @@ async function exporterCsvCartageNonInscrits() {
   } catch (e) {
     toast('Erreur export cartage non inscrits', 'error');
   }
+}
+
+// Export CSV — membres actuellement affichés (mêmes filtres que les
+// autres exports Comité) qui n'ont aucun code de réabonnement associé à
+// leur email (demande Remi 20/07/2026).
+function exporterCsvSansCodeReabonnement() {
+  const membres = _membresComiteTriesAffiches.filter(m => !aUnCodeReabonnement(m));
+  if (!membres.length) return toast('Personne sans code avec ces filtres — tout le monde en a un !', 'success');
+  const entete = ['Pseudo', 'Prénom', 'Nom', 'Email', 'Statut', 'Section'];
+  const lignes = membres.map(m => [
+    m.pseudo_telegram || '', m.prenom || '', m.nom || '', m.email || '',
+    m.statut || '', m.section?.nom || '',
+  ]);
+  const csv = '\uFEFF' + [entete, ...lignes].map(l => l.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sans_code_reabonnement_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Export CSV généré (${membres.length}) !`, 'success');
 }
