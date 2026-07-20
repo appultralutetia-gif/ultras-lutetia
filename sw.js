@@ -598,7 +598,14 @@
 //   jamais affiché nulle part) apparaît maintenant sur la fiche de
 //   chaque session, uniquement pour Admin/Bureau/Cellule Tifo
 //   (hasCelluleTifo) — un membre simple ne le voit pas.
-const CACHE_NAME = 'ul-v102';
+// v103 (20/07/2026) : CACHE_NAME bumpé (v102 → v103) — nouveau bouton
+//   "📋 Cartage non inscrits" sur la page Gérer les membres (Admin) :
+//   exporte en CSV (nom, prénom, email) les personnes ayant payé le
+//   cartage mais n'ayant pas encore de compte dans l'app. Fichiers
+//   modifiés : index.html (bouton), admin.js (exporterCsvCartageNonInscrits),
+//   supabase-client.js (getCartageNonInscrits). Migration DB associée :
+//   ajout des colonnes nom/prenom sur cartage_preinscriptions.
+const CACHE_NAME = 'ul-v103';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
