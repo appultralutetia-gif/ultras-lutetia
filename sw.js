@@ -616,7 +616,12 @@
 //   XXXX-XXXX" ajouté aussi sur la page Profil du membre (profil.js),
 //   sous la ligne Cartage. Aucune requête supplémentaire nécessaire,
 //   le champ était déjà chargé via getMembre() (select *).
-const CACHE_NAME = 'ul-v105';
+// v106 (20/07/2026) : CACHE_NAME bumpé (v105 → v106) — page Comité de
+//   passage : compteur "X / Y sans code de réabonnement" (respecte les
+//   filtres actifs, comme les autres exports) + nouveau bouton "Export
+//   sans code réabonnement" (CSV : pseudo, prénom, nom, email, statut,
+//   section). Fichiers modifiés : index.html, admin.js.
+const CACHE_NAME = 'ul-v106';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
