@@ -339,6 +339,7 @@ async function saisirScore(matchId) {
 // pageAdminBoutique : Articles (catalogue cartage_catalogue, CRUD comme
 // Matos/Sticks) et Suivi des paiements (ex-pageCartage, filtres étendus).
 let allCartage = [], currentFiltreCartage = 'tous';
+let currentFiltreCartageStatut = '';
 let allCartageCatalogueAdmin = [];
 // Liste réellement affichée à l'écran après filtre courant — exportée
 // telle quelle par exporterCartageCsv() (même convention que
@@ -497,6 +498,17 @@ function exporterCartageCsv() {
   toast(`Export CSV généré (${filtered.length}) !`, 'success');
 }
 
+function filtrerCartageStatut(statut) {
+  currentFiltreCartageStatut = statut;
+  ['fcartStatutTous','fcartStatutVisiteur','fcartStatutSympathisant','fcartStatutDraft','fcartStatutConfirme'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
+  });
+  const aid = {'':'fcartStatutTous', visiteur:'fcartStatutVisiteur', sympathisant:'fcartStatutSympathisant', draft:'fcartStatutDraft', confirme:'fcartStatutConfirme'}[statut];
+  if (aid && document.getElementById(aid)) document.getElementById(aid).classList.add('active');
+  filtrerCartage(currentFiltreCartage);
+}
+
 function filtrerCartage(filtre) {
   currentFiltreCartage = filtre;
   ['fcartTous','fcartIncomplets','fcartAttente','fcartPaye','fcartSansCartage','fcartSansCharte'].forEach(id => {
@@ -519,6 +531,11 @@ function filtrerCartage(filtre) {
   // chaque cause séparément, sans regarder l'autre critère.
   if (filtre === 'sans_cartage') filtered = allCartage.filter(m => !m.cotisation_a_jour);
   if (filtre === 'sans_charte') filtered = allCartage.filter(m => !m.charte_signee);
+
+  // Filtre statut UL (20/07/2026, demande Remi) : combinable avec le
+  // filtre type ci-dessus (ET logique), pour ex. ne voir que les
+  // "Sympathisants" "Incomplets".
+  if (currentFiltreCartageStatut) filtered = filtered.filter(m => m.statut === currentFiltreCartageStatut);
 
   const el = document.getElementById('cartageListe');
   _cartageAffichesCourant = filtered;
