@@ -42,6 +42,10 @@ function renderMembres(membres) {
           <div class="membre-meta">@${m.pseudo_telegram} · <span class="statut-${m.statut}">${m.statut}</span></div>
           ${m.email ? `<div style="font-size:11px;color:var(--gris);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✉️ ${esc(m.email)}</div>` : ''}
           ${m.section ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:1px;">🛡️ ${esc(m.section.nom)}</div>` : ''}
+          <div style="font-size:11px;margin-top:2px;">
+            <span style="color:${m.cotisation_a_jour ? 'var(--vert)' : 'var(--orange)'};">🎫 Cartage ${m.cotisation_a_jour ? 'OK' : 'non'}</span>
+            ${m.cartage_depuis ? `<span style="color:var(--gris);"> · Carté depuis ${esc(m.cartage_depuis)}</span>` : ''}
+          </div>
           ${Array.isArray(m.roles_app) && m.roles_app.length ? `<div style="font-size:10px;color:#818CF8;margin-top:2px;">🔑 ${m.roles_app.map(r=>r.replace('_',' ')).join(' · ')}</div>` : ''}
         </div>
         <span style="font-size:12px;color:var(--bleu-clair);">${esc(m.section?.nom||'Ultra Lutetia')}</span>
@@ -1006,6 +1010,7 @@ function renderMembreComiteCard(m) {
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0;">
         <span class="badge ${m.actif?'badge-vert':'badge-rouge'}" style="font-size:10px;">${m.actif?'✅ Actif':'⛔ Bloqué'}</span>
         <span class="badge ${m.cotisation_a_jour ? 'badge-vert' : 'badge-orange'}" style="font-size:10px;">🎫 Cartage ${m.cotisation_a_jour ? 'OK' : 'non'}</span>
+        ${m.cartage_depuis ? `<span style="font-size:10px;color:var(--gris);">Depuis ${esc(m.cartage_depuis)}</span>` : ''}
       </div>
     </div>
     <div style="margin-top:8px;">
