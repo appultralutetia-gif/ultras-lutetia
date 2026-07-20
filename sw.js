@@ -612,7 +612,11 @@
 //   les cartes "Comité de passage" et "Gérer les membres" (admin.js).
 //   Règle : plus vieille saison si continu jusqu'à aujourd'hui, sinon
 //   la saison la plus récente si une saison manque dans l'historique.
-const CACHE_NAME = 'ul-v104';
+// v105 (20/07/2026) : CACHE_NAME bumpé (v104 → v105) — "Carté depuis
+//   XXXX-XXXX" ajouté aussi sur la page Profil du membre (profil.js),
+//   sous la ligne Cartage. Aucune requête supplémentaire nécessaire,
+//   le champ était déjà chargé via getMembre() (select *).
+const CACHE_NAME = 'ul-v105';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
