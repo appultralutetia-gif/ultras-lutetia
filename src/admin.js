@@ -2,7 +2,20 @@
 async function loadMembres() {
   document.getElementById('membresList').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
-    allMembres = await UL.getAllMembres();
+    const [membres, codesReabo] = await Promise.all([
+      UL.getAllMembres(),
+      // Dégradation silencieuse comme dans loadMembresComite : un souci
+      // de droits ne doit jamais bloquer le chargement de la page, juste
+      // afficher les cartes sans l'info code.
+      UL.listerCodesReabonnementAdmin().catch(() => []),
+    ]);
+    _codesReaboParEmail = {};
+    codesReabo.forEach(c => {
+      const cle = (c.email || '').trim().toLowerCase();
+      if (!cle) return;
+      (_codesReaboParEmail[cle] = _codesReaboParEmail[cle] || []).push(c);
+    });
+    allMembres = membres;
     renderMembres(allMembres);
   } catch(e) { toast('Erreur chargement membres', 'error'); }
 }
@@ -46,6 +59,12 @@ function renderMembres(membres) {
             <span style="color:${m.cotisation_a_jour ? 'var(--vert)' : 'var(--orange)'};">🎫 Cartage ${m.cotisation_a_jour ? 'OK' : 'non'}</span>
             ${m.cartage_depuis ? `<span style="color:var(--gris);"> · Carté depuis ${esc(m.cartage_depuis)}</span>` : ''}
           </div>
+          ${(() => {
+            const codes = _codesReaboParEmail[(m.email||'').trim().toLowerCase()] || [];
+            return codes.length
+              ? `<div style="margin-top:2px;">${codes.map(c => `<span style="font-family:'Courier New',monospace;font-size:11px;font-weight:700;background:var(--fond2,rgba(255,255,255,.06));border-radius:5px;padding:2px 6px;display:inline-block;margin-right:4px;">🎫 ${esc(c.code)}</span>`).join('')}</div>`
+              : `<div style="font-size:10px;color:var(--gris);opacity:.7;margin-top:2px;">🎫 Aucun code réabonnement</div>`;
+          })()}
           ${Array.isArray(m.roles_app) && m.roles_app.length ? `<div style="font-size:10px;color:#818CF8;margin-top:2px;">🔑 ${m.roles_app.map(r=>r.replace('_',' ')).join(' · ')}</div>` : ''}
         </div>
         <span style="font-size:12px;color:var(--bleu-clair);">${esc(m.section?.nom||'Ultra Lutetia')}</span>
@@ -845,7 +864,7 @@ let _allMembresComite = [];
 let _codesReaboParEmail = {};
 // État combiné des filtres — partagé par les deux boutons d'export, qui
 // exportent toujours exactement ce qui est affiché à l'écran.
-let _filtresComite = { recherche: '', statut: '', sectionId: '', niveau: '' };
+let _filtresComite = { recherche: '', statut: '', sectionId: '', niveau: '', sansCode: false };
 
 async function loadMembresComite() {
   document.getElementById('membresComiteList').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
@@ -854,13 +873,15 @@ async function loadMembresComite() {
   // JS doit repartir à zéro avec eux pour rester synchronisé (sinon un
   // filtre resté actif en mémoire d'une visite précédente ne serait plus
   // reflété visuellement, mais s'appliquerait quand même).
-  _filtresComite = { recherche: '', statut: '', sectionId: '', niveau: '' };
+  _filtresComite = { recherche: '', statut: '', sectionId: '', niveau: '', sansCode: false };
   const searchInput = document.getElementById('searchMembreComite');
   if (searchInput) searchInput.value = '';
   document.querySelectorAll('#filtresStatutComite .filter-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.statut === ''));
   document.querySelectorAll('#filtresNiveauComite .filter-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.niveau === ''));
+  const btnSansCode = document.getElementById('btnSansCodeComite');
+  if (btnSansCode) btnSansCode.classList.remove('active');
   try {
     const [membres, sections, codesReabo] = await Promise.all([
       UL.getAllMembres(),
@@ -918,6 +939,12 @@ function filtrerSectionComite() {
   _filtresComite.sectionId = document.getElementById('filterSectionComite').value;
   appliquerFiltresComite();
 }
+function filtrerSansCodeComite() {
+  _filtresComite.sansCode = !_filtresComite.sansCode;
+  const btn = document.getElementById('btnSansCodeComite');
+  if (btn) btn.classList.toggle('active', _filtresComite.sansCode);
+  appliquerFiltresComite();
+}
 
 // Le niveau d'un membre = sa note dans SA catégorie de notation
 // (comite_sympa pour un Sympathisant, comite_draft pour un Draft).
@@ -931,8 +958,8 @@ function niveauNoteComite(m) {
 // puis affiche le résultat. C'est cette liste filtrée, et uniquement
 // elle, qui sera utilisée par les deux boutons d'export.
 function appliquerFiltresComite() {
-  const { recherche, statut, sectionId, niveau } = _filtresComite;
-  const filtres = _allMembresComite.filter(m => {
+  const { recherche, statut, sectionId, niveau, sansCode } = _filtresComite;
+  const passeFiltresBase = m => {
     if (recherche) {
       const champs = [m.nom, m.prenom, m.pseudo_telegram, m.email, m.ville, m.code_postal, m.section?.nom]
         .filter(Boolean).join(' ').toLowerCase();
@@ -946,7 +973,19 @@ function appliquerFiltresComite() {
       else if (n !== Number(niveau)) return false;
     }
     return true;
-  });
+  };
+  // Base = recherche/statut/section/niveau, SANS le filtre sans-code —
+  // sert au compteur, qui doit rester significatif même quand le filtre
+  // sans-code est activé (sinon il afficherait toujours "X / X").
+  const base = _allMembresComite.filter(passeFiltresBase);
+  const statsEl = document.getElementById('statsCodeReaboComite');
+  if (statsEl) {
+    const sansCodeCount = base.filter(m => !aUnCodeReabonnement(m)).length;
+    statsEl.textContent = base.length
+      ? `🎫 ${sansCodeCount} / ${base.length} sans code de réabonnement`
+      : '';
+  }
+  const filtres = sansCode ? base.filter(m => !aUnCodeReabonnement(m)) : base;
   renderMembresComiteListe(filtres);
 }
 
@@ -981,14 +1020,6 @@ function renderMembresComiteListe(membres) {
       .localeCompare(`${b.prenom||''} ${b.nom||''}`.trim().toLowerCase());
   });
   _membresComiteTriesAffiches = tries;
-
-  const sansCode = tries.filter(m => !aUnCodeReabonnement(m)).length;
-  const statsEl = document.getElementById('statsCodeReaboComite');
-  if (statsEl) {
-    statsEl.textContent = tries.length
-      ? `🎫 ${sansCode} / ${tries.length} sans code de réabonnement`
-      : '';
-  }
 
   if (!tries.length) { el.innerHTML = '<div class="empty-state"><div>👥</div>Aucun membre</div>'; return; }
   el.innerHTML = tries.map(m => renderMembreComiteCard(m)).join('');
