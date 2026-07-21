@@ -659,7 +659,15 @@
 //   une réécriture ultérieure du fichier lors de l'ajout du renvoi de
 //   code de confirmation (19/07/2026) — perte accidentelle, pas une
 //   décision. Remis en place. Fichier modifié : app.js.
-const CACHE_NAME = 'ul-v111';
+// v112 (21/07/2026) : CACHE_NAME bumpé (v111 → v112) — le modal
+//   "Confirmer l'inscription" (engagement de présence), jusqu'ici
+//   uniquement sur les sessions Tifo, s'affiche maintenant aussi avant
+//   "M'inscrire" sur un déplacement (les deux boutons, carte liste et
+//   vue détail — pas sur "Réessayer/Relancer le paiement", qui concerne
+//   une inscription déjà engagée). Modal généralisé en interne pour
+//   gérer les deux types sans duplication. Fichiers modifiés :
+//   index.html, app.js, tifos.js, deplacements.js.
+const CACHE_NAME = 'ul-v112';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
