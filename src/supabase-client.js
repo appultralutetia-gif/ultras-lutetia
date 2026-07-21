@@ -1121,7 +1121,7 @@ async function getListeBusTelegram(deplacementId) {
     `📅 ${deplacement.date_match} — ${deplacement.heure_depart || ''}`,
     `📍 RDV: ${deplacement.point_rdv || ''}`,
     ``,
-    `✅ *PAYÉS (${payes.length}/${deplacement.places_max})*`,
+    `✅ *PAYÉS (${payes.length}${deplacement.places_max ? '/' + deplacement.places_max : ''})*`,
     ...payes.map((i, n) => `${n+1}. @${i.membre.pseudo_telegram} — ${i.statut_paiement === 'paye_cash' ? 'Cash' : 'HelloAsso'}`),
     ``,
     `⏳ En attente: ${inscrits.length - payes.length}`,
