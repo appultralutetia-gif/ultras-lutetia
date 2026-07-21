@@ -286,7 +286,7 @@ async function doValiderPresence(avecPizza = false) {
 
 // ── Inscrire / désinscrire ────────────────────────────────────
 async function doInscrire(id, btn) {
-  if (!id && btn) id = btn.getAttribute('data-session-id');
+  if (!id && btn) id = btn.getAttribute('data-target-id');
   if (!id) id = currentSessionId;
   if (!id) return toast('Erreur : tifo introuvable', 'error');
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
