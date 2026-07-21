@@ -60,11 +60,33 @@ function peutVoirTifos(membre) {
 }
 
 // ─── Confirmation inscription ─────────────────────────────────
+// Modal générique (tifo + déplacement, demande Remi 21/07/2026) : le
+// type et l'id cible sont stockés en attributs data- sur le bouton de
+// confirmation, qui route vers la bonne fonction au clic — évite de
+// dupliquer le modal pour chaque type d'inscription.
 function showConfirmInscription(sessionId) {
   currentSessionId = sessionId;
   const btn = document.getElementById('btnConfirmerInscription');
-  if (btn) btn.setAttribute('data-session-id', sessionId);
+  if (btn) {
+    btn.setAttribute('data-target-id', sessionId);
+    btn.setAttribute('data-type', 'tifo');
+  }
   showModal('modalConfirmInscription');
+}
+function showConfirmInscriptionDepl(deplacementId) {
+  const btn = document.getElementById('btnConfirmerInscription');
+  if (btn) {
+    btn.setAttribute('data-target-id', deplacementId);
+    btn.setAttribute('data-type', 'deplacement');
+  }
+  showModal('modalConfirmInscription');
+}
+function doConfirmerInscriptionModal(btn) {
+  const id = btn.getAttribute('data-target-id');
+  const type = btn.getAttribute('data-type');
+  closeModal('modalConfirmInscription');
+  if (type === 'deplacement') doInscritDepl(id, btn);
+  else doInscrire(id, btn);
 }
 
 // ─── State ───────────────────────────────────────────────────
