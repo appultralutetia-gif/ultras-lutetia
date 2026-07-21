@@ -257,6 +257,27 @@ async function doRenvoyerOtp() {
     toast('Nouveau code envoyé ✅', 'success');
   } catch(e) { hideLoading(); toast(e.message || 'Impossible de renvoyer le code', 'error'); }
 }
+// Point d'entrée accessible depuis l'écran de connexion (pas seulement
+// juste après l'inscription) — utile quand le membre a quitté l'app
+// avant de saisir son code, ou revient plus tard avec un code expiré.
+// L'email est redemandé ici (contrairement à doRenvoyerOtp ci-dessus qui
+// s'appuie sur _emailEnAttenteOtp, perdu si l'app a été fermée).
+function ouvrirModalRenvoiCode() {
+  document.getElementById('renvoiCodeEmail').value = '';
+  showModal('modalRenvoiCode');
+}
+async function doRenvoyerCodeDepuisLogin() {
+  const email = document.getElementById('renvoiCodeEmail').value.trim();
+  if (!email || !email.includes('@')) return toast('Indique l\u2019email de ton compte', 'error');
+  try {
+    showLoading();
+    await UL.renvoyerCodeInscription(email);
+    hideLoading();
+    closeModal('modalRenvoiCode');
+    showOtpForm(email);
+    toast('Nouveau code envoyé ✅ — vérifie aussi tes spams.', 'success', 5000);
+  } catch(e) { hideLoading(); toast(e.message || 'Impossible de renvoyer le code', 'error'); }
+}
 async function doLogout() {
   try {
     await UL.logout();
@@ -907,16 +928,6 @@ async function loadAccueil() {
         : '<p style="color:var(--gris);font-size:14px;">🔒 Réservé aux Confirmés et Draft.</p>';
     } else {
       const sessions = await UL.getUpcomingSessions();
-      // Même tri que la page Tifos (tifos.js:loadTifos) : non-complètes
-      // en premier, sinon les 2 cartes affichées ici (slice(0,2)) peuvent
-      // être 2 sessions complètes alors qu'une place est dispo plus loin
-      // dans la liste chronologique.
-      sessions.sort((a, b) => {
-        const ca = estSessionComplete(a) ? 1 : 0;
-        const cb = estSessionComplete(b) ? 1 : 0;
-        if (ca !== cb) return ca - cb;
-        return (a.date || '').localeCompare(b.date || '');
-      });
       el.innerHTML = sessions.length
         ? sessions.slice(0,2).map(s => renderTifoCard(s, 'acc_')).join('')
         : '<p style="color:var(--gris);font-size:14px;">Aucun tifo à venir</p>';
