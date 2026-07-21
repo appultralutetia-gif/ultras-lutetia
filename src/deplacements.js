@@ -140,7 +140,7 @@ function renderDeplCard(d) {
       const dateOuv = d[champOuverturePourStatut(m?.statut)];
       boutonAction = `<span class="badge badge-gris">🔒 Ouverture le ${new Date(dateOuv).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>`;
     } else {
-      boutonAction = `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">M'inscrire</button>`;
+      boutonAction = `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();showConfirmInscriptionDepl('${d.id}')">M'inscrire</button>`;
     }
   } else if (estRefuse) {
     boutonAction = `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">❌ Réessayer le paiement</button>`;
@@ -238,7 +238,7 @@ async function openDepl(deplId) {
         const dateOuv = d[champOuverturePourStatut(m?.statut)];
         html += `<div class="info-box">🔒 Ouverture de tes inscriptions le ${new Date(dateOuv).toLocaleDateString('fr-FR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})}</div>`;
       } else {
-        html += `<button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">M'inscrire</button>`;
+        html += `<button class="btn btn-primary" onclick="showConfirmInscriptionDepl('${d.id}')">M'inscrire</button>`;
       }
     } else if (estRefuse) {
       html += `<div class="info-box error">❌ Paiement refusé</div>
