@@ -653,7 +653,13 @@
 //   (places_max null = illimité) — signalé par Paul Coyette sur
 //   ESTAC Troyes. Fichier modifié : supabase-client.js
 //   (getListeBusTelegram).
-const CACHE_NAME = 'ul-v110';
+// v111 (21/07/2026) : CACHE_NAME bumpé (v110 → v111) — RÉGRESSION
+//   corrigée : le tri "non-complètes en premier" du widget Accueil
+//   "Prochaine session tifo" (app.js:loadAccueil) avait disparu suite à
+//   une réécriture ultérieure du fichier lors de l'ajout du renvoi de
+//   code de confirmation (19/07/2026) — perte accidentelle, pas une
+//   décision. Remis en place. Fichier modifié : app.js.
+const CACHE_NAME = 'ul-v111';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
