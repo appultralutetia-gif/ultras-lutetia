@@ -647,7 +647,13 @@
 //   avoir à recréer un compte (impossible, email déjà pris) ni à
 //   attendre une intervention manuelle. Fichiers modifiés : index.html,
 //   app.js.
-const CACHE_NAME = 'ul-v109';
+// v110 (21/07/2026) : CACHE_NAME bumpé (v109 → v110) — correctif : le
+//   texte "Liste Bus" Telegram affichait "PAYÉS (2/null)" au lieu de
+//   "PAYÉS (2)" quand le déplacement n'a pas de quota de places défini
+//   (places_max null = illimité) — signalé par Paul Coyette sur
+//   ESTAC Troyes. Fichier modifié : supabase-client.js
+//   (getListeBusTelegram).
+const CACHE_NAME = 'ul-v110';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
