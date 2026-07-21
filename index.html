@@ -87,6 +87,11 @@
         Mot de passe oublié ?
       </span>
     </div>
+    <div style="text-align:center;margin-top:8px;">
+      <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="ouvrirModalRenvoiCode()">
+        Compte non confirmé ? Renvoyer le code
+      </span>
+    </div>
     <div style="text-align:center;margin-top:16px;">
       <span style="font-size:13px;color:var(--gris);cursor:pointer;" onclick="showInscription()">
         Pas encore membre ? S'inscrire
@@ -1091,6 +1096,27 @@
     </div>
     <button class="btn btn-primary" onclick="doDemandeResetMdp()">Envoyer le lien</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalMdpOublie')">Annuler</button>
+  </div>
+</div>
+
+<!-- Modal Renvoyer le code de confirmation — pour les comptes créés mais
+     jamais confirmés (ex. app fermée avant de saisir le code, ou code
+     expiré) : contrairement au bouton "renvoyer" de l'écran OTP, cette
+     entrée fonctionne même après avoir quitté l'app entre-temps, puisque
+     l'email est redemandé ici plutôt que gardé en mémoire de session. -->
+<div class="modal-overlay" id="modalRenvoiCode" style="display:none;" onclick="closeModalOutside(event,'modalRenvoiCode')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title">Compte non confirmé</h3>
+    <p style="font-size:13px;color:var(--gris);margin-bottom:14px;">
+      Indique l'email utilisé à l'inscription, on te renvoie un nouveau code à 8 chiffres.
+    </p>
+    <div class="form-group">
+      <label>Email du compte</label>
+      <input type="email" id="renvoiCodeEmail" placeholder="email@exemple.fr" autocomplete="email">
+    </div>
+    <button class="btn btn-primary" onclick="doRenvoyerCodeDepuisLogin()">Renvoyer le code</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalRenvoiCode')">Annuler</button>
   </div>
 </div>
 
