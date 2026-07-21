@@ -928,6 +928,15 @@ async function loadAccueil() {
         : '<p style="color:var(--gris);font-size:14px;">🔒 Réservé aux Confirmés et Draft.</p>';
     } else {
       const sessions = await UL.getUpcomingSessions();
+      // Non-complètes en premier (comme la page Tifos et les
+      // déplacements), sinon les 2 cartes ici peuvent être 2 sessions
+      // complètes alors qu'une place est dispo plus loin dans la liste.
+      sessions.sort((a, b) => {
+        const ca = estSessionComplete(a) ? 1 : 0;
+        const cb = estSessionComplete(b) ? 1 : 0;
+        if (ca !== cb) return ca - cb;
+        return (a.date || '').localeCompare(b.date || '');
+      });
       el.innerHTML = sessions.length
         ? sessions.slice(0,2).map(s => renderTifoCard(s, 'acc_')).join('')
         : '<p style="color:var(--gris);font-size:14px;">Aucun tifo à venir</p>';
