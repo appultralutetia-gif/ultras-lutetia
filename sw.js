@@ -638,7 +638,16 @@
 //   déjà présent. Fichiers modifiés : index.html, admin.js,
 //   calendrier.js, supabase-client.js (nouvelle fonction
 //   getDerniersPaiementsCartageParMembre).
-const CACHE_NAME = 'ul-v108';
+// v109 (20/07/2026) : CACHE_NAME bumpé (v108 → v109) — nouveau lien
+//   "Compte non confirmé ? Renvoyer le code" sur l'écran de connexion.
+//   Contrairement au bouton "renvoyer" déjà présent sur l'écran OTP
+//   (qui dépend de _emailEnAttenteOtp, perdu si l'app a été fermée
+//   entre-temps), celui-ci redemande l'email et fonctionne donc même
+//   après avoir quitté l'app — utile pour tous les comptes bloqués sans
+//   avoir à recréer un compte (impossible, email déjà pris) ni à
+//   attendre une intervention manuelle. Fichiers modifiés : index.html,
+//   app.js.
+const CACHE_NAME = 'ul-v109';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
