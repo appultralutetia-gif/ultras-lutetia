@@ -707,7 +707,15 @@
 //   nouvelle répartition par section ; nouvelles stats Cartage à jour/
 //   Charte signée/Actifs/Bloqués ; nouveau détail par rôle (Admin/
 //   Bureau/Cellules). Fichiers modifiés : admin.js, supabase-client.js.
-const CACHE_NAME = 'ul-v117';
+// v118 (22/07/2026) : CACHE_NAME bumpé (v117 → v118) — valeurs affichées
+//   directement sur la courbe d'inscriptions ; correctif : le bouton
+//   d'onglet "Tifo" de la page Stats ne faisait rien (switchStatsTab
+//   n'existait pas du tout, ni aucun rendu des stats Tifo pourtant déjà
+//   calculées par getStatsTifo) — implémenté. Ajout de 3 nouveaux
+//   onglets Stats : Déplacement, Matos, Stick (nouvelles fonctions
+//   getStatsDeplacements/getStatsMatos/getStatsSticks). Fichiers
+//   modifiés : index.html, admin.js, supabase-client.js.
+const CACHE_NAME = 'ul-v118';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
