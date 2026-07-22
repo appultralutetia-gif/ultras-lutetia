@@ -736,7 +736,19 @@
 //   et le code déployé, ce n'était pas la cause). Nouvelle fonction
 //   partagée appellerHelloAssoCheckout. Fichier modifié :
 //   supabase-client.js.
-const CACHE_NAME = 'ul-v120';
+// v121 (22/07/2026) : CACHE_NAME bumpé (v120 → v121) — VRAI bug de
+//   quota trouvé et corrigé (cas Brahim Bennais/Tour de Cou, épisode 2,
+//   message "Quota dépassé" enfin lisible grâce au correctif v120) : le
+//   contrôle de quota Matos ne filtrait pas par produit_id — il
+//   additionnait TOUTES les commandes payées du membre, tous articles
+//   confondus, bloquant l'achat d'un article jamais acheté simplement
+//   parce qu'un AUTRE article avait déjà été payé. Corrigé dans
+//   passerCommande et distribuerProduitAdmin (front) ET dans
+//   helloasso-create-checkout (Edge Function, déployée directement en
+//   v30 sans repasser par un copier-coller manuel). Sticks n'avait pas
+//   ce bug (stick_id déjà direct sur sticks_distribution). Fichier
+//   modifié : supabase-client.js.
+const CACHE_NAME = 'ul-v121';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
