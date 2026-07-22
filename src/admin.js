@@ -1,16 +1,28 @@
 // ─── MEMBRES (Admin) ──────────────────────────────────────────
+// "il y a X jours" / "aujourd'hui" / "hier" / "Jamais connecté" — partagé
+// par Gérer les membres et Comité de passage (demande Remi 21/07/2026).
+function formaterDerniereConnexion(dateStr) {
+  if (!dateStr) return 'Jamais connecté';
+  const jours = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+  if (jours <= 0) return 'Aujourd\u2019hui';
+  if (jours === 1) return 'Hier';
+  return `Il y a ${jours} jours`;
+}
+let _dernieresConnexionsParMembre = {};
 let _filtreCartageMembres = 'tous';
 async function loadMembres() {
   document.getElementById('membresList').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
-    const [membres, codesReabo, paiementsParMembre] = await Promise.all([
+    const [membres, codesReabo, paiementsParMembre, dernieresConnexions] = await Promise.all([
       UL.getAllMembres(),
       // Dégradation silencieuse comme dans loadMembresComite : un souci
       // de droits ne doit jamais bloquer le chargement de la page, juste
       // afficher les cartes sans l'info code.
       UL.listerCodesReabonnementAdmin().catch(() => []),
       UL.getDerniersPaiementsCartageParMembre().catch(() => ({})),
+      UL.getDernieresConnexionsParMembre().catch(() => ({})),
     ]);
+    _dernieresConnexionsParMembre = dernieresConnexions;
     _codesReaboParEmail = {};
     codesReabo.forEach(c => {
       const cle = (c.email || '').trim().toLowerCase();
@@ -88,6 +100,7 @@ function renderMembres(membres) {
               : `<div style="font-size:10px;color:var(--gris);opacity:.7;margin-top:2px;">🎫 Aucun code réabonnement</div>`;
           })()}
           ${Array.isArray(m.roles_app) && m.roles_app.length ? `<div style="font-size:10px;color:#818CF8;margin-top:2px;">🔑 ${m.roles_app.map(r=>r.replace('_',' ')).join(' · ')}</div>` : ''}
+          <div style="font-size:10px;color:var(--gris);margin-top:2px;">🕐 ${formaterDerniereConnexion(_dernieresConnexionsParMembre[m.id])}</div>
         </div>
         <span style="font-size:12px;color:var(--bleu-clair);">${esc(m.section?.nom||'Ultra Lutetia')}</span>
       </div>
@@ -906,14 +919,16 @@ async function loadMembresComite() {
   const btnSansCode = document.getElementById('btnSansCodeComite');
   if (btnSansCode) btnSansCode.classList.remove('active');
   try {
-    const [membres, sections, codesReabo] = await Promise.all([
+    const [membres, sections, codesReabo, dernieresConnexions] = await Promise.all([
       UL.getAllMembres(),
       UL.getSections(),
       // N'échoue jamais le chargement de la page si ça échoue (ex. rôle
       // insuffisant côté serveur) — les cartes s'affichent juste sans
       // code, dégradation silencieuse plutôt que page bloquée.
       UL.listerCodesReabonnementAdmin().catch(() => []),
+      UL.getDernieresConnexionsParMembre().catch(() => ({})),
     ]);
+    _dernieresConnexionsParMembre = dernieresConnexions;
     _codesReaboParEmail = {};
     codesReabo.forEach(c => {
       const cle = (c.email || '').trim().toLowerCase();
@@ -1091,6 +1106,7 @@ function renderMembreComiteCard(m) {
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--gris);">
       <span>🖌️ ${m._participation?.tifoPresent ?? 0} présent${(m._participation?.tifoPresent ?? 0) === 1 ? '' : 's'} · ${m._participation?.tifoAbsent ?? 0} absent${(m._participation?.tifoAbsent ?? 0) === 1 ? '' : 's'}</span>
       <span>🚌 ${m._participation?.deplPaye ?? 0} payé${(m._participation?.deplPaye ?? 0) === 1 ? '' : 's'} · ${m._participation?.deplNonPaye ?? 0} non payé${(m._participation?.deplNonPaye ?? 0) === 1 ? '' : 's'}</span>
+      <span>🕐 ${formaterDerniereConnexion(_dernieresConnexionsParMembre[m.id])}</span>
     </div>
     ${categorie ? `
     <div style="display:flex;gap:4px;margin-top:10px;" data-eval-boutons="${categorie}_${m.id}">
