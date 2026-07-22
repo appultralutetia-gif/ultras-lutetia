@@ -104,7 +104,7 @@ function renderTifoCard(s, prefix='') {
       <div style="text-align:center;padding:8px;color:var(--gris);font-size:13px;">⏳</div>
     </div>
 
-    <!-- Participants (visible par tous) -->
+    <!-- Liste des participants (pseudo visible par tous, nom/prénom réservé à Admin/Bureau/Cellule Tifo — cf. toggleParticipants) -->
     <div style="margin-top:8px;">
       <button class="btn btn-secondary" style="width:100%;padding:8px;" onclick="toggleParticipants('${prefix}${s.id}', event)">
         👥 Voir les participants
@@ -447,7 +447,11 @@ async function voirCommandesPizza(sessionId, nom, e) {
   } catch(e) { toast('Impossible de charger les commandes pizza', 'error'); }
 }
 
-// ── Participants (visible par tous) ──────────────────────────
+// ── Participants ───────────────────────────────────────────────
+// Le pseudo reste visible par tous (utile pour se reconnaître entre
+// membres) — nom/prénom réservés à Admin/Bureau/Cellule Tifo (demande
+// Remi 22/07/2026, même règle que Déplacement/Matos où ces infos sont
+// déjà réservées à la cellule concernée).
 async function toggleParticipants(sessionId, e) {
   e.stopPropagation();
   const btn = e.currentTarget;
@@ -464,13 +468,14 @@ async function toggleParticipants(sessionId, e) {
   const realId = sessionId.replace(/^acc_/, '');
   try {
     const { inscrits } = await UL.getSessionDetails(realId);
+    const voitNomComplet = hasCelluleTifo(UL.getCurrentMembre());
     const statutEmoji = { inscrit:'📋', present:'✅', absent:'❌' };
     el.innerHTML = inscrits.length
       ? inscrits.map(i => `
           <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
             <div style="flex:1;min-width:0;">
               <div style="font-weight:600;">@${esc(i.membre?.pseudo_telegram||'?')}</div>
-              <div style="color:var(--gris);font-size:11px;">${esc(i.membre?.prenom||'')} ${esc(i.membre?.nom||'')}</div>
+              ${voitNomComplet ? `<div style="color:var(--gris);font-size:11px;">${esc(i.membre?.prenom||'')} ${esc(i.membre?.nom||'')}</div>` : ''}
             </div>
             <span class="badge ${i.statut==='present'?'badge-vert':i.statut==='absent'?'badge-rouge':'badge-bleu'}" style="font-size:10px;">
               ${statutEmoji[i.statut]||''} ${i.statut==='present'?'Présent':i.statut==='absent'?'Absent':'Inscrit'}
