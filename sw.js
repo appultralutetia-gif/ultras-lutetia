@@ -681,7 +681,19 @@
 //   lister_dernieres_connexions (Admin/Bureau uniquement, expose
 //   auth.users.last_sign_in_at normalement inaccessible). Fichiers
 //   modifiés : admin.js, supabase-client.js.
-const CACHE_NAME = 'ul-v114';
+// v115 (21/07/2026) : CACHE_NAME bumpé (v114 → v115) — correctif règle
+//   "seule une commande PAYÉE compte dans le quota" (demande Remi
+//   21/07/2026, cas Brahim Bennais / Tour de Cou) : passerCommande et
+//   distribuerProduitAdmin ne comptaient plus 'en_attente' dans le
+//   quota_par_membre boutique ; getMonQuotaDepl ne comptait plus que
+//   'paye_cash'/'paye_ha' (au lieu de TOUTES les inscriptions, y
+//   compris en_attente/refuse/annule/rembourse) dans le quota
+//   déplacement. ⚠️ Le flux HelloAsso (Edge Function
+//   helloasso-create-checkout, hors dépôt front) applique probablement
+//   la même logique de quota côté serveur et n'a pas pu être corrigé
+//   ici — c'est très probablement la cause réelle du blocage de
+//   Brahim. Fichier modifié : supabase-client.js.
+const CACHE_NAME = 'ul-v115';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
