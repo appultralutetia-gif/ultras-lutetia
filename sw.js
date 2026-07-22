@@ -775,7 +775,14 @@
 //   groupe existait déjà, seule cette restriction d'horaire manquait
 //   son bypass. Fichiers modifiés : deplacements.js,
 //   supabase-client.js.
-const CACHE_NAME = 'ul-v123';
+// v124 (22/07/2026) : CACHE_NAME bumpé (v123 → v124) — Tifo : "Voir les
+//   participants" affichait nom+prénom à absolument tous les membres
+//   (le pseudo seul aurait dû suffire) — corrigé, nom+prénom réservé à
+//   Admin/Bureau/Cellule Tifo, comme c'était déjà le cas côté
+//   Déplacement (bouton "Inscrits" réservé à la cellule) et Matos
+//   (aucune liste de participants exposée aux membres, rien à changer).
+//   Fichier modifié : tifos.js.
+const CACHE_NAME = 'ul-v124';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
