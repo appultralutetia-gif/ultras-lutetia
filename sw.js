@@ -788,7 +788,20 @@
 //   Remi) — un message "🔒 Heure de départ visible une fois inscrit"
 //   la remplace. Admin/Bureau/Cellule Déplacement la voient toujours,
 //   comme le reste du détail cellule. Fichier modifié : deplacements.js.
-const CACHE_NAME = 'ul-v125';
+// v126 (23/07/2026) : CACHE_NAME bumpé (v125 → v126) — libellé "Heure
+//   départ bus" renommé en "Heure de RDV" (formulaires création/
+//   modification + détail déplacement), demande Remi. Champ DB
+//   heure_depart inchangé, purement cosmétique. Fichiers modifiés :
+//   index.html, deplacements.js.
+// v127 (23/07/2026) : CACHE_NAME bumpé (v126 → v127) — même correctif
+//   que HelloAsso (v120) appliqué à genererLienConnexionAdmin ("Se
+//   connecter en tant que") : le vrai message d'erreur renvoyé par
+//   l'Edge Function admin-generer-lien-connexion était remplacé par le
+//   texte générique du SDK Supabase. Cas observé : plusieurs 500
+//   entrecoupés de 200 sur cette fonction en peu de temps (probable
+//   limite de fréquence Supabase sur la génération de liens, pas un
+//   bug lié à un compte précis). Fichier modifié : supabase-client.js.
+const CACHE_NAME = 'ul-v127';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
