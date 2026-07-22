@@ -674,7 +674,14 @@
 //   confirmer_email_membre, pas seulement côté app). Fini de me le
 //   demander à chaque fois. Fichiers modifiés : admin.js,
 //   supabase-client.js.
-const CACHE_NAME = 'ul-v113';
+// v114 (21/07/2026) : CACHE_NAME bumpé (v113 → v114) — "🕐 Dernière
+//   connexion" (format "Il y a X jours" / "Hier" / "Aujourd'hui" /
+//   "Jamais connecté") ajoutée sur les cartes de Gérer les membres ET
+//   Comité de passage. Nouvelle fonction Postgres
+//   lister_dernieres_connexions (Admin/Bureau uniquement, expose
+//   auth.users.last_sign_in_at normalement inaccessible). Fichiers
+//   modifiés : admin.js, supabase-client.js.
+const CACHE_NAME = 'ul-v114';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
