@@ -1055,17 +1055,6 @@
       <div id="listeAmisDepl" style="max-height:220px;overflow-y:auto;margin-top:8px;"></div>
     </div>
 
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(255,255,255,.07);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;margin:0;">
-        <input type="checkbox" id="idAvecInvites" onchange="toggleInvitesDepl()" style="width:20px;height:20px;accent-color:#1A56DB;">
-        <span style="font-size:14px;">➕ Ajouter des amis hors app</span>
-      </label>
-    </div>
-    <div id="blocInvitesDepl" style="display:none;margin-bottom:10px;">
-      <div id="listeInvitesDepl"></div>
-      <button class="btn btn-sm btn-secondary" style="width:100%;margin-top:4px;" onclick="ajouterLigneInviteDepl()">+ Ajouter un ami</button>
-    </div>
-
     <div id="inscritDeplRecap" style="margin:14px 0;font-size:14px;font-weight:600;"></div>
     <button class="btn btn-primary" onclick="doInscritDeplMulti(this)">Payer</button>
     <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalInscritDepl')">Annuler</button>
@@ -1303,6 +1292,10 @@
     <div class="form-group">
       <label>Ouverture inscriptions — Sympathisants</label>
       <input type="datetime-local" id="dOuvSympa">
+    </div>
+    <div class="form-group">
+      <label>Ouverture inscriptions — Visiteur</label>
+      <input type="datetime-local" id="dOuvVisiteur">
       <div style="font-size:12px;color:var(--gris);margin-top:4px;">Laisse un champ vide pour ouvrir ce statut sans restriction dès la création.</div>
     </div>
     <div class="form-group"><label>Notes</label><textarea id="dNotes" rows="2" placeholder="Infos complémentaires..."></textarea></div>
@@ -1383,6 +1376,10 @@
     <div class="form-group">
       <label>Ouverture inscriptions — Sympathisants</label>
       <input type="datetime-local" id="dmOuvSympa">
+    </div>
+    <div class="form-group">
+      <label>Ouverture inscriptions — Visiteur</label>
+      <input type="datetime-local" id="dmOuvVisiteur">
     </div>
     <div class="form-group"><label>Notes</label><textarea id="dmNotes" rows="2" placeholder="Infos complémentaires..."></textarea></div>
     <div class="form-group">
