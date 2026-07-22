@@ -121,6 +121,13 @@ function utcVersDatetimeLocal(iso) {
 }
 function inscriptionPasEncoreOuvertePourMoi(d) {
   const m = UL.getCurrentMembre();
+  // Admin/Bureau/Cellule Déplacement peuvent toujours prendre leur place,
+  // même avant l'ouverture échelonnée correspondant à leur propre statut
+  // et même sur un déplacement en brouillon — utile pour tester un
+  // paiement avant publication (demande Remi 22/07/2026). La visibilité
+  // des brouillons pour ce même groupe existait déjà (getDeplacements) ;
+  // seule cette restriction d'horaire les bloquait encore.
+  if (hasCelluleDepl(m)) return false;
   const champ = champOuverturePourStatut(m?.statut);
   const dateOuverture = d[champ];
   if (!dateOuverture) return false; // pas de restriction configurée pour ce statut
@@ -188,6 +195,20 @@ function renderDeplCard(d) {
     const seuil = d.cout_bus / d.places_max;
     const auDessus = (d.prix_bus || 0) >= seuil;
     equilibreApercu = `<div style="font-size:11px;color:var(--gris);margin-top:6px;">🎯 Seuil ${seuil.toFixed(1)}€/place ${auDessus ? '✅' : '⚠️'} ${d.distance_km ? `· 🛣️ ${d.distance_km}km A/R` : ''}</div>`;
+    // Manque pour l'équilibre + bénéfice/perte RÉEL au nombre d'inscrits
+    // payés actuel (demande Remi 22/07/2026) — jusqu'ici seul le scénario
+    // "bus plein" était visible (dans le détail, pas sur la carte). Basé
+    // uniquement sur prix_bus, jamais prix_place (le prix de la place ne
+    // sert pas à couvrir le coût du bus — précisé par Remi).
+    if (d.prix_bus) {
+      const seuilPersonnes = d.cout_bus / d.prix_bus;
+      const inscritsPayes = d._inscritsPayes || 0;
+      const manque = Math.max(0, Math.ceil(seuilPersonnes) - inscritsPayes);
+      const beneficeActuel = (inscritsPayes * d.prix_bus) - d.cout_bus;
+      const enPerte = beneficeActuel < 0;
+      equilibreApercu += `<div style="font-size:11px;color:${manque > 0 ? 'var(--orange)' : 'var(--vert)'};margin-top:2px;">${manque > 0 ? `⚠️ Encore ${manque} personne${manque>1?'s':''} pour l'équilibre` : '✅ Équilibre atteint'}</div>`;
+      equilibreApercu += `<div style="font-size:11px;color:${enPerte ? 'var(--rouge)' : 'var(--vert)'};margin-top:2px;">${enPerte ? `📉 Perte actuelle : ${Math.abs(beneficeActuel).toFixed(0)}€` : `📈 Bénéfice actuel : ${beneficeActuel.toFixed(0)}€`} (${inscritsPayes} payé${inscritsPayes>1?'s':''})</div>`;
+    }
   }
   const adminBar = hasCelluleDepl(m) ? `
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
