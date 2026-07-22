@@ -1052,24 +1052,36 @@ async function annulerInscriptionDeplAdmin(inscriptionId) {
   return { success: true };
 }
 
-async function relancerPaiementDeplacement(deplacementId) {
-  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
-    body: { deplacementId },
-  });
-  if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
+// Toutes les fonctions HelloAsso ci-dessous appelaient sb.functions.invoke
+// directement et perdaient le vrai message d'erreur renvoyé par l'Edge
+// Function (ex. "Quota dépassé — max 1 par membre") — le SDK Supabase
+// remplace ce message par un texte générique ("Edge Function returned a
+// non-2xx status code") dès que le code HTTP n'est pas 2xx, `data` restant
+// alors `null`. Le vrai corps de réponse est dans `error.context` (la
+// Response brute), à relire manuellement (demande Remi 22/07/2026, suite
+// au cas Brahim Bennais / Tour de Cou : message affiché totalement
+// inexploitable pour diagnostiquer).
+async function appellerHelloAssoCheckout(body) {
+  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', { body });
+  if (error) {
+    let messageReel = error.message;
+    try {
+      const corps = await error.context?.json();
+      if (corps?.error) messageReel = corps.error;
+    } catch (_) { /* corps non lisible en JSON — on garde le message générique */ }
+    throw new Error(messageReel || 'Impossible de lancer le paiement');
+  }
   if (data?.error) throw new Error(data.error);
   if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
   return data;
 }
 
+async function relancerPaiementDeplacement(deplacementId) {
+  return appellerHelloAssoCheckout({ deplacementId });
+}
+
 async function demanderInscriptionDeplacementHelloAsso(deplacementId, participants) {
-  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
-    body: { deplacementId, participants },
-  });
-  if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
-  if (data?.error) throw new Error(data.error);
-  if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
-  return data;
+  return appellerHelloAssoCheckout({ deplacementId, participants });
 }
 
 async function validerPaiementCash(inscriptionId) {
@@ -1832,13 +1844,7 @@ async function distribuerProduitAdmin(produitId, membreId, taille, quantite = 1)
   return commande;
 }
 async function demanderCommandeHelloAsso(produitId, taille, quantite = 1) {
-  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
-    body: { produitId, taille, quantite },
-  });
-  if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
-  if (data?.error) throw new Error(data.error);
-  if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
-  return data;
+  return appellerHelloAssoCheckout({ produitId, taille, quantite });
 }
 
 async function getMesCommandes() {
@@ -1999,13 +2005,7 @@ async function getMonQuotaStick(stickId) {
 }
 
 async function demanderStickHelloAsso(stickId, quantite = 1) {
-  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
-    body: { stickId, quantite },
-  });
-  if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
-  if (data?.error) throw new Error(data.error);
-  if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
-  return data;
+  return appellerHelloAssoCheckout({ stickId, quantite });
 }
 
 async function getMesSticks() {
@@ -2158,13 +2158,7 @@ async function getMesPaiementsCartage() {
 }
 
 async function demanderCartageHelloAsso(cartageId) {
-  const { data, error } = await sb.functions.invoke('helloasso-create-checkout', {
-    body: { cartageId },
-  });
-  if (error) throw new Error(error.message || 'Impossible de lancer le paiement');
-  if (data?.error) throw new Error(data.error);
-  if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
-  return data;
+  return appellerHelloAssoCheckout({ cartageId });
 }
 
 async function validerCartageCash(membreId, cartageId) {
