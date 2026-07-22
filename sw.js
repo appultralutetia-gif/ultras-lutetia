@@ -698,7 +698,16 @@
 //   getCartageNonInscrits) et courbe cumulée du nombre de membres
 //   inscrits par mois (SVG généré côté client, pas de librairie externe
 //   ajoutée). Fichiers modifiés : admin.js, supabase-client.js.
-const CACHE_NAME = 'ul-v116';
+// v117 (22/07/2026) : CACHE_NAME bumpé (v116 → v117) — Stats (Général),
+//   correctifs et ajouts demandés par Remi : courbe d'inscriptions
+//   regroupée par SEMAINE au lieu du mois (trop peu de points sinon) ;
+//   suppression du doublon Confirmés/Drafts (affichés à la fois en KPI
+//   et dans le détail par statut) ; ajout Visiteur au détail par statut,
+//   retrait de "Cellule" (n'était pas un vrai statut, toujours à 0) ;
+//   nouvelle répartition par section ; nouvelles stats Cartage à jour/
+//   Charte signée/Actifs/Bloqués ; nouveau détail par rôle (Admin/
+//   Bureau/Cellules). Fichiers modifiés : admin.js, supabase-client.js.
+const CACHE_NAME = 'ul-v117';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
