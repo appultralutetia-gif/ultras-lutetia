@@ -1226,31 +1226,54 @@ async function genererLienConnexionAdmin(membreId) {
 // ============================================================
 
 async function getStats() {
-  const [membres, sessions, deplacements, cartageNonInscrits] = await Promise.all([
-    sb.from('membres').select('statut, section_id, created_at', { count: 'exact' }),
+  const [membres, sessions, deplacements, sections, cartageNonInscrits] = await Promise.all([
+    sb.from('membres').select('statut, section_id, created_at, cotisation_a_jour, charte_signee, actif, roles_app', { count: 'exact' }),
     sb.from('sessions_tifo').select('id', { count: 'exact' }),
     sb.from('deplacements').select('id', { count: 'exact' }),
+    sb.from('sections').select('id, nom').eq('actif', true),
     // Dégradation silencieuse si la policy manque un jour (ex. table
     // cartage_preinscriptions) — une stat en moins ne doit jamais casser
     // toute la page Stats.
     getCartageNonInscrits().catch(() => []),
   ]);
+  const m = membres.data || [];
 
-  // Courbe "nombre d'inscrits" (demande Remi 22/07/2026) : cumul mois par
-  // mois du total de membres, du premier mois connu à aujourd'hui —
-  // calculée ici plutôt que stockée, se met à jour toute seule.
-  const parMois = {};
-  (membres.data || []).forEach(m => {
-    if (!m.created_at) return;
-    const cle = m.created_at.slice(0, 7); // "YYYY-MM"
-    parMois[cle] = (parMois[cle] || 0) + 1;
+  // Courbe "inscriptions cumulées" (demande Remi 22/07/2026, affinée le
+  // 22/07/2026 : regroupement par SEMAINE plutôt que par mois — avec
+  // seulement 1-2 mois d'historique, un regroupement mensuel ne donnait
+  // que 2 points, illisible). Cumul semaine par semaine du total de
+  // membres, de la première semaine connue à aujourd'hui.
+  const parSemaine = {};
+  m.forEach(x => {
+    if (!x.created_at) return;
+    const d = new Date(x.created_at);
+    // Lundi de la semaine, en UTC pour éviter tout décalage de fuseau
+    // horaire qui ferait glisser certaines inscriptions dans la mauvaise
+    // semaine près de minuit.
+    const jour = (d.getUTCDay() + 6) % 7; // 0 = lundi
+    const lundi = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - jour));
+    const cle = lundi.toISOString().slice(0, 10);
+    parSemaine[cle] = (parSemaine[cle] || 0) + 1;
   });
-  const moisTries = Object.keys(parMois).sort();
+  const semainesTriees = Object.keys(parSemaine).sort();
   let cumul = 0;
-  const courbeInscriptions = moisTries.map(mois => {
-    cumul += parMois[mois];
-    return { mois, total: cumul };
+  const courbeInscriptions = semainesTriees.map(semaine => {
+    cumul += parSemaine[semaine];
+    return { semaine, total: cumul };
   });
+
+  // Répartition par section — noms résolus (avant : uniquement
+  // section_id, jamais affiché) ; "Sans section" pour les membres non
+  // rattachés.
+  const sectionsById = new Map((sections.data || []).map(s => [s.id, s.nom]));
+  const parSection = {};
+  m.forEach(x => {
+    const nom = sectionsById.get(x.section_id) || 'Sans section';
+    parSection[nom] = (parSection[nom] || 0) + 1;
+  });
+  const repartitionSections = Object.entries(parSection).sort((a, b) => b[1] - a[1]);
+
+  const compteRole = (role) => m.filter(x => Array.isArray(x.roles_app) && x.roles_app.includes(role)).length;
 
   return {
     totalMembres: membres.count || 0,
@@ -1258,10 +1281,24 @@ async function getStats() {
     totalDeplacements: deplacements.count || 0,
     cartageNonInscrits: (cartageNonInscrits || []).length,
     courbeInscriptions,
-    repartitionStatuts: (membres.data || []).reduce((acc, m) => {
-      acc[m.statut] = (acc[m.statut] || 0) + 1;
+    repartitionSections,
+    repartitionStatuts: m.reduce((acc, x) => {
+      acc[x.statut] = (acc[x.statut] || 0) + 1;
       return acc;
     }, {}),
+    cartageOk: m.filter(x => x.cotisation_a_jour).length,
+    charteSignee: m.filter(x => x.charte_signee).length,
+    actifs: m.filter(x => x.actif).length,
+    bloques: m.filter(x => !x.actif).length,
+    roles: {
+      admin: compteRole('admin_app'),
+      bureau: compteRole('bureau_app'),
+      celluleTifo: compteRole('cellule_tifo'),
+      celluleDepl: compteRole('cellule_depl'),
+      celluleMatos: compteRole('cellule_matos'),
+      celluleSticks: compteRole('cellule_sticks'),
+      celluleComite: compteRole('cellule_comite'),
+    },
   };
 }
 
