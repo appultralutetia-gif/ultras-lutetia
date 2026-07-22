@@ -362,29 +362,64 @@ async function loadStats() {
   try {
     const stats = await UL.getStats();
     const mesStats = await UL.getMesStats();
-    const COLORS = ['#1700D1','#2E18E0','#4530EF','#5B48FF','#7060FF','#8575FF'];
     const r = stats.repartitionStatuts || {};
+    const rl = stats.roles || {};
     el.innerHTML = `
       <div class="kpi-grid">
         <div class="kpi"><div class="kpi-lbl">Total membres</div><div class="kpi-val">${stats.totalMembres}</div></div>
-        <div class="kpi"><div class="kpi-lbl">Confirmés</div><div class="kpi-val" style="color:var(--open)">${r.confirme||0}</div></div>
-        <div class="kpi"><div class="kpi-lbl">Drafts</div><div class="kpi-val" style="color:var(--pizza)">${r.draft||0}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Actifs</div><div class="kpi-val" style="color:var(--open)">${stats.actifs}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Bloqués</div><div class="kpi-val" style="color:${stats.bloques ? 'var(--rouge)' : 'var(--gris)'}">${stats.bloques}</div></div>
       </div>
+      <!-- Un seul endroit pour le détail par statut (avant : dupliqué
+           avec la ligne de KPI ci-dessus, qui affichait déjà Confirmés/
+           Drafts — signalé par Remi 22/07/2026). Les 4 vrais statuts
+           (Visiteur/Sympa/Draft/Confirmé) sont listés une seule fois ici
+           — "Cellule" retiré, ce n'est pas un statut mais un rôle
+           (roles_app), déjà compté séparément plus bas. -->
       <div class="tranche-grid">
+        <div class="tranche"><div class="tranche-lbl" style="color:var(--gris)">Visiteur</div><div class="tranche-val" style="color:var(--gris)">${r.visiteur||0}</div></div>
         <div class="tranche"><div class="tranche-lbl" style="color:var(--blue-light)">Sympa.</div><div class="tranche-val" style="color:var(--blue-light)">${r.sympathisant||0}</div></div>
         <div class="tranche"><div class="tranche-lbl" style="color:var(--pizza)">Draft</div><div class="tranche-val" style="color:var(--pizza)">${r.draft||0}</div></div>
         <div class="tranche"><div class="tranche-lbl" style="color:var(--open)">Confirmé</div><div class="tranche-val" style="color:var(--open)">${r.confirme||0}</div></div>
-        <div class="tranche"><div class="tranche-lbl" style="color:#C4B5FF">Cellule</div><div class="tranche-val" style="color:#C4B5FF">${r.membre_cellule||0}</div></div>
       </div>
       <div class="card">
-        <div class="card-label">🎫 Cartage</div>
-        <div class="stat-card" style="max-width:220px;">
+        <div class="card-label">🛡️ Par section</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${(stats.repartitionSections||[]).map(([nom, n]) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;">
+              <span>${esc(nom)}</span>
+              <span style="display:flex;align-items:center;gap:8px;">
+                <span style="width:${Math.max(4, Math.round(n / stats.totalMembres * 100))}px;height:6px;background:var(--bleu,#5B48FF);border-radius:3px;"></span>
+                <b>${n}</b>
+              </span>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">🎫 Cartage &amp; Charte</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-card"><div class="stat-value" style="color:var(--open);">${stats.cartageOk}</div><div class="stat-label">Cartage à jour</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:var(--open);">${stats.charteSignee}</div><div class="stat-label">Charte signée</div></div>
+        </div>
+        <div class="stat-card" style="margin-top:10px;">
           <div class="stat-value" style="color:${stats.cartageNonInscrits > 0 ? 'var(--orange)' : 'var(--vert)'};">${stats.cartageNonInscrits}</div>
           <div class="stat-label">Cartés non inscrits sur l'app</div>
         </div>
       </div>
       <div class="card">
-        <div class="card-label">📈 Inscriptions cumulées</div>
+        <div class="card-label">🔑 Rôles</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:12px;">
+          <span class="badge badge-vert">Admin ${rl.admin||0}</span>
+          <span class="badge badge-vert">Bureau ${rl.bureau||0}</span>
+          <span class="badge" style="background:#818CF833;color:#818CF8;">Cellule Tifo ${rl.celluleTifo||0}</span>
+          <span class="badge" style="background:#818CF833;color:#818CF8;">Cellule Dépl. ${rl.celluleDepl||0}</span>
+          <span class="badge" style="background:#818CF833;color:#818CF8;">Cellule Matos ${rl.celluleMatos||0}</span>
+          <span class="badge" style="background:#818CF833;color:#818CF8;">Cellule Sticks ${rl.celluleSticks||0}</span>
+          <span class="badge" style="background:#818CF833;color:#818CF8;">Comité de passage ${rl.celluleComite||0}</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">📈 Inscriptions cumulées (par semaine)</div>
         ${genererCourbeInscriptionsSVG(stats.courbeInscriptions)}
       </div>
       <div class="card">
@@ -397,23 +432,25 @@ async function loadStats() {
   } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
 }
 
-// Courbe cumulée mensuelle du nombre de membres inscrits, en SVG pur (pas
-// de librairie de graphique dans le projet) — demande Remi 22/07/2026.
-// `serie` = [{mois:'YYYY-MM', total:N}, ...] déjà trié chronologiquement.
+// Courbe cumulée hebdomadaire du nombre de membres inscrits, en SVG pur
+// (pas de librairie de graphique dans le projet) — demande Remi
+// 22/07/2026, affinée le même jour (semaine plutôt que mois — sinon
+// trop peu de points avec 1-2 mois d'historique).
+// `serie` = [{semaine:'YYYY-MM-DD' (lundi), total:N}, ...] déjà triée.
 function genererCourbeInscriptionsSVG(serie) {
   if (!serie || serie.length < 2) return '<div class="empty-state" style="padding:20px 0;">Pas encore assez de données</div>';
-  const W = 320, H = 140, PAD = 28;
+  const W = 320, H = 150, PAD = 28;
   const maxVal = serie[serie.length - 1].total || 1;
   const step = (W - PAD * 2) / (serie.length - 1);
   const y = v => H - PAD - (v / maxVal) * (H - PAD * 1.5);
   const points = serie.map((p, i) => `${PAD + i * step},${y(p.total)}`).join(' ');
-  // Un label sur ~5 points suffit à rester lisible sans surcharger l'axe,
-  // quel que soit le nombre de mois déjà écoulés.
-  const everyN = Math.max(1, Math.ceil(serie.length / 5));
+  // Un label sur ~6 points suffit à rester lisible sans surcharger l'axe,
+  // quel que soit le nombre de semaines déjà écoulées.
+  const everyN = Math.max(1, Math.ceil(serie.length / 6));
   const labels = serie.map((p, i) => {
     if (i % everyN !== 0 && i !== serie.length - 1) return '';
-    const [an, mois] = p.mois.split('-');
-    return `<text x="${PAD + i * step}" y="${H - 6}" font-size="9" fill="var(--gris)" text-anchor="middle">${mois}/${an.slice(2)}</text>`;
+    const d = new Date(p.semaine);
+    return `<text x="${PAD + i * step}" y="${H - 6}" font-size="9" fill="var(--gris)" text-anchor="middle">${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}</text>`;
   }).join('');
   return `
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible;">
