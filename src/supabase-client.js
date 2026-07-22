@@ -1514,6 +1514,138 @@ async function getSaisonsTifoDisponibles() {
   return saisons.sort((a, b) => b.localeCompare(a));
 }
 
+// ────────────────────────────────────────────────────────────
+// Stats Déplacements / Matos / Sticks (22/07/2026, demande Remi) — même
+// esprit que getStatsTifo mais volontairement plus légères (pas
+// d'historique de participation aussi riche à exploiter pour ces 3-là).
+// ────────────────────────────────────────────────────────────
+async function getStatsDeplacements() {
+  const [deplRes, inscrRes] = await Promise.all([
+    sb.from('deplacements').select('id, adversaire, date_match, statut, prix_total, places_max'),
+    sb.from('inscriptions_deplacement').select('id, deplacement_id, statut_paiement, membre_id, invite_nom'),
+  ]);
+  if (deplRes.error) throw deplRes.error;
+  if (inscrRes.error) throw inscrRes.error;
+  const depls = deplRes.data || [];
+  const inscrs = inscrRes.data || [];
+  const deplById = new Map(depls.map(d => [d.id, d]));
+
+  const payees = inscrs.filter(i => i.statut_paiement === 'paye_ha' || i.statut_paiement === 'paye_cash');
+  const parStatut = inscrs.reduce((acc, i) => { acc[i.statut_paiement] = (acc[i.statut_paiement] || 0) + 1; return acc; }, {});
+
+  const montantTotal = payees.reduce((sum, i) => sum + (deplById.get(i.deplacement_id)?.prix_total || 0), 0);
+
+  const parDepl = new Map();
+  for (const i of payees) {
+    parDepl.set(i.deplacement_id, (parDepl.get(i.deplacement_id) || 0) + 1);
+  }
+  let topDepl = null, topNb = 0;
+  for (const [id, nb] of parDepl) { if (nb > topNb) { topNb = nb; topDepl = deplById.get(id); } }
+
+  const parMembre = new Map();
+  for (const i of payees) {
+    if (!i.membre_id) continue;
+    parMembre.set(i.membre_id, (parMembre.get(i.membre_id) || 0) + 1);
+  }
+
+  const avecCapacite = depls.filter(d => d.places_max);
+  let tauxRemplissageMoyen = null;
+  if (avecCapacite.length) {
+    const totalPct = avecCapacite.reduce((sum, d) => sum + Math.min(1, (parDepl.get(d.id) || 0) / d.places_max), 0);
+    tauxRemplissageMoyen = totalPct / avecCapacite.length;
+  }
+
+  return {
+    totalDeplacements: depls.length,
+    aVenir: depls.filter(d => d.statut === 'ouvert' || d.statut === 'complet').length,
+    termines: depls.filter(d => d.statut === 'termine').length,
+    annules: depls.filter(d => d.statut === 'annule').length,
+    totalInscriptions: inscrs.length,
+    totalPayees: payees.length,
+    parStatut,
+    montantTotal,
+    topDeplacement: topDepl ? { nom: topDepl.adversaire, nb: topNb } : null,
+    nbParticipantsDistincts: parMembre.size,
+    tauxRemplissageMoyen,
+  };
+}
+
+async function getStatsMatos() {
+  const [produitsRes, commandesRes] = await Promise.all([
+    sb.from('produits').select('id, nom, prix'),
+    sb.from('commandes').select('id, statut, total, membre_id, commande_items(quantite, prix_unitaire, produit_id)'),
+  ]);
+  if (produitsRes.error) throw produitsRes.error;
+  if (commandesRes.error) throw commandesRes.error;
+  const produits = produitsRes.data || [];
+  const commandes = commandesRes.data || [];
+  const produitById = new Map(produits.map(p => [p.id, p]));
+
+  const STATUTS_PAYES = ['disponible', 'precommande_validee', 'distribue', 'prepare'];
+  const payees = commandes.filter(c => STATUTS_PAYES.includes(c.statut));
+  const parStatut = commandes.reduce((acc, c) => { acc[c.statut] = (acc[c.statut] || 0) + 1; return acc; }, {});
+
+  const chiffreAffaires = payees.reduce((sum, c) => sum + (Number(c.total) || 0), 0);
+
+  const parProduit = new Map();
+  for (const c of payees) {
+    for (const item of (c.commande_items || [])) {
+      parProduit.set(item.produit_id, (parProduit.get(item.produit_id) || 0) + (item.quantite || 0));
+    }
+  }
+  const classementProduits = [...parProduit.entries()]
+    .map(([id, qte]) => ({ nom: produitById.get(id)?.nom || 'Article supprimé', qte }))
+    .sort((a, b) => b.qte - a.qte);
+
+  const parMembre = new Set(payees.map(c => c.membre_id).filter(Boolean));
+
+  return {
+    totalProduits: produits.length,
+    totalCommandes: commandes.length,
+    totalPayees: payees.length,
+    parStatut,
+    chiffreAffaires,
+    classementProduits,
+    nbAcheteursDistincts: parMembre.size,
+  };
+}
+
+async function getStatsSticks() {
+  const [sticksRes, distribRes] = await Promise.all([
+    sb.from('sticks_catalogue').select('id, nom, prix'),
+    sb.from('sticks_distribution').select('id, statut, quantite, membre_id, stick_id'),
+  ]);
+  if (sticksRes.error) throw sticksRes.error;
+  if (distribRes.error) throw distribRes.error;
+  const sticks = sticksRes.data || [];
+  const distribs = distribRes.data || [];
+  const stickById = new Map(sticks.map(s => [s.id, s]));
+
+  const STATUTS_PAYES = ['disponible', 'precommande_validee', 'distribue', 'prepare'];
+  const payees = distribs.filter(d => STATUTS_PAYES.includes(d.statut));
+  const parStatut = distribs.reduce((acc, d) => { acc[d.statut] = (acc[d.statut] || 0) + 1; return acc; }, {});
+
+  const chiffreAffaires = payees.reduce((sum, d) => sum + (d.quantite || 0) * (stickById.get(d.stick_id)?.prix || 0), 0);
+
+  const parStick = new Map();
+  for (const d of payees) parStick.set(d.stick_id, (parStick.get(d.stick_id) || 0) + (d.quantite || 0));
+  const classementSticks = [...parStick.entries()]
+    .map(([id, qte]) => ({ nom: stickById.get(id)?.nom || 'Stick supprimé', qte }))
+    .sort((a, b) => b.qte - a.qte);
+
+  const parMembre = new Set(payees.map(d => d.membre_id).filter(Boolean));
+
+  return {
+    totalSticks: sticks.length,
+    totalDistributions: distribs.length,
+    totalPayees: payees.length,
+    parStatut,
+    chiffreAffaires,
+    classementSticks,
+    nbAcheteursDistincts: parMembre.size,
+  };
+}
+
 
 async function getMaPresenceMatch(matchId) {
   const { data, error } = await sb.from('presences_matchs_domicile')
@@ -2272,6 +2404,7 @@ window.UL = {
   getMesCodesReabonnement, getStatutReabonnement, setReabonnementOuvert, rechercherCodeReabonnementAdmin, listerCodesReabonnementAdmin,
   genererLienConnexionAdmin,
   getStats, getMesStats, getStatsTifo, getSaisonsTifoDisponibles,
+  getStatsDeplacements, getStatsMatos, getStatsSticks,
   getMaPresenceMatch, declarerPresenceMatch, annulerPresenceMatch,
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
   passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande, marquerCommandePreparee, distribuerProduitAdmin,
