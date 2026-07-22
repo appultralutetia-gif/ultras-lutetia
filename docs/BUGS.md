@@ -606,3 +606,56 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 - **Une erreur synchrone levée par une librairie tierce n'est jamais interceptée par un simple `.catch()` sur la valeur de retour** — seul un vrai rejet de Promise l'est. Si une fonction tierce peut échouer de façon synchrone selon l'état interne (`Html5Qrcode.stop()` si le scanner n'a jamais démarré, bug #28), l'appel doit être enveloppé dans un `try/catch` classique, le `.catch()` de la promesse ne suffisant qu'au cas où l'échec survient bien après le démarrage de l'opération asynchrone.
 - **Un bouton `disabled` pendant un appel réseau doit être réactivé dans un bloc `finally`, jamais seulement dans le `catch`** — sinon le chemin de succès laisse le bouton bloqué. Ce risque est démultiplié quand un même élément DOM est recyclé entre plusieurs modes d'un même formulaire (ex: `modalMatchsSubmitBtn` partagé entre Ajouter/Modifier/Confirmer, bug #31) : un bouton HTML disabled ne déclenche même pas l'événement `click`, donc le symptôme est un silence total, sans la moindre erreur console — le signal le plus trompeur qui soit pour diagnostiquer.
 - **Un formulaire réutilisé en mode "confirmer/valider une valeur existante" doit pré-remplir les champs avec les valeurs actuelles, jamais les vider** — sinon un garde-fou de validation légitime (`if (!champ) return`) se déclenche silencieusement dès que l'utilisateur ne ressaisit pas une valeur qu'il pensait déjà présente (bug #32). Avant d'écrire un mode "confirmation" qui réutilise un formulaire d'ajout, vérifier explicitement ce que chaque champ affiche à l'ouverture, pas seulement ce qu'il fait à la soumission.
+
+- # Nouvelles entrées BUGS — session du 21/07/2026
+
+*À fusionner dans `docs/BUGS.md` existant (numérotation à reprendre à la suite de la dernière entrée réelle du fichier — non fournie cette session, donc non renumérotée ici). Classées par ordre chronologique de découverte.*
+
+---
+
+### 🔴 CRITIQUE — Trigger d'inscription cassé, bloquait TOUTES les créations de compte
+**Symptôme** : erreur `relation "public.commandes_preinscriptions" does not exist` au clic sur "Créer mon compte", pour n'importe quel nouvel utilisateur.
+**Cause** : le trigger `rattacher_preinscriptions_membre()` (exécuté après chaque INSERT sur `membres`) référençait une table qui n'existe pas réellement — introduite par erreur lors d'une réécriture du trigger pour ajouter le recalcul de `cartage_depuis`. La conception réelle utilise `commandes.email_preinscription`, pas une table séparée.
+**Fenêtre d'impact** : environ 19h07 → 19h34 le 20/07/2026.
+**Détecté par** : Johnny UDE et Mounirou (Abdou Espérant), via capture d'écran de l'erreur.
+**Corrigé** : réécriture du trigger avec la bonne référence (`email_preinscription`).
+**Séquelles traitées** : 7 comptes `auth.users` orphelins (créés mais sans fiche `membres`) identifiés et récupérés ou supprimés selon le cas — voir synthèse de session pour le détail.
+**Non couvert avant ce bug** : aucun moyen pour un membre de récupérer seul un code de confirmation perdu après avoir quitté l'app — corrigé en ajoutant un lien "Compte non confirmé ? Renvoyer le code" sur l'écran de connexion.
+
+---
+
+### 🟠 Quota boutique/déplacement comptait les commandes non payées
+**Symptôme** : un membre ayant abandonné ou annulé un paiement (HelloAsso non finalisé, ou cash jamais collecté) ne pouvait plus repasser commande sur un article à quota limité.
+**Signalé par** : Brahim Bennais, bloqué sur "Tour de Cou UL" (quota 1) après une tentative HelloAsso annulée.
+**Cause** : les contrôles de quota (`passerCommande`/`distribuerProduitAdmin` côté front, `traiterMatos`/`traiterStick`/`traiterDeplacement` côté Edge Function `helloasso-create-checkout`) comptaient les commandes en statut `en_attente` (ou, pour les déplacements, absolument tous les statuts) au lieu de ne compter que les statuts réellement payés.
+**Corrigé** : filtrage sur les statuts payés uniquement (`disponible`/`precommande_validee`/`distribue`/`prepare` pour Matos/Sticks ; `paye_ha`/`paye_cash` pour Déplacements). `traiterCartage` était déjà correct, non modifié. `helloasso-webhook` ne contient aucune logique de quota, non modifié.
+**⚠️ Non vérifié en conditions réelles après déploiement** — pas de cas de test disponible.
+
+---
+
+### 🟠 Table `cartage_preinscriptions` sans policy RLS → export "Cartage non inscrits" toujours vide
+**Symptôme** : le bouton "Cartage non inscrits" affichait systématiquement "tout le monde est déjà inscrit", alors qu'il restait 158 personnes en attente en base.
+**Cause** : la table n'avait aucune policy de lecture pour le rôle `authenticated` (accès réservé à `service_role` par conception initiale) — une requête depuis l'app renvoyait donc silencieusement 0 ligne au lieu d'une erreur visible.
+**Corrigé** : ajout d'une policy de lecture réservée Admin/Bureau (vérification du rôle via `roles_app`).
+
+---
+
+### 🟡 Widget Accueil "Prochaine session tifo" — régression du tri
+**Symptôme** : les sessions tifo complètes réapparaissaient en premier sur le widget d'accueil, alors que la règle "non-complètes en premier" avait déjà été mise en place (et fonctionnait correctement sur la page Tifos elle-même).
+**Cause** : en réécrivant `app.js` pour une fonctionnalité sans rapport (renvoi de code de confirmation), une version antérieure du fichier a été reprise par erreur, effaçant le tri sans que ce soit visible immédiatement.
+**Corrigé** : tri réappliqué sur le widget concerné.
+
+---
+
+### 🟡 Texte "Liste Bus" Telegram — "PAYÉS (2/null)"
+**Symptôme** : l'export texte Telegram d'un déplacement sans quota de places défini affichait littéralement "null" au lieu d'omettre la dénominateur.
+**Signalé par** : Paul Coyette.
+**Cause** : `getListeBusTelegram` interpolait `deplacement.places_max` sans vérifier sa présence.
+**Corrigé** : le dénominateur n'apparaît plus quand `places_max` est vide (quota illimité).
+
+---
+
+### ⚪ Deux fautes de données ponctuelles (base, pas de code)
+- Nom de famille mal orthographié "Roussrl" au lieu de "Roussel" (Bertrand Roussel) — corrigé sur signalement de Remi.
+- Codes de réabonnement de Julien et Keissy Constantin inversés entre deux emails lors d'un import — corrigé sur clarification de Remi.
+- Code de réabonnement de Da Costa Louka dupliqué avec celui d'Abel Stefani dans les données source de Remi — **non résolu**, laissé en l'état sur instruction explicite ("on laisse comme ça pour le moment").
