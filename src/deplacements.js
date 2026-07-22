@@ -258,8 +258,8 @@ async function openDepl(deplId) {
         ${d.stade||d.match?.stade ? `🏟️ ${d.stade||d.match?.stade}<br>` : ''}
         ${d.ville ? `📍 ${d.ville}<br>` : ''}
         ${d.point_rdv ? `🚌 RDV: ${d.point_rdv}<br>` : ''}
-        ${d.heure_depart && (estPaye || hasCelluleDepl(m)) ? `⏰ Départ: ${d.heure_depart}<br>` : ''}
-        ${d.heure_depart && !estPaye && !hasCelluleDepl(m) ? `🔒 Heure de départ visible une fois inscrit<br>` : ''}
+        ${d.heure_depart && (estPaye || hasCelluleDepl(m)) ? `⏰ Heure de RDV: ${d.heure_depart}<br>` : ''}
+        ${d.heure_depart && !estPaye && !hasCelluleDepl(m) ? `🔒 Heure de RDV visible une fois inscrit<br>` : ''}
         ${d.prix_total ? `💶 ${d.prix_total}€ (bus + entrée)<br>` : ''}
         ${d.distance_km ? `🛣️ ${d.distance_km}km A/R<br>` : ''}
         ${d.date_limite_inscription ? `⏳ Limite: ${new Date(d.date_limite_inscription).toLocaleDateString('fr-FR')}<br>` : ''}
@@ -351,6 +351,14 @@ async function doInscritDepl(id, btn) {
       const data = await UL.relancerPaiementDeplacement(id);
       closeModal('modalDepl');
       if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+      // Cas gratuit (demande Remi 23/07/2026, membres.deplacements_gratuits)
+      // : l'Edge Function a validé directement sans passer par HelloAsso —
+      // pas de redirectUrl à ouvrir, juste rafraîchir et notifier.
+      if (data.gratuit) {
+        toast('Inscription validée (gratuit) ✅', 'success');
+        loadDeplacements();
+        return;
+      }
       afficherAvertissementHelloAsso(data.redirectUrl, 'deplacement', data.inscriptionId);
       return;
     }
@@ -453,6 +461,11 @@ async function doInscritDeplMulti(btn) {
     closeModal('modalInscritDepl');
     closeModal('modalDepl');
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+    if (data.gratuit) {
+      toast('Inscription validée (gratuit) ✅', 'success');
+      loadDeplacements();
+      return;
+    }
     afficherAvertissementHelloAsso(data.redirectUrl, 'deplacement', data.inscriptionId);
   } catch(e) {
     toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error');
