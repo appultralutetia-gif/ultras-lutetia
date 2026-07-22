@@ -782,7 +782,13 @@
 //   Déplacement (bouton "Inscrits" réservé à la cellule) et Matos
 //   (aucune liste de participants exposée aux membres, rien à changer).
 //   Fichier modifié : tifos.js.
-const CACHE_NAME = 'ul-v124';
+// v125 (23/07/2026) : CACHE_NAME bumpé (v124 → v125) — l'heure de
+//   départ du bus n'est plus affichée dans le détail d'un déplacement
+//   tant qu'on n'est pas inscrit et payé (info confidentielle, demande
+//   Remi) — un message "🔒 Heure de départ visible une fois inscrit"
+//   la remplace. Admin/Bureau/Cellule Déplacement la voient toujours,
+//   comme le reste du détail cellule. Fichier modifié : deplacements.js.
+const CACHE_NAME = 'ul-v125';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
