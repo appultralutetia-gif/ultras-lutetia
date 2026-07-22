@@ -809,7 +809,17 @@
 //   déployée directement en v31) ; si le groupe entier est exempté,
 //   l'inscription est validée directement sans paiement HelloAsso.
 //   Fichiers modifiés : deplacements.js, supabase-client.js.
-const CACHE_NAME = 'ul-v128';
+// v129 (23/07/2026) : CACHE_NAME bumpé (v128 → v129) — correctif :
+//   l'estimation "X places — YY€" affichée dans le modal d'inscription
+//   groupée à un déplacement ne tenait pas compte des exemptions
+//   deplacements_gratuits (elle affichait le plein tarif même pour un
+//   participant exempté, ex. 3×50€=150€ au lieu de 2×50€=100€ avec
+//   Myriam Amarzit dans le groupe) — trompeur, même si le montant
+//   réellement facturé côté serveur était déjà correct. Le récap
+//   applique désormais le même calcul que l'Edge Function. Fichiers
+//   modifiés : deplacements.js, supabase-client.js (deplacements_gratuits
+//   ajouté à la sélection des amis, getMesAmis).
+const CACHE_NAME = 'ul-v129';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
