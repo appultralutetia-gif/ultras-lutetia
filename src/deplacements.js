@@ -93,7 +93,31 @@ function inscriptionsDeplFermees(d) {
 function champOuverturePourStatut(statut) {
   if (statut === 'confirme') return 'ouverture_confirme';
   if (statut === 'draft') return 'ouverture_draft';
+  if (statut === 'visiteur') return 'ouverture_visiteur';
   return 'ouverture_sympathisant'; // sympathisant, ou tout statut non prioritaire
+}
+// Les dates d'ouverture (datetime-local) étaient envoyées telles quelles
+// à la base, sans passer par un objet Date — Postgres les stockait alors
+// en interprétant la chaîne "naïve" (ex. "2026-07-23T09:00", sans fuseau)
+// comme de l'UTC, alors que Rémi la saisit en heure de Paris. Résultat :
+// un décalage de 1h (hiver, CET = UTC+1) ou 2h (été, CEST = UTC+2) entre
+// l'heure saisie et l'heure réellement appliquée (demande Remi
+// 22/07/2026). new Date(valeur) interprète correctement la chaîne comme
+// heure LOCALE du navigateur (le fuseau du navigateur, Europe/Paris pour
+// cette app), gérant nativement le passage heure d'été/hiver — pas de
+// calcul de décalage à faire à la main.
+function datetimeLocalVersUTC(valeur) {
+  return valeur ? new Date(valeur).toISOString() : null;
+}
+// Inverse : reformate une date stockée (UTC) en chaîne locale compatible
+// avec un input datetime-local, pour que le formulaire de modification
+// réaffiche bien l'heure de Paris telle que saisie à l'origine — pas
+// l'heure UTC brute (ancien bug : simple slice(0,16) sur la valeur ISO).
+function utcVersDatetimeLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 function inscriptionPasEncoreOuvertePourMoi(d) {
   const m = UL.getCurrentMembre();
@@ -115,6 +139,7 @@ function formatEchelonnementDepl(d) {
     { label: 'Confirmés', date: d.ouverture_confirme },
     { label: 'Draft', date: d.ouverture_draft },
     { label: 'Sympathisants', date: d.ouverture_sympathisant },
+    { label: 'Visiteur', date: d.ouverture_visiteur },
   ].filter(p => p.date);
   if (!paliers.length) return '';
   const fmt = iso => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -309,13 +334,11 @@ async function doInscritDepl(id, btn) {
     }
 
     // Pas encore inscrit : ouvre le modal de sélection (soi seul par
-    // défaut, avec options amis app / invités hors app).
+    // défaut, avec option amis app — invités hors app retirés le
+    // 22/07/2026, demande Remi).
     _deplIdCourantInscription = id;
     document.getElementById('idAvecAmis').checked = false;
-    document.getElementById('idAvecInvites').checked = false;
     document.getElementById('blocAmisDepl').style.display = 'none';
-    document.getElementById('blocInvitesDepl').style.display = 'none';
-    document.getElementById('listeInvitesDepl').innerHTML = '';
     document.getElementById('idRechercheAmis').value = '';
     _amisDeplDisponibles = [];
     _amisDeplSelectionnes.clear();
@@ -337,7 +360,6 @@ async function doInscritDepl(id, btn) {
 
 let _amisDeplDisponibles = [];
 let _amisDeplSelectionnes = new Set();
-let _invitesDeplCompteur = 0;
 let _quotaDeplCourant = null;
 let _prixDeplCourant = 0;
 
@@ -375,42 +397,15 @@ function toggleAmiDeplSelectionne(membreId, coche) {
   majRecapInscritDepl();
 }
 
-function toggleInvitesDepl() {
-  const actif = document.getElementById('idAvecInvites').checked;
-  document.getElementById('blocInvitesDepl').style.display = actif ? 'block' : 'none';
-  if (actif && !document.getElementById('listeInvitesDepl').children.length) {
-    ajouterLigneInviteDepl();
-  }
-  majRecapInscritDepl();
-}
-
-function ajouterLigneInviteDepl() {
-  const idLigne = 'invite_' + (_invitesDeplCompteur++);
-  const div = document.createElement('div');
-  div.id = idLigne;
-  div.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;';
-  div.innerHTML = `
-    <div class="form-group" style="margin-bottom:6px;"><input type="text" placeholder="Prénom" class="invite-prenom" oninput="majRecapInscritDepl()"></div>
-    <div class="form-group" style="margin-bottom:6px;"><input type="text" placeholder="Nom" class="invite-nom" oninput="majRecapInscritDepl()"></div>
-    <div class="form-group" style="margin-bottom:6px;"><input type="email" placeholder="Email" class="invite-email" oninput="majRecapInscritDepl()"></div>
-    <button class="btn btn-sm btn-danger" style="width:100%;" onclick="document.getElementById('${idLigne}').remove();majRecapInscritDepl();">🗑 Retirer</button>
-  `;
-  document.getElementById('listeInvitesDepl').appendChild(div);
-  majRecapInscritDepl();
-}
-
-function lireInvitesDepl() {
-  return [...document.getElementById('listeInvitesDepl').children].map(div => ({
-    prenom: div.querySelector('.invite-prenom').value.trim(),
-    nom: div.querySelector('.invite-nom').value.trim(),
-    email: div.querySelector('.invite-email').value.trim(),
-  })).filter(inv => inv.prenom && inv.nom && inv.email);
-}
+// Fonctions "amis hors app" retirées (demande Remi 22/07/2026) — on ne
+// peut plus inscrire quelqu'un qui n'est pas un ami dans l'app
+// (toggleInvitesDepl, ajouterLigneInviteDepl, lireInvitesDepl
+// supprimées, ainsi que le branchement 'invite' dans doInscritDeplMulti
+// ci-dessous).
 
 function majRecapInscritDepl() {
   const nbAmis = document.getElementById('idAvecAmis')?.checked ? _amisDeplSelectionnes.size : 0;
-  const nbInvites = document.getElementById('idAvecInvites')?.checked ? lireInvitesDepl().length : 0;
-  const total = 1 + nbAmis + nbInvites; // 1 = soi-même
+  const total = 1 + nbAmis; // 1 = soi-même
   const montant = (_prixDeplCourant * total).toFixed(2);
   let html = `👥 ${total} place${total>1?'s':''} — 💶 ${montant}€`;
   if (_quotaDeplCourant && total > _quotaDeplCourant.restant) {
@@ -425,14 +420,8 @@ async function doInscritDeplMulti(btn) {
   if (document.getElementById('idAvecAmis').checked) {
     _amisDeplSelectionnes.forEach(membreId => participants.push({ type: 'ami', membreId }));
   }
-  if (document.getElementById('idAvecInvites').checked) {
-    lireInvitesDepl().forEach(inv => participants.push({ type: 'invite', ...inv }));
-  }
   if (_quotaDeplCourant && participants.length > _quotaDeplCourant.restant) {
     return toast(`Quota dépassé — il te reste ${_quotaDeplCourant.restant} place(s)`, 'error');
-  }
-  if (document.getElementById('idAvecInvites').checked && !lireInvitesDepl().length) {
-    return toast('Complète au moins un ami (prénom, nom, email) ou décoche cette option', 'error');
   }
 
   const texteOriginal = btn ? btn.textContent : '';
@@ -735,9 +724,10 @@ async function doCreerDepl(btn) {
     notes: document.getElementById('dNotes').value || null,
     match_id: (source === 'match' && matchId) ? matchId : null,
     quota_par_membre: parseInt(document.getElementById('dQuota').value) || null,
-    ouverture_confirme: document.getElementById('dOuvConfirme').value || null,
-    ouverture_draft: document.getElementById('dOuvDraft').value || null,
-    ouverture_sympathisant: document.getElementById('dOuvSympa').value || null,
+    ouverture_confirme: datetimeLocalVersUTC(document.getElementById('dOuvConfirme').value),
+    ouverture_draft: datetimeLocalVersUTC(document.getElementById('dOuvDraft').value),
+    ouverture_sympathisant: datetimeLocalVersUTC(document.getElementById('dOuvSympa').value),
+    ouverture_visiteur: datetimeLocalVersUTC(document.getElementById('dOuvVisiteur').value),
     // Brouillon (10/07/2026) : caché des membres tant que non coché,
     // utile pour tester un vrai paiement HelloAsso avant publication.
     visible_membres: !document.getElementById('dBrouillon').checked,
@@ -807,9 +797,15 @@ async function ouvrirModifierDepl(deplId) {
     // datetime-local attend "YYYY-MM-DDTHH:mm" — les timestamptz renvoyés
     // par Supabase incluent secondes/fuseau (ex. "2026-07-15T14:30:00+00:00"),
     // on tronque à 16 caractères pour que l'input les accepte.
-    document.getElementById('dmOuvConfirme').value = d.ouverture_confirme ? d.ouverture_confirme.slice(0,16) : '';
-    document.getElementById('dmOuvDraft').value = d.ouverture_draft ? d.ouverture_draft.slice(0,16) : '';
-    document.getElementById('dmOuvSympa').value = d.ouverture_sympathisant ? d.ouverture_sympathisant.slice(0,16) : '';
+    // datetime-local attend "YYYY-MM-DDTHH:mm" en heure LOCALE — avant,
+    // un simple .slice(0,16) sur la valeur UTC stockée réaffichait
+    // l'heure UTC brute, décalée de 1h/2h par rapport à l'heure de Paris
+    // saisie à l'origine (même bug que datetimeLocalVersUTC ci-dessus,
+    // corrigé le 22/07/2026 — cf. utcVersDatetimeLocal).
+    document.getElementById('dmOuvConfirme').value = utcVersDatetimeLocal(d.ouverture_confirme);
+    document.getElementById('dmOuvDraft').value = utcVersDatetimeLocal(d.ouverture_draft);
+    document.getElementById('dmOuvSympa').value = utcVersDatetimeLocal(d.ouverture_sympathisant);
+    document.getElementById('dmOuvVisiteur').value = utcVersDatetimeLocal(d.ouverture_visiteur);
 
     // Point de RDV : si la valeur actuelle correspond à une des options
     // prédéfinies, on la sélectionne ; sinon on bascule sur "Autre" avec
@@ -903,9 +899,10 @@ async function doModifierDepl(btn) {
     statut: document.getElementById('dmStatut').value,
     match_id: (source === 'match' && matchId) ? matchId : null,
     quota_par_membre: parseInt(document.getElementById('dmQuota').value) || null,
-    ouverture_confirme: document.getElementById('dmOuvConfirme').value || null,
-    ouverture_draft: document.getElementById('dmOuvDraft').value || null,
-    ouverture_sympathisant: document.getElementById('dmOuvSympa').value || null,
+    ouverture_confirme: datetimeLocalVersUTC(document.getElementById('dmOuvConfirme').value),
+    ouverture_draft: datetimeLocalVersUTC(document.getElementById('dmOuvDraft').value),
+    ouverture_sympathisant: datetimeLocalVersUTC(document.getElementById('dmOuvSympa').value),
+    ouverture_visiteur: datetimeLocalVersUTC(document.getElementById('dmOuvVisiteur').value),
     visible_membres: !document.getElementById('dmBrouillon').checked,
   };
   if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
