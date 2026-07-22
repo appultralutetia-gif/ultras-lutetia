@@ -240,6 +240,15 @@ async function updateMembre(id, updates) {
   return data;
 }
 
+// Confirme l'email d'un compte directement (bypass du code à 8
+// chiffres) — utile quand un membre est bloqué avant de l'avoir saisi.
+// Réservé Admin/Bureau, vérifié côté fonction Postgres (pas seulement
+// côté app).
+async function confirmerEmailMembre(membreId) {
+  const { error } = await sb.rpc('confirmer_email_membre', { p_membre_id: membreId });
+  if (error) throw error;
+}
+
 async function updateStatutMembre(membreId, statut) {
   return updateMembre(membreId, { statut });
 }
@@ -2155,7 +2164,7 @@ window.UL = {
   initSession,
   loginByTelegram, logout, changePassword, inscription, demanderResetMdp,
   verifierCodeInscription, renvoyerCodeInscription,
-  getMembre, getAllMembres, updateMembre, updateStatutMembre,
+  getMembre, getAllMembres, updateMembre, updateStatutMembre, confirmerEmailMembre,
   updateSectionMembre, toggleBlocageMembre,
   noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
   getParticipationBatch,
