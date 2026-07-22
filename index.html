@@ -529,6 +529,7 @@
       <div class="boutique-tabs-wrap" style="margin-bottom:12px;">
         <button class="btn-tab active" id="subTabMatosArticles" onclick="switchAdminMatosSubTab('articles')">📦 Articles</button>
         <button class="btn-tab" id="subTabMatosCommandes" onclick="switchAdminMatosSubTab('commandes')">🧾 Commandes en cours <span id="badgeCommandesEnCours" class="badge badge-orange" style="display:none;"></span></button>
+        <button class="btn-tab" id="subTabMatosHistorique" onclick="switchAdminMatosSubTab('historique')">🗄️ Historique</button>
       </div>
 
       <div id="subSectionMatosArticles">
@@ -546,7 +547,17 @@
           <button class="filter-btn active" onclick="filtrerCommandesAdmin('en_cours')">🧾 En cours</button>
           <button class="filter-btn" onclick="filtrerCommandesAdmin('toutes')">📜 Toutes</button>
         </div>
+        <div style="margin-bottom:12px;">
+          <select id="filtreProduitCommandesAdmin" onchange="filtrerProduitCommandesAdmin()" style="width:100%;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;">
+            <option value="">Tous les articles</option>
+          </select>
+        </div>
         <div id="adminToutesCommandes"></div>
+      </div>
+
+      <div id="subSectionMatosHistorique" style="display:none;">
+        <p style="font-size:12px;color:var(--gris);margin-bottom:12px;">Articles dont la précommande est terminée — ne sont plus visibles ni commandables par les membres.</p>
+        <div id="historiqueMatosListe"></div>
       </div>
     </div>
 
@@ -555,6 +566,7 @@
       <div class="boutique-tabs-wrap" style="margin-bottom:12px;">
         <button class="btn-tab active" id="subTabSticksArticles" onclick="switchAdminSticksSubTab('articles')">🎟️ Articles</button>
         <button class="btn-tab" id="subTabSticksCommandes" onclick="switchAdminSticksSubTab('commandes')">🧾 Commandes en cours <span id="badgeDistribsEnCours" class="badge badge-orange" style="display:none;"></span></button>
+        <button class="btn-tab" id="subTabSticksHistorique" onclick="switchAdminSticksSubTab('historique')">🗄️ Historique</button>
       </div>
 
       <div id="subSectionSticksArticles">
@@ -572,7 +584,17 @@
           <button class="filter-btn active" onclick="filtrerDistribsAdmin('en_cours')">🧾 En cours</button>
           <button class="filter-btn" onclick="filtrerDistribsAdmin('toutes')">📜 Toutes</button>
         </div>
+        <div style="margin-bottom:12px;">
+          <select id="filtreStickDistribsAdmin" onchange="filtrerStickDistribsAdmin()" style="width:100%;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;">
+            <option value="">Tous les sticks</option>
+          </select>
+        </div>
         <div id="adminToutesDistribs"></div>
+      </div>
+
+      <div id="subSectionSticksHistorique" style="display:none;">
+        <p style="font-size:12px;color:var(--gris);margin-bottom:12px;">Sticks dont la précommande est terminée — ne sont plus visibles ni commandables par les membres.</p>
+        <div id="historiqueSticksListe"></div>
       </div>
     </div>
 
