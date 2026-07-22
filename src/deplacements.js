@@ -436,8 +436,23 @@ function toggleAmiDeplSelectionne(membreId, coche) {
 function majRecapInscritDepl() {
   const nbAmis = document.getElementById('idAvecAmis')?.checked ? _amisDeplSelectionnes.size : 0;
   const total = 1 + nbAmis; // 1 = soi-même
-  const montant = (_prixDeplCourant * total).toFixed(2);
-  let html = `👥 ${total} place${total>1?'s':''} — 💶 ${montant}€`;
+
+  // Exemption de paiement (demande Remi 23/07/2026) : le récap affiché
+  // AVANT paiement doit refléter le même calcul que l'Edge Function
+  // (seuls les participants non-exemptés comptent), sinon il annonce un
+  // montant qui ne sera jamais réellement facturé — trompeur pour la
+  // personne qui inscrit le groupe.
+  const moi = UL.getCurrentMembre();
+  let nbExemptes = moi?.deplacements_gratuits ? 1 : 0;
+  if (document.getElementById('idAvecAmis')?.checked) {
+    _amisDeplSelectionnes.forEach(id => {
+      const ami = _amisDeplDisponibles.find(a => a.id === id);
+      if (ami?.deplacements_gratuits) nbExemptes++;
+    });
+  }
+  const nbPayants = total - nbExemptes;
+  const montant = (_prixDeplCourant * nbPayants).toFixed(2);
+  let html = `👥 ${total} place${total>1?'s':''} — 💶 ${montant}€${nbExemptes ? ` <span style="color:var(--vert);font-weight:400;">(${nbExemptes} exempté${nbExemptes>1?'s':''})</span>` : ''}`;
   if (_quotaDeplCourant && total > _quotaDeplCourant.restant) {
     html += `<div style="color:var(--rouge);font-size:13px;font-weight:400;margin-top:4px;">⚠️ Dépasse ton quota restant (${_quotaDeplCourant.restant})</div>`;
   }
