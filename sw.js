@@ -761,7 +761,21 @@
 //   heure d'été/hiver. Les champs Date du match/Heure départ/Date
 //   limite n'étaient pas concernés (pas de composante datetime-local).
 //   Fichiers modifiés : index.html, deplacements.js.
-const CACHE_NAME = 'ul-v122';
+// v123 (22/07/2026) : CACHE_NAME bumpé (v122 → v123) — Déplacements,
+//   demande Remi : sur chaque carte, Admin/Bureau/Cellule Déplacement
+//   voient maintenant en plus du seuil "bus plein" déjà existant : (1)
+//   le nombre de personnes manquantes pour atteindre l'équilibre au
+//   nombre d'inscrits PAYÉS actuel, (2) le bénéfice ou la perte réel à
+//   date — calculés uniquement sur prix_bus, jamais prix_place (le prix
+//   de la place ne sert pas à couvrir le coût du bus). Correctif : ce
+//   même groupe (Admin/Bureau/Cellule Déplacement) pouvait être bloqué
+//   par l'ouverture échelonnée liée à son propre statut (visiteur/
+//   sympa/draft/confirmé) même pour tester un paiement sur un
+//   déplacement en brouillon — la visibilité des brouillons pour ce
+//   groupe existait déjà, seule cette restriction d'horaire manquait
+//   son bypass. Fichiers modifiés : deplacements.js,
+//   supabase-client.js.
+const CACHE_NAME = 'ul-v123';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
