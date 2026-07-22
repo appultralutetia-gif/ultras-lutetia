@@ -748,7 +748,20 @@
 //   v30 sans repasser par un copier-coller manuel). Sticks n'avait pas
 //   ce bug (stick_id déjà direct sur sticks_distribution). Fichier
 //   modifié : supabase-client.js.
-const CACHE_NAME = 'ul-v121';
+// v122 (22/07/2026) : CACHE_NAME bumpé (v121 → v122) — Déplacements,
+//   3 demandes Remi : (1) 4e palier d'ouverture échelonnée "Visiteur"
+//   ajouté (colonne ouverture_visiteur, migration appliquée) ; (2) plus
+//   possible d'ajouter un "ami hors app" à l'inscription multi-
+//   participants — uniquement soi-même + amis déjà membres de l'app ;
+//   (3) correctif fuseau horaire sur les 4 dates d'ouverture échelonnée
+//   (datetime-local) : elles étaient stockées en interprétant l'heure
+//   saisie comme de l'UTC brut au lieu de l'heure de Paris, causant un
+//   décalage de 1h (hiver) ou 2h (été) — converties désormais via
+//   new Date(valeur).toISOString(), qui gère nativement le passage
+//   heure d'été/hiver. Les champs Date du match/Heure départ/Date
+//   limite n'étaient pas concernés (pas de composante datetime-local).
+//   Fichiers modifiés : index.html, deplacements.js.
+const CACHE_NAME = 'ul-v122';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
