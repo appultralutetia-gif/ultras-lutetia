@@ -1231,7 +1231,18 @@ async function genererLienConnexionAdmin(membreId) {
   const { data, error } = await sb.functions.invoke('admin-generer-lien-connexion', {
     body: { membreId },
   });
-  if (error) throw new Error(error.message || 'Impossible de générer le lien');
+  if (error) {
+    // Même bug que les fonctions HelloAsso (corrigé le 22/07/2026) : le
+    // SDK Supabase remplace le vrai message d'erreur par un texte
+    // générique dès que le code HTTP n'est pas 2xx — à relire depuis
+    // error.context (la Response brute).
+    let messageReel = error.message;
+    try {
+      const corps = await error.context?.json();
+      if (corps?.error) messageReel = corps.error;
+    } catch (_) { /* corps non lisible en JSON — on garde le message générique */ }
+    throw new Error(messageReel || 'Impossible de générer le lien');
+  }
   if (data?.error) throw new Error(data.error);
   if (!data?.lien) throw new Error('Réponse invalide du serveur');
   return data;
