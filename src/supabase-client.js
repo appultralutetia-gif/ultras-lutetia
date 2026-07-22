@@ -940,10 +940,14 @@ async function getMonQuotaDepl(deplacementId) {
     .select('quota_par_membre').eq('id', deplacementId).single();
   if (!d?.quota_par_membre) return null;
   const { data: mesInscriptions } = await sb.from('inscriptions_deplacement')
-    .select('id')
+    .select('id, statut_paiement')
     .eq('deplacement_id', deplacementId)
     .eq('payeur_id', currentUser.id);
-  const utilise = (mesInscriptions || []).length;
+  // Seules les inscriptions réellement PAYÉES comptent dans le quota
+  // (règle Remi 21/07/2026) — 'en_attente' (paiement jamais finalisé),
+  // 'refuse', 'annule' et 'rembourse' ne doivent jamais bloquer un
+  // membre qui n'est pas allé au bout du paiement.
+  const utilise = (mesInscriptions || []).filter(i => ['paye_cash', 'paye_ha'].includes(i.statut_paiement)).length;
   return { quota: d.quota_par_membre, utilise, restant: d.quota_par_membre - utilise };
 }
 
@@ -1540,7 +1544,11 @@ async function passerCommande(produitId, taille, quantite = 1) {
     const { data: dejaCommande } = await sb.from('commandes')
       .select('commande_items(quantite)')
       .eq('membre_id', currentUser.id)
-      .in('statut', ['en_attente', 'disponible', 'precommande_validee', 'distribue']);
+      // Seules les commandes réellement PAYÉES comptent dans le quota
+    // (règle Remi 21/07/2026) — 'en_attente' (cash pas encore
+    // récupéré, ou HelloAsso jamais finalisé) ne doit jamais bloquer
+    // un membre qui n'est pas allé au bout du paiement.
+    .in('statut', ['disponible', 'precommande_validee', 'distribue', 'prepare']);
     const totalDeja = (dejaCommande || [])
       .flatMap(c => c.commande_items || [])
       .reduce((sum, i) => sum + (i.quantite || 0), 0);
@@ -1579,7 +1587,11 @@ async function distribuerProduitAdmin(produitId, membreId, taille, quantite = 1)
     const { data: dejaCommande } = await sb.from('commandes')
       .select('commande_items(quantite)')
       .eq('membre_id', membreId)
-      .in('statut', ['en_attente', 'disponible', 'precommande_validee', 'distribue']);
+      // Seules les commandes réellement PAYÉES comptent dans le quota
+    // (règle Remi 21/07/2026) — 'en_attente' (cash pas encore
+    // récupéré, ou HelloAsso jamais finalisé) ne doit jamais bloquer
+    // un membre qui n'est pas allé au bout du paiement.
+    .in('statut', ['disponible', 'precommande_validee', 'distribue', 'prepare']);
     const totalDeja = (dejaCommande || [])
       .flatMap(c => c.commande_items || [])
       .reduce((sum, i) => sum + (i.quantite || 0), 0);
