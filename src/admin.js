@@ -377,6 +377,17 @@ async function loadStats() {
         <div class="tranche"><div class="tranche-lbl" style="color:#C4B5FF">Cellule</div><div class="tranche-val" style="color:#C4B5FF">${r.membre_cellule||0}</div></div>
       </div>
       <div class="card">
+        <div class="card-label">🎫 Cartage</div>
+        <div class="stat-card" style="max-width:220px;">
+          <div class="stat-value" style="color:${stats.cartageNonInscrits > 0 ? 'var(--orange)' : 'var(--vert)'};">${stats.cartageNonInscrits}</div>
+          <div class="stat-label">Cartés non inscrits sur l'app</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">📈 Inscriptions cumulées</div>
+        ${genererCourbeInscriptionsSVG(stats.courbeInscriptions)}
+      </div>
+      <div class="card">
         <div class="card-label">Mes stats perso</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div class="stat-card"><div class="stat-value">${mesStats.presencesDomicile}</div><div class="stat-label">Présent domicile</div></div>
@@ -384,6 +395,33 @@ async function loadStats() {
         </div>
       </div>`;
   } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
+}
+
+// Courbe cumulée mensuelle du nombre de membres inscrits, en SVG pur (pas
+// de librairie de graphique dans le projet) — demande Remi 22/07/2026.
+// `serie` = [{mois:'YYYY-MM', total:N}, ...] déjà trié chronologiquement.
+function genererCourbeInscriptionsSVG(serie) {
+  if (!serie || serie.length < 2) return '<div class="empty-state" style="padding:20px 0;">Pas encore assez de données</div>';
+  const W = 320, H = 140, PAD = 28;
+  const maxVal = serie[serie.length - 1].total || 1;
+  const step = (W - PAD * 2) / (serie.length - 1);
+  const y = v => H - PAD - (v / maxVal) * (H - PAD * 1.5);
+  const points = serie.map((p, i) => `${PAD + i * step},${y(p.total)}`).join(' ');
+  // Un label sur ~5 points suffit à rester lisible sans surcharger l'axe,
+  // quel que soit le nombre de mois déjà écoulés.
+  const everyN = Math.max(1, Math.ceil(serie.length / 5));
+  const labels = serie.map((p, i) => {
+    if (i % everyN !== 0 && i !== serie.length - 1) return '';
+    const [an, mois] = p.mois.split('-');
+    return `<text x="${PAD + i * step}" y="${H - 6}" font-size="9" fill="var(--gris)" text-anchor="middle">${mois}/${an.slice(2)}</text>`;
+  }).join('');
+  return `
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible;">
+      <polyline points="${points}" fill="none" stroke="var(--bleu, #5B48FF)" stroke-width="2"/>
+      ${serie.map((p, i) => `<circle cx="${PAD + i * step}" cy="${y(p.total)}" r="2.5" fill="var(--bleu, #5B48FF)"/>`).join('')}
+      <text x="${PAD}" y="14" font-size="10" fill="var(--gris)">${maxVal} membres</text>
+      ${labels}
+    </svg>`;
 }
 
 // ─── ANNONCES ─────────────────────────────────────────────────
