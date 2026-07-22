@@ -1226,15 +1226,38 @@ async function genererLienConnexionAdmin(membreId) {
 // ============================================================
 
 async function getStats() {
-  const [membres, sessions, deplacements] = await Promise.all([
-    sb.from('membres').select('statut, section_id', { count: 'exact' }),
+  const [membres, sessions, deplacements, cartageNonInscrits] = await Promise.all([
+    sb.from('membres').select('statut, section_id, created_at', { count: 'exact' }),
     sb.from('sessions_tifo').select('id', { count: 'exact' }),
     sb.from('deplacements').select('id', { count: 'exact' }),
+    // Dégradation silencieuse si la policy manque un jour (ex. table
+    // cartage_preinscriptions) — une stat en moins ne doit jamais casser
+    // toute la page Stats.
+    getCartageNonInscrits().catch(() => []),
   ]);
+
+  // Courbe "nombre d'inscrits" (demande Remi 22/07/2026) : cumul mois par
+  // mois du total de membres, du premier mois connu à aujourd'hui —
+  // calculée ici plutôt que stockée, se met à jour toute seule.
+  const parMois = {};
+  (membres.data || []).forEach(m => {
+    if (!m.created_at) return;
+    const cle = m.created_at.slice(0, 7); // "YYYY-MM"
+    parMois[cle] = (parMois[cle] || 0) + 1;
+  });
+  const moisTries = Object.keys(parMois).sort();
+  let cumul = 0;
+  const courbeInscriptions = moisTries.map(mois => {
+    cumul += parMois[mois];
+    return { mois, total: cumul };
+  });
+
   return {
     totalMembres: membres.count || 0,
     totalSessions: sessions.count || 0,
     totalDeplacements: deplacements.count || 0,
+    cartageNonInscrits: (cartageNonInscrits || []).length,
+    courbeInscriptions,
     repartitionStatuts: (membres.data || []).reduce((acc, m) => {
       acc[m.statut] = (acc[m.statut] || 0) + 1;
       return acc;
