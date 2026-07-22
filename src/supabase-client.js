@@ -1685,6 +1685,11 @@ async function getProduits() {
     .order('nom');
   if (error) throw error;
   return (data || []).filter(p => {
+    // Précommande terminée = archivée (demande Remi 22/07/2026) : plus
+    // visible dans le catalogue membre du tout, quel que soit le statut
+    // ou visible_membres — seul l'onglet "Historique" de l'admin y donne
+    // encore accès (cf. getProduitsHistoriqueMatos ci-dessous).
+    if (p.mode === 'precommande' && p.precommande_fin && new Date(p.precommande_fin) < new Date()) return false;
     if (p.visible_membres === false && !voitBrouillon) return false;
     if (isAdminBureauCellule) return true;
     if (p.niveau_acces === 'tous') return true;
@@ -1698,6 +1703,21 @@ async function getProduits() {
     }
     return false;
   });
+}
+
+// Articles Matos dont la précommande est terminée — réservé à l'admin,
+// pour l'onglet "Historique" (demande Remi 22/07/2026). Contrairement à
+// getProduits(), aucun filtre de droits/visibilité : c'est un historique
+// de référence, pas un catalogue d'achat.
+async function getProduitsHistoriqueMatos() {
+  const { data, error } = await sb.from('produits')
+    .select('*, section:sections(id, nom)')
+    .eq('mode', 'precommande')
+    .not('precommande_fin', 'is', null)
+    .lt('precommande_fin', new Date().toISOString())
+    .order('precommande_fin', { ascending: false });
+  if (error) throw error;
+  return data || [];
 }
 
 async function getProduitById(id) {
@@ -1908,6 +1928,10 @@ async function getSticks() {
     .order('nom');
   if (error) throw error;
   return (data || []).filter(s => {
+    // Même règle que Matos ci-dessus (demande Remi 22/07/2026) : une
+    // précommande terminée disparaît du catalogue membre, seul
+    // l'historique admin y donne encore accès.
+    if (s.mode === 'precommande' && s.precommande_fin && new Date(s.precommande_fin) < new Date()) return false;
     if (s.visible_membres === false && !voitBrouillon) return false;
     if (isAdminBureauCellule) return true;
     if (s.niveau_acces === 'tous') return true;
@@ -1922,6 +1946,21 @@ async function getSticks() {
     return false;
   });
 }
+
+// Sticks dont la précommande est terminée — réservé à l'admin, pour
+// l'onglet "Historique" (demande Remi 22/07/2026). Même principe que
+// getProduitsHistoriqueMatos.
+async function getSticksHistorique() {
+  const { data, error } = await sb.from('sticks_catalogue')
+    .select('*, section:sections(id, nom)')
+    .eq('mode', 'precommande')
+    .not('precommande_fin', 'is', null)
+    .lt('precommande_fin', new Date().toISOString())
+    .order('precommande_fin', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 async function getStickById(id) {
   const { data, error } = await sb.from('sticks_catalogue')
     .select('*, section:sections(id, nom)')
@@ -2406,10 +2445,10 @@ window.UL = {
   getStats, getMesStats, getStatsTifo, getSaisonsTifoDisponibles,
   getStatsDeplacements, getStatsMatos, getStatsSticks,
   getMaPresenceMatch, declarerPresenceMatch, annulerPresenceMatch,
-  getProduits, getProduitById, createProduit, updateProduit, archiverProduit,
+  getProduits, getProduitById, createProduit, updateProduit, archiverProduit, getProduitsHistoriqueMatos,
   passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande, marquerCommandePreparee, distribuerProduitAdmin,
   getMesCommandes, getAllCommandes, updateCommandeStatut,
-  getSticks, getStickById, createStick, updateStick, getMonQuotaStick,
+  getSticks, getStickById, createStick, updateStick, getMonQuotaStick, getSticksHistorique,
   demanderStickHelloAsso, receptionnerStick, marquerStickPrepare, updateDistribStatut, getMesSticks,
   distribuerStickAdmin, getAllDistributions, validerPaiementStick, confirmerDistributionStick,
   getCartageCatalogue, getAllCartageCatalogue, createCartage, updateCartage, archiverCartage,
