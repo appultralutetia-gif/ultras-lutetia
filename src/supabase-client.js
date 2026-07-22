@@ -249,6 +249,16 @@ async function confirmerEmailMembre(membreId) {
   if (error) throw error;
 }
 
+// Map membre_id -> dernière connexion (ou null si jamais connecté) —
+// Admin/Bureau uniquement, cf. fonction Postgres lister_dernieres_connexions.
+async function getDernieresConnexionsParMembre() {
+  const { data, error } = await sb.rpc('lister_dernieres_connexions');
+  if (error) throw error;
+  const map = {};
+  (data || []).forEach(r => { map[r.membre_id] = r.derniere_connexion; });
+  return map;
+}
+
 async function updateStatutMembre(membreId, statut) {
   return updateMembre(membreId, { statut });
 }
@@ -2164,7 +2174,7 @@ window.UL = {
   initSession,
   loginByTelegram, logout, changePassword, inscription, demanderResetMdp,
   verifierCodeInscription, renvoyerCodeInscription,
-  getMembre, getAllMembres, updateMembre, updateStatutMembre, confirmerEmailMembre,
+  getMembre, getAllMembres, updateMembre, updateStatutMembre, confirmerEmailMembre, getDernieresConnexionsParMembre,
   updateSectionMembre, toggleBlocageMembre,
   noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
   getParticipationBatch,
