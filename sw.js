@@ -667,7 +667,14 @@
 //   une inscription déjà engagée). Modal généralisé en interne pour
 //   gérer les deux types sans duplication. Fichiers modifiés :
 //   index.html, app.js, tifos.js, deplacements.js.
-const CACHE_NAME = 'ul-v112';
+// v113 (21/07/2026) : CACHE_NAME bumpé (v112 → v113) — nouveau bouton
+//   "📧 Confirmer email" sur les cartes de Gérer les membres : confirme
+//   directement l'email d'un compte (bypass du code à 8 chiffres),
+//   Admin/Bureau uniquement (vérifié aussi côté fonction Postgres
+//   confirmer_email_membre, pas seulement côté app). Fini de me le
+//   demander à chaque fois. Fichiers modifiés : admin.js,
+//   supabase-client.js.
+const CACHE_NAME = 'ul-v113';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
