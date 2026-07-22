@@ -1765,14 +1765,21 @@ async function passerCommande(produitId, taille, quantite = 1) {
     throw new Error('Le paiement Cash n\'est pas disponible pour une précommande — utilise HelloAsso');
   }
   if (produit.quota_par_membre) {
+    // Corrigé (22/07/2026, cas Brahim Bennais/Tour de Cou) : le quota
+    // doit être compté PAR ARTICLE — avant, la requête ne filtrait pas
+    // par produit_id et additionnait TOUTES les commandes payées du
+    // membre, tous articles confondus, faisant dépasser à tort le quota
+    // d'un article jamais acheté simplement parce qu'un AUTRE article
+    // avait déjà été payé.
     const { data: dejaCommande } = await sb.from('commandes')
-      .select('commande_items(quantite)')
+      .select('commande_items!inner(quantite, produit_id)')
       .eq('membre_id', currentUser.id)
+      .eq('commande_items.produit_id', produitId)
       // Seules les commandes réellement PAYÉES comptent dans le quota
-    // (règle Remi 21/07/2026) — 'en_attente' (cash pas encore
-    // récupéré, ou HelloAsso jamais finalisé) ne doit jamais bloquer
-    // un membre qui n'est pas allé au bout du paiement.
-    .in('statut', ['disponible', 'precommande_validee', 'distribue', 'prepare']);
+      // (règle Remi 21/07/2026) — 'en_attente' (cash pas encore
+      // récupéré, ou HelloAsso jamais finalisé) ne doit jamais bloquer
+      // un membre qui n'est pas allé au bout du paiement.
+      .in('statut', ['disponible', 'precommande_validee', 'distribue', 'prepare']);
     const totalDeja = (dejaCommande || [])
       .flatMap(c => c.commande_items || [])
       .reduce((sum, i) => sum + (i.quantite || 0), 0);
@@ -1808,14 +1815,17 @@ async function distribuerProduitAdmin(produitId, membreId, taille, quantite = 1)
     throw new Error('Le paiement Cash n\'est pas disponible pour une précommande — utilise HelloAsso');
   }
   if (produit.quota_par_membre) {
+    // Même correctif que passerCommande ci-dessus (22/07/2026) : quota
+    // scopé par produit_id, plus par la totalité des commandes du membre.
     const { data: dejaCommande } = await sb.from('commandes')
-      .select('commande_items(quantite)')
+      .select('commande_items!inner(quantite, produit_id)')
       .eq('membre_id', membreId)
+      .eq('commande_items.produit_id', produitId)
       // Seules les commandes réellement PAYÉES comptent dans le quota
-    // (règle Remi 21/07/2026) — 'en_attente' (cash pas encore
-    // récupéré, ou HelloAsso jamais finalisé) ne doit jamais bloquer
-    // un membre qui n'est pas allé au bout du paiement.
-    .in('statut', ['disponible', 'precommande_validee', 'distribue', 'prepare']);
+      // (règle Remi 21/07/2026) — 'en_attente' (cash pas encore
+      // récupéré, ou HelloAsso jamais finalisé) ne doit jamais bloquer
+      // un membre qui n'est pas allé au bout du paiement.
+      .in('statut', ['disponible', 'precommande_validee', 'distribue', 'prepare']);
     const totalDeja = (dejaCommande || [])
       .flatMap(c => c.commande_items || [])
       .reduce((sum, i) => sum + (i.quantite || 0), 0);
