@@ -94,6 +94,7 @@ function renderMembres(membres) {
       <div class="membre-card-actions">
         <button class="btn btn-sm btn-secondary" onclick="openEditMembre('${m.id}')">✏️ Modifier</button>
         <button class="btn btn-sm btn-secondary" onclick="adminResetMdp('${m.id}','${esc(m.email||'')}','${esc(m.prenom||'')}')">🔑 MDP</button>
+        <button class="btn btn-sm btn-secondary" onclick="doConfirmerEmailMembre('${m.id}', this)" title="Débloque la connexion sans passer par le code à 8 chiffres">📧 Confirmer email</button>
         ${isAdmin(UL.getCurrentMembre()) ? `<button class="btn btn-sm btn-secondary" onclick="doConnexionEnTantQue('${m.id}','${esc(m.prenom||'')} ${esc(m.nom||'')}')">🕵️ Se connecter en tant que</button>` : ''}
         <button class="btn btn-sm ${m.actif?'btn-danger':'btn-success'}" onclick="toggleMembre('${m.id}',${!m.actif})">
           ${m.actif?'Bloquer':'Débloquer'}
@@ -1225,4 +1226,20 @@ function exporterCsvSansCodeReabonnement() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   toast(`Export CSV généré (${membres.length}) !`, 'success');
+}
+
+// Confirme l'email d'un compte sans passer par le code à 8 chiffres
+// (demande Remi 21/07/2026) — jusqu'ici il fallait me le demander à
+// chaque fois pour que je le fasse en base à la main.
+async function doConfirmerEmailMembre(membreId, btn) {
+  const txt = btn.textContent;
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    await UL.confirmerEmailMembre(membreId);
+    toast('Email confirmé — le membre peut se connecter sans code ✅', 'success');
+  } catch (e) {
+    toast(e.message || 'Impossible de confirmer l\u2019email', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = txt;
+  }
 }
