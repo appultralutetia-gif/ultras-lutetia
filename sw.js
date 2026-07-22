@@ -801,7 +801,15 @@
 //   entrecoupés de 200 sur cette fonction en peu de temps (probable
 //   limite de fréquence Supabase sur la génération de liens, pas un
 //   bug lié à un compte précis). Fichier modifié : supabase-client.js.
-const CACHE_NAME = 'ul-v127';
+// v128 (23/07/2026) : CACHE_NAME bumpé (v127 → v128) — nouvelle
+//   exemption de paiement déplacements par membre (demande Remi, cas
+//   Myriam Amarzit) : colonne membres.deplacements_gratuits. Un
+//   participant exempté a sa part comptée à 0€ dans le calcul du
+//   montant HelloAsso (Edge Function helloasso-create-checkout,
+//   déployée directement en v31) ; si le groupe entier est exempté,
+//   l'inscription est validée directement sans paiement HelloAsso.
+//   Fichiers modifiés : deplacements.js, supabase-client.js.
+const CACHE_NAME = 'ul-v128';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
