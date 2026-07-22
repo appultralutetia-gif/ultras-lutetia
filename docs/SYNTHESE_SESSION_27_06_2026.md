@@ -1,129 +1,140 @@
 # SYNTHÈSE DE SESSION — Ultras Lutetia PWA
-*10/07/2026 — Session très longue : statut "Visiteur", inscription et paiement multi-personnes pour les Déplacements (amis app + invités hors app), système d'amitié, présence gratuite aux matchs domicile, refonte du suivi Cartage, et plusieurs bugs de fond corrigés (dont un vrai doublon de code jamais synchronisé, découvert après plusieurs fausses pistes de cache). Service Worker : `ul-v72` → `ul-v78`.*
+*21/07/2026 — Session très longue, multi-thèmes : réconciliation massive des données cartage (import historique 2022-2027, calcul "carté depuis"), correctifs de bugs (dont un critique bloquant toutes les inscriptions), plusieurs nouvelles fonctionnalités admin (filtres, exports, dernière connexion, confirmation d'email manuelle), et de nombreuses interventions manuelles ponctuelles sur des comptes membres. Service Worker : `ul-v99` → `ul-v115`.*
 
 ---
 
 ## ⚠️ À FAIRE EN PREMIER À LA REPRISE
 
-1. **Confirmer que `migration_ajout_statut_visiteur.sql` a bien été exécutée** — sans elle, toute inscription échoue avec une violation de contrainte CHECK sur `membres.statut` (bug bloquant déjà rencontré en production ce jour).
-2. **Confirmer que le bug des annonces est enfin résolu** ("Impossible de charger les annonces") — corrigé une 3ᵉ fois ce jour après avoir enfin obtenu le vrai schéma de la table (`id, titre, contenu, categorie, created_at` seulement). Jamais retesté depuis le correctif.
-3. **Confirmer le déploiement et le bon fonctionnement de la v78** (derniers filtres Cartage) — livrée en toute fin de session, jamais testée.
-4. **`sw.js` doit être en v78** (`CACHE_NAME = 'ul-v78'`) — vérifier dans DevTools → Application → Service Workers, ou `caches.keys()` dans la console.
+1. **Vérifier que `helloasso-create-checkout` a bien été redéployé** — Remi a collé le code corrigé directement dans l'éditeur du Dashboard Supabase en fin de session, jamais confirmé fonctionnel depuis (pas de cas de test disponible). Vérifier l'onglet Logs de la fonction pour une éventuelle erreur de syntaxe au premier appel réel.
+2. **Confirmer que `sw.js` est bien en v115** (`CACHE_NAME = 'ul-v115'`) et que tous les fichiers listés ci-dessous ont été effectivement redéployés — plusieurs allers-retours ont eu lieu dans la session (dont une régression accidentelle, cf. Points de vigilance), le risque d'un fichier resté à une version intermédiaire est réel.
+3. **Point ouvert non résolu** : Hourdeaux André / Hourdeaux Jean semblent avoir leurs emails inversés en base (`jc.hourdeaux@gmail.com` / `jchx01@gmail.com`) — signalé à Remi, jamais confirmé ni corrigé. À relancer.
+4. **Point ouvert non résolu** : le code de réabonnement de Da Costa Louka (`REABO-UL87ZK3S`) est un doublon de celui d'Abel Stefani — Remi a dit de laisser tel quel "pour le moment", il manque le vrai code de Louka.
 
 ---
 
-## Fichiers à uploader la prochaine fois
+## Fichiers modifiés cette session (versions finales livrées)
 
 ```
-index.html
-sw.js                                        ← v78
-CHANGELOG.md
-src/
-  app.js                                      ← modifié (statut Visiteur, confidentialité noms,
-                                                  fusion avec l'ancien doublon de admin.js)
-  admin.js                                    ← très modifié (Visiteur, section inline, connexion
-                                                  "en tant que", recherche codes réabonnement,
-                                                  généralisation de loadDemandesAdmin)
-  profil.js                                   ← modifié (pinceaux Tifo retirés, page "Mes amis",
-                                                  page "Mon (ré)abonnement")
-  supabase-client.js                          ← très modifié (amitiés, présence matchs domicile,
-                                                  déplacements multi-personnes, codes réabonnement,
-                                                  correctifs annonces/inscription)
-  deplacements.js                             ← très modifié (multi-personnes, tri/historique par
-                                                  statut, quota, accès échelonné)
-  calendrier.js                               ← modifié (bouton présence match domicile, filtres
-                                                  Cartage supplémentaires, export CSV)
-  scan.js                                     ← modifié (scan par payeur, sélection multiple)
-  boutique.js, tifos.js, testable.js          ← inchangés cette session, à fournir quand même
-  config.js, styles.css                       ← styles.css modifié (classe .statut-visiteur)
-validate.js                                   ← modifié (nouveaux ids dynamiques enregistrés)
-supabase_functions/
-  helloasso-create-checkout.ts                ← très modifié (participants multi-personnes,
-                                                  validation en 2 passes)
-  helloasso-webhook.ts                        ← très modifié (inscription_ids pluriel)
-  send-email.ts                                ← corrigé (bug CORS sur les réponses d'erreur)
-  admin-generer-lien-connexion.ts              ← nouvelle fonction (connexion "en tant que")
+sw.js                    ← v115 (CACHE_NAME) — vérifier le déploiement réel
+index.html               ← modifié (filtres cartage Gérer les membres/cartage,
+                             modal confirmation inscription généralisé,
+                             lien "renvoyer le code", bouton export cartage
+                             non-inscrits, filtre statut Gérer le cartage)
+app.js                   ← modifié (tri sessions tifo widget Accueil — a régressé
+                             puis a été restauré, showConfirmInscription
+                             généralisé tifo+déplacement, renvoi code OTP
+                             depuis l'écran de login)
+admin.js                 ← très modifié (carté depuis, code réabonnement affiché
+                             sur Gérer les membres, 6 filtres cartage sur Gérer
+                             les membres, filtre "sans code réabonnement" +
+                             export CSV, bouton "Confirmer email", dernière
+                             connexion sur les 2 pages membres)
+tifos.js                 ← modifié (tri non-complètes en premier, blocage
+                             visuel "Session complète", description visible
+                             Admin/Bureau/Cellule Tifo uniquement)
+calendrier.js             ← modifié (filtre statut UL sur Gérer le cartage,
+                             combinable avec les 6 filtres existants)
+deplacements.js           ← modifié (boutons "M'inscrire" redirigés vers la
+                             confirmation générique avant inscription)
+supabase-client.js        ← très modifié (getCartageNonInscrits,
+                             getDerniersPaiementsCartageParMembre,
+                             getDernieresConnexionsParMembre,
+                             confirmerEmailMembre, quota boutique/déplacement
+                             corrigé pour ne compter que le payé,
+                             correctif "2/null" Liste Bus Telegram,
+                             getListeBusTelegram)
+profil.js                 ← modifié ("Carté depuis" affiché au membre)
 ```
 
-## Migrations SQL à exécuter, DANS CET ORDRE si pas encore fait
-
+**Edge Function (hors dépôt front, gérée séparément)** :
 ```
-1. migration_deplacements_avance.sql          — accès échelonné, quota, base multi-personnes
-                                                  (payeur_id, invite_nom/prenom/email sur
-                                                  inscriptions_deplacement)
-2. migration_amities.sql                      — table amities + fonction envoyer_demande_amitie
-3. migration_presence_matchs_domicile.sql     — table presences_matchs_domicile
-4. migration_reabonnement_page.sql            — parametres_reabonnement + fonctions de lecture
-                                                  (si pas déjà fait lors d'une session précédente)
-5. migration_admin_recherche_code.sql         — recherche admin d'un code réabonnement
-6. migration_maj_role_recherche_code.sql      — ouvre cette recherche à cellule_comite
-7. migration_liste_codes_reabonnement.sql     — listing en masse pour affichage sur les cartes
-8. ⚠️ migration_ajout_statut_visiteur.sql     — URGENT, CRITIQUE : sans elle, aucune inscription
-                                                  ne fonctionne (contrainte CHECK sur statut)
+helloasso-create-checkout/index.ts   ← corrigé (bug de quota, cf. plus bas),
+                                         collé manuellement dans le Dashboard
+                                         Supabase par Remi — jamais vérifié
+                                         depuis en conditions réelles
 ```
-
-**Non lié à une migration précise** : plusieurs scripts ponctuels de mise à jour en masse ont été exécutés cette session (codes de réabonnement, `cotisation_a_jour` par liste d'emails, suppression de comptes de test) — one-shot, pas à rejouer.
+Copie du code corrigé livrée en fin de session (fichier `helloasso-create-checkout.ts`) — à reprendre si besoin d'y retoucher, `helloasso-webhook` n'a **pas** été modifiée (aucun bug identifié dedans).
 
 ---
 
-## Contexte — ce qui a été fait dans cette session (par ordre chronologique)
+## Bug critique de la session — trigger d'inscription cassé
 
-### 1. Comité de passage — édition de statut/section/rôles
-Bouton "✏️ Modifier" sur les cartes, modal `modalEditMembre` en mode restreint (`comite`) : identité masquée, rôles Admin/Bureau exclus.
+**Ce qui s'est passé** : en réécrivant `rattacher_preinscriptions_membre()` (trigger sur `membres`, exécuté à chaque inscription) pour ajouter le recalcul automatique de `cartage_depuis`, une ancienne version du code a été réintroduite par erreur — elle référençait une table `commandes_preinscriptions` qui n'existe pas réellement en base (la vraie conception utilise la colonne `commandes.email_preinscription`). **Résultat : plus personne ne pouvait créer de compte** pendant la fenêtre où ce bug était actif (~19h07 à ~19h34 le 20/07/2026).
 
-### 2. Codes de réabonnement (Cartage 26-27, PFC) — refonte majeure
-Table `codes_reabonnement` (364 vraies données réelles, jamais à supprimer). Repensée en cours de session : au départ "saisir son code pour débloquer en interne", corrigée en page "🎫 Mon (ré)abonnement" qui **affiche** le code (retrouvé via email), avec lien vers `billetterie.parisfc.fr` et guide PDF. Bouton de confirmation déclarative retiré à la demande de Remi. Page masquable par Bureau/Admin. Recherche admin (`🔍 Vérifier un code`) ouverte à Bureau/Admin/Comité. Affichage direct des codes sur les cartes Comité de passage.
+**Détecté via** : Johnny UDE puis Mounirou (Abdou Espérant) ont signalé l'erreur `relation "public.commandes_preinscriptions" does not exist` au moment de "Créer mon compte".
 
-### 3. Connexion "en tant que" (Admin)
-Nouvelle Edge Function `admin-generer-lien-connexion`, Verify JWT **resté activé** (indispensable, contrairement aux autres fonctions du projet). Réservée à `admin_app`. ⚠️ Ouvrir le lien dans le même navigateur remplace la session Admin active.
+**Corrigé** : le trigger a été réécrit pour utiliser `commandes.email_preinscription`, cohérent avec le reste du système.
 
-### 4. Déplacements — refonte majeure multi-personnes
-Accès échelonné par statut (3 dates optionnelles), quota par payeur (comptage correct des lignes réutilisées), inscription de plusieurs personnes (amis app + invités hors app) en un seul paiement HelloAsso. Edge Functions étendues en **deux passes strictes** (résolution/vérification sans écriture, puis écriture) pour ne jamais laisser de lignes orphelines — rétrocompatibilité totale confirmée pour la relance de paiement solo. Scan présence repensé : on scanne le QR du **payeur**, affichage de toutes ses places payées avec case à cocher chacune. Page réorganisée comme Sessions Tifo (À venir/Historique), découpage par **statut effectif** (pas par date). Auto-fermeture à la date du match dépassée (jamais en base).
+**Comptes récupérés manuellement après coup** (créés côté `auth.users` mais jamais côté `membres`, à cause du bug) :
+- Johnny UDE, Mounirou (Abdou Espérant) — fiche membre recréée à la main avec les infos visibles sur leurs captures d'écran, email confirmé directement (sans code à 8 chiffres), cartage rattaché automatiquement une fois le trigger réparé.
+- 5 autres comptes orphelins identifiés dans la même fenêtre (Le Padellec Clément, Drame Idris, Delgado Guillaume, et une double tentative de Pontonnier Foucaud) — **infos de formulaire non récupérables** (seul l'email avait été enregistré) → comptes supprimés pour leur permettre de se réinscrire proprement (ce qui fonctionne maintenant).
+- Nicolas De Roeck, signalé plus tard séparément — même traitement (email confirmé manuellement).
+- 3 comptes orphelins plus anciens et sans rapport avec ce bug (mac_filou@yahoo.fr du 13/07, deux tentatives tronquées de Kervoal Aimé) — supprimés à la demande de Remi.
 
-### 5. Système d'amitié ("Mes amis")
-Page Profil dédiée, demande à confirmer par l'autre personne (table `amities`, auto-acceptation si demande croisée). Remplace l'ancienne liste "tous les membres actifs" pour le sélecteur d'amis sur un déplacement. **Confidentialité** : un membre simple ne voit que le pseudo d'un autre membre simple (jamais nom/prénom) — nouvelle fonction `nomAfficheMembre()`. Non appliquée rétroactivement aux pages de gestion (Gérer les membres, Comité de passage).
-
-### 6. Présence match domicile (gratuite)
-Table `presences_matchs_domicile`, bouton "✅ Présent au match" sur la carte "Prochain match domicile", désinscription libre (contrairement aux déplacements, payants).
-
-### 7. Statut "Visiteur" — nouveau palier
-Ajouté partout (dropdown, boutons de validation, filtres, libellés). Visiteur + Sympathisant : onglet Tifos masqué. Visiteur : Boutique limitée à Cartage. Statut par défaut à l'inscription passé de `sympathisant` à `visiteur`. Pinceaux "Cellule Tifo" retirés du Profil.
-
-### 8. Bug majeur découvert et corrigé — duplication de code
-La carte "Demandes d'inscription" sur l'Accueil restait bloquée sur une ancienne version malgré plusieurs déploiements confirmés — **pas un problème de cache** (plusieurs pistes explorées en vain : Unregister, navigation privée, vidage de Cache Storage). Cause réelle : une copie **entièrement séparée** de la fonctionnalité vivait dans `app.js` (`loadDemandes`/`validerDemande`/`refuserDemande`), jamais mise à jour en parallèle de celle d'`admin.js`. Fusionnées : `loadDemandesAdmin` sert désormais les deux emplacements via des paramètres `idListe`/`idBadge`.
-
-### 9. Section intégrée à la validation d'inscription
-Choix de la section directement sur la carte (présélectionnée "Ultra Lutetia"), plus de popup séparée.
-
-### 10. Emails de validation — bug CORS corrigé
-`.catch(() => {})` silencieux remplacé par un toast d'erreur explicite à deux endroits. Cause réelle trouvée ensuite : l'Edge Function `send-email` n'avait les en-têtes CORS que sur OPTIONS et le succès — jamais sur les erreurs, donc le navigateur bloquait la lecture de toute erreur Brevo réelle. Corrigé. Cause racine additionnelle côté Brevo : blocage d'IP non autorisées actif pour les clés API, désactivé par Remi.
-
-### 11. Bug d'inscription — contrainte FK `membres_id_fkey`
-Latence de réplication connue de Supabase entre création de `auth.users` et sa visibilité côté API REST — corrigé avec une nouvelle tentative automatique (jusqu'à 3, délai croissant) sur ce code d'erreur précis (23503) uniquement.
-
-### 12. Nettoyage / gestion des comptes de test
-Confirmé : le bouton "Supprimer" anonymise (RGPD) plutôt que supprimer réellement — **voulu par Remi**, pas de changement de code. Plusieurs scripts de suppression définitive fournis pour les comptes de test uniquement. Script de nettoyage pré-lancement mis à jour, couvrant tout ce qui a été construit depuis le premier brouillon — `codes_reabonnement`, `amities` et `presences_matchs_domicile` explicitement épargnés.
-
-### 13. Gérer le cartage — améliorations
-Email affiché sur chaque carte. Export CSV (respecte le filtre courant). Deux nouveaux filtres : "❌ Cartage non payé" et "❌ Charte non signée" (isolent chaque cause séparément).
-
-### 14. Service worker — bug de fond corrigé
-`fetch()` en "network-first" respectait quand même le cache HTTP du navigateur/CDN GitHub Pages — pas un vrai aller-retour réseau garanti. Corrigé avec `{ cache: 'reload' }`.
+**Nouvelle fonctionnalité qui aurait évité une partie de ces allers-retours manuels**, ajoutée en cours de session : lien **"Compte non confirmé ? Renvoyer le code"** sur l'écran de connexion (fonctionne même après avoir quitté l'app, contrairement au bouton "renvoyer" de l'écran OTP qui dépend d'un état de session perdu à la fermeture).
 
 ---
 
-## ⚠️ Points de vigilance / dette technique connue (à garder en tête)
+## Nouvelle règle de gestion des quotas (boutique + déplacements)
 
-1. **Avant de conclure à un problème de cache/déploiement, vérifier s'il n'existe pas une deuxième implémentation de la même fonctionnalité ailleurs dans le code** — leçon du point 8 ci-dessus, plusieurs heures perdues à tort sur des pistes de cache alors que le vrai bug était un doublon de code jamais synchronisé.
-2. **Toujours obtenir le VRAI schéma d'une table avant de corriger une erreur "column does not exist"** plutôt que de deviner colonne par colonne — le bug des annonces a nécessité 3 tentatives avant qu'une requête `information_schema.columns` ne règle tout d'un coup. Réflexe à avoir dès la première erreur de ce type.
-3. **PostgREST + double FK vers `membres`** : toujours préciser la contrainte FK exacte dans les `select()` embarqués dès qu'une table a 2 colonnes référençant `membres` (`membre_id` + `payeur_id`, `demandeur_id` + `destinataire_id`, etc.) — plusieurs fois rencontré dans les sessions précédentes, bien anticipé cette fois pour `inscriptions_deplacement.payeur_id` et `amities`.
-4. **Edge Functions non testables localement** — chaque modification de `helloasso-create-checkout.ts`/`helloasso-webhook.ts` (participants multi-personnes ajoutés ce jour) n'a été vérifiée qu'en lecture de code, jamais en conditions réelles. Un test de bout en bout (inscription groupée avec ami + invité hors app) reste à faire.
-5. **Le service worker a eu son propre lot de bugs cette session** (network-first pas vraiment network, cache du navigateur) — si un futur épisode de "version pas à jour" survient, vérifier d'abord s'il existe un doublon de code (point 1) avant de re-suspecter le service worker.
+**Signalé par** : Brahim Bennais, bloqué pour recommander un Tour de Cou après avoir annulé une première tentative de paiement HelloAsso jamais finalisée.
+
+**Règle posée par Remi** : une commande ne compte dans le `quota_par_membre` **que si elle est réellement payée**. Un paiement non finalisé, refusé, annulé ou remboursé ne doit jamais bloquer une nouvelle tentative.
+
+**Corrigé** :
+- Côté front (`supabase-client.js`) : `passerCommande`, `distribuerProduitAdmin` (quota boutique cash), `getMonQuotaDepl` (affichage quota déplacement) — ne comptent plus que les statuts réellement payés.
+- Côté Edge Function (`helloasso-create-checkout`, hors dépôt front — c'était la cause réelle du blocage de Brahim, qui payait par HelloAsso) : `traiterMatos`, `traiterStick`, `traiterDeplacement` corrigés selon la même règle. `traiterCartage` était déjà correct (pas touché).
+- `helloasso-webhook` : pas de logique de quota dedans, aucune modification nécessaire.
+
+**⚠️ Non vérifié en conditions réelles** — Remi n'avait pas de cas de test disponible pour confirmer après déploiement.
+
+---
+
+## Réconciliation cartage — travail principal de début de session
+
+- Import et rattachement de la liste initiale de ~513 payeurs cartage (correction d'emails, complétion des paiements manquants dans `cartage_preinscriptions`, table de rattachement automatique déjà existante mise à profit).
+- Import d'un historique multi-saisons complet (2022-2023 → 2025-2026, fichier `Historique_cartage.xlsx`, ~1230 lignes) dans une nouvelle table `cartage_historique`, combiné à la saison en cours.
+- Nouveau champ `membres.cartage_depuis` : calculé automatiquement (streak continu vers la saison la plus récente, sinon la plus récente seule s'il y a un trou) — **entièrement automatique pour l'avenir** : tout nouveau paiement cartage (saison en cours ou future) déclenche l'historisation et le recalcul tout seul, aucune intervention requise aux prochaines saisons.
+- Export CSV **"Cartage non inscrits"** (Gérer les membres) : liste les personnes ayant payé mais sans compte app — nécessitait une policy RLS dédiée (la table `cartage_preinscriptions` n'avait aucun accès autorisé pour un rôle non service_role, bug découvert et corrigé en cours de route).
+- **148 commandes "Pack Déplacement"** créées rétroactivement (personnes ayant acheté le pack cartage+goodies avant que ce produit boutique existe dans l'app) — dont 36 pré-créées avec `membre_id` null (email_preinscription), rattachées automatiquement à l'inscription.
+- Filtres et badges cartage étendus à "Gérer les membres" (avant réservés à "Gérer le cartage" et "Comité de passage") : 6 filtres (Incomplets / En attente / Payé / Cartage non payé / Charte non signée), code(s) de réabonnement affiché(s), "Carté depuis".
+- **~450 codes de réabonnement** ajoutés en plusieurs lots au fil de la session dans `codes_reabonnement`, avec plusieurs corrections manuelles (doublons de code, emails inversés entre Julien et Keissy Constantin, faute d'orthographe "Roussrl" → "Roussel").
+- **État actuel** : sur 514 personnes ayant payé le cartage 2026-2027, **72 n'ont aucun code de réabonnement correspondant** par email — liste jamais exportée (proposé à Remi, pas encore demandé).
+
+---
+
+## Autres fonctionnalités ajoutées cette session
+
+- **Sessions Tifo** : blocage serveur (trigger DB) une fois `capacite_max` atteint, tri "non-complètes en premier" (page Tifos + widget Accueil), notification push aux Admin/Bureau/Cellule Tifo à chaque inscription (pas à la création de session), champ "description" visible Admin/Bureau/Cellule Tifo uniquement.
+- **Déplacements** : le modal "Confirmer l'inscription" (engagement de présence), jusqu'ici réservé aux sessions Tifo, s'affiche désormais aussi avant "M'inscrire" à un déplacement.
+- **Admin — Gérer les membres / Comité de passage** : "Dernière connexion" (format "il y a X jours"), bouton "Confirmer email" (bypass du code à 8 chiffres, Admin/Bureau uniquement, vérifié aussi côté fonction Postgres).
+- **Comité de passage** : filtre + compteur "Sans code de réabonnement", export CSV dédié.
+- Correctif texte "Liste Bus" Telegram : affichait "PAYÉS (2/null)" au lieu de "PAYÉS (2)" pour un déplacement sans quota défini.
+
+---
+
+## Interventions manuelles ponctuelles sur des comptes (pour référence, pas à refaire)
+
+- Suppression complète (base + `auth.users`) d'un compte "[Supprimé]" créé par erreur.
+- Suppression d'une inscription de test de Paul Coyette sur un déplacement (paiement HelloAsso annulé, test de la fonctionnalité).
+- Retrait de @Tista (Baptiste Clement) d'une session tifo à sa demande.
+- Correction d'email (membres + auth.users + cartage_historique, les 3 en même temps — indispensable, sinon la connexion casse) pour Olivier Delhorbe et Philippe De Macedo (email erroné empêchant le rattachement automatique du cartage déjà payé).
+- Validation manuelle de cartage (mode cash) + ajout Pack Déplacement pour Olivier Delhorbe.
+- Validation manuelle de cartage (mode cash) pour Mathieu Gaudin (aucune trace de paiement trouvée sous son email ni variantes de nom — validé à la demande explicite de Remi, pas via un rattachement automatique).
+
+---
+
+## Points de vigilance / dette technique
+
+1. **Toujours vérifier qu'un fichier n'a pas été écrasé par une version non modifiée avant de le republier** — c'est exactement ce qui a provoqué la régression du tri des sessions Tifo sur le widget Accueil (repartir d'un fichier "propre" pour une autre fonctionnalité a effacé un correctif précédent sans que ce soit visible immédiatement). Toujours repartir du dernier fichier de travail modifié, jamais re-télécharger l'original en cours de session.
+2. **Les migrations `apply_migration` peuvent échouer silencieusement en apparence** — un cas cette session a montré `success:true` alors que le résultat final ne correspondait pas exactement à ce qui avait été demandé (une conception différente était déjà en place). Toujours vérifier l'état réel après une migration critique (`pg_get_functiondef`, `information_schema`), ne pas se fier uniquement au retour de succès.
+3. **RLS par défaut = aucun accès** sur les nouvelles tables sensibles (`cartage_preinscriptions`, `cartage_historique`) — penser à ajouter une policy de lecture Admin/Bureau dès la création si l'app doit pouvoir la lire, sinon la table renvoie silencieusement 0 ligne au lieu d'une erreur visible (comme pour le bug "tout le monde a déjà un code" qui n'en avait pas).
+4. **Edge Functions hors dépôt front** (`helloasso-create-checkout`, `helloasso-webhook`) — toujours demander le code source avant de diagnostiquer un bug de paiement, il n'est pas dans les fichiers uploadés habituellement.
 
 ## État réel à la reprise — NON CONFIRMÉ
 
-1. **`migration_ajout_statut_visiteur.sql`** : fournie en urgence suite à un bug bloquant en production, jamais confirmée exécutée avec succès par Remi.
-2. **Bug des annonces** : correctif basé sur le vrai schéma de la table, jamais retesté depuis.
-3. **v78 (2 nouveaux filtres Cartage)** : jamais confirmée déployée ni testée.
-4. **Inscription multi-personnes à un déplacement (amis app + invités hors app)** : le code des 2 Edge Functions a été écrit avec soin (validation en 2 passes, rétrocompatibilité vérifiée ligne à ligne pour le cas solo), mais **aucun test de bout en bout n'a été fait** sur le cas réel avec paiement HelloAsso groupé.
-5. **Confidentialité nom/prénom** : Remi n'a pas confirmé s'il souhaite l'étendre aux pages de gestion (Gérer les membres, Comité de passage) ou la garder limitée au contexte "amis".
+1. Déploiement effectif de `helloasso-create-checkout` corrigé — collé par Remi, jamais testé.
+2. Tous les fichiers front listés en v115 sont-ils bien tous déployés (pas seulement certains) ?
+3. Hourdeaux André/Jean — emails à inverser ou non, jamais confirmé par Remi.
+4. Da Costa Louka — vrai code de réabonnement toujours manquant.
+5. Liste des 72 personnes cartées sans code de réabonnement — jamais exportée en CSV (proposé, pas demandé).
