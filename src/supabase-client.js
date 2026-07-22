@@ -1076,6 +1076,10 @@ async function appellerHelloAssoCheckout(body) {
     throw new Error(messageReel || 'Impossible de lancer le paiement');
   }
   if (data?.error) throw new Error(data.error);
+  // Cas gratuit (déplacement, demande Remi 23/07/2026) : pas de
+  // redirectUrl puisqu'aucun paiement HelloAsso n'a été déclenché,
+  // l'inscription a été validée directement côté serveur.
+  if (data?.gratuit) return data;
   if (!data?.redirectUrl) throw new Error('Réponse de paiement invalide');
   return data;
 }
