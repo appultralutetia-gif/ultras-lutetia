@@ -693,7 +693,12 @@
 //   la même logique de quota côté serveur et n'a pas pu être corrigé
 //   ici — c'est très probablement la cause réelle du blocage de
 //   Brahim. Fichier modifié : supabase-client.js.
-const CACHE_NAME = 'ul-v115';
+// v116 (22/07/2026) : CACHE_NAME bumpé (v115 → v116) — page Stats
+//   (Général) : nouveau KPI "Cartés non inscrits sur l'app" (réutilise
+//   getCartageNonInscrits) et courbe cumulée du nombre de membres
+//   inscrits par mois (SVG généré côté client, pas de librairie externe
+//   ajoutée). Fichiers modifiés : admin.js, supabase-client.js.
+const CACHE_NAME = 'ul-v116';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
