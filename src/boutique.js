@@ -620,18 +620,59 @@ function switchAdminBoutiqueTab(tab) {
 // À l'intérieur de chaque onglet Matos/Sticks de la page admin — sépare
 // la gestion du catalogue (Articles) du suivi des commandes/distributions
 // (Commandes en cours), pour ne pas tout mélanger dans un seul long scroll.
+// ── Sous-onglets Articles / Commandes en cours / Historique ──────────
+// (05/07/2026, demande Remi ; Historique ajouté le 22/07/2026) — à
+// l'intérieur de chaque onglet Matos/Sticks de la page admin. Historique
+// = articles dont la précommande est terminée (archivés, plus visibles
+// des membres — cf. getProduitsHistoriqueMatos/getSticksHistorique).
 function switchAdminMatosSubTab(tab) {
   document.getElementById('subSectionMatosArticles').style.display = tab === 'articles' ? 'block' : 'none';
   document.getElementById('subSectionMatosCommandes').style.display = tab === 'commandes' ? 'block' : 'none';
+  document.getElementById('subSectionMatosHistorique').style.display = tab === 'historique' ? 'block' : 'none';
   document.getElementById('subTabMatosArticles').classList.toggle('active', tab === 'articles');
   document.getElementById('subTabMatosCommandes').classList.toggle('active', tab === 'commandes');
+  document.getElementById('subTabMatosHistorique').classList.toggle('active', tab === 'historique');
+  if (tab === 'historique' && !_historiqueMatosCharge) { _historiqueMatosCharge = true; loadHistoriqueMatos(); }
 }
 
 function switchAdminSticksSubTab(tab) {
   document.getElementById('subSectionSticksArticles').style.display = tab === 'articles' ? 'block' : 'none';
   document.getElementById('subSectionSticksCommandes').style.display = tab === 'commandes' ? 'block' : 'none';
+  document.getElementById('subSectionSticksHistorique').style.display = tab === 'historique' ? 'block' : 'none';
   document.getElementById('subTabSticksArticles').classList.toggle('active', tab === 'articles');
   document.getElementById('subTabSticksCommandes').classList.toggle('active', tab === 'commandes');
+  document.getElementById('subTabSticksHistorique').classList.toggle('active', tab === 'historique');
+  if (tab === 'historique' && !_historiqueSticksCharge) { _historiqueSticksCharge = true; loadHistoriqueSticks(); }
+}
+
+let _historiqueMatosCharge = false, _historiqueSticksCharge = false;
+
+async function loadHistoriqueMatos() {
+  const el = document.getElementById('historiqueMatosListe');
+  el.innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  try {
+    const produits = await UL.getProduitsHistoriqueMatos();
+    if (!produits.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune précommande terminée pour l\'instant</p>'; return; }
+    el.innerHTML = produits.map(p => `
+      <div class="card" style="margin-bottom:8px;opacity:.85;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(p.nom)}</div>
+        <div style="font-size:12px;color:var(--gris);">${p.prix}€ · Précommande terminée le ${new Date(p.precommande_fin).toLocaleDateString('fr-FR')}</div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
+}
+
+async function loadHistoriqueSticks() {
+  const el = document.getElementById('historiqueSticksListe');
+  el.innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  try {
+    const sticks = await UL.getSticksHistorique();
+    if (!sticks.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune précommande terminée pour l\'instant</p>'; return; }
+    el.innerHTML = sticks.map(s => `
+      <div class="card" style="margin-bottom:8px;opacity:.85;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(s.nom)}</div>
+        <div style="font-size:12px;color:var(--gris);">${s.prix}€ · Précommande terminée le ${new Date(s.precommande_fin).toLocaleDateString('fr-FR')}</div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
 }
 
 // Statuts considérés "en cours" = nécessitent encore une action ou une
@@ -642,25 +683,50 @@ const STATUTS_EN_COURS = ['en_attente', 'prepare', 'disponible', 'precommande_va
 
 let allCommandesAdmin = [], allDistribsAdmin = [];
 let currentFiltreCommandesAdmin = 'en_cours', currentFiltreDistribsAdmin = 'en_cours';
+// Filtre additionnel par article (demande Remi 22/07/2026) — combiné en
+// ET avec le filtre en_cours/toutes ci-dessus, pas en remplacement.
+let filtreProduitCommandesAdmin = '', filtreStickDistribsAdmin = '';
+
+function appliquerFiltresCommandesAdmin() {
+  let filtered = currentFiltreCommandesAdmin === 'en_cours'
+    ? allCommandesAdmin.filter(c => STATUTS_EN_COURS.includes(c.statut))
+    : allCommandesAdmin;
+  if (filtreProduitCommandesAdmin) {
+    filtered = filtered.filter(c => (c.commande_items || []).some(i => i.produit_id === filtreProduitCommandesAdmin));
+  }
+  renderToutesCommandes(filtered);
+}
+function filtrerProduitCommandesAdmin() {
+  filtreProduitCommandesAdmin = document.getElementById('filtreProduitCommandesAdmin').value;
+  appliquerFiltresCommandesAdmin();
+}
+
+function appliquerFiltresDistribsAdmin() {
+  let filtered = currentFiltreDistribsAdmin === 'en_cours'
+    ? allDistribsAdmin.filter(d => STATUTS_EN_COURS.includes(d.statut))
+    : allDistribsAdmin;
+  if (filtreStickDistribsAdmin) {
+    filtered = filtered.filter(d => d.stick_id === filtreStickDistribsAdmin);
+  }
+  renderToutesDistribs(filtered);
+}
+function filtrerStickDistribsAdmin() {
+  filtreStickDistribsAdmin = document.getElementById('filtreStickDistribsAdmin').value;
+  appliquerFiltresDistribsAdmin();
+}
 
 function filtrerCommandesAdmin(mode) {
   document.querySelectorAll('#subSectionMatosCommandes .filter-btn').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
   currentFiltreCommandesAdmin = mode;
-  const filtered = mode === 'en_cours'
-    ? allCommandesAdmin.filter(c => STATUTS_EN_COURS.includes(c.statut))
-    : allCommandesAdmin;
-  renderToutesCommandes(filtered);
+  appliquerFiltresCommandesAdmin();
 }
 
 function filtrerDistribsAdmin(mode) {
   document.querySelectorAll('#subSectionSticksCommandes .filter-btn').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
   currentFiltreDistribsAdmin = mode;
-  const filtered = mode === 'en_cours'
-    ? allDistribsAdmin.filter(d => STATUTS_EN_COURS.includes(d.statut))
-    : allDistribsAdmin;
-  renderToutesDistribs(filtered);
+  appliquerFiltresDistribsAdmin();
 }
 
 async function loadAdminBoutique() {
@@ -679,6 +745,25 @@ async function loadAdminBoutique() {
       sel.innerHTML = '<option value="">Toutes sections</option>' +
         sections.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
       sel.value = valeurActuelle;
+    }
+
+    // Menus déroulants de filtre par article (demande Remi 22/07/2026) —
+    // construits à partir du catalogue complet (pas seulement des
+    // articles ayant déjà des commandes), pour rester utilisables même
+    // si un article n'a encore aucune commande sous le filtre courant.
+    const selProduit = document.getElementById('filtreProduitCommandesAdmin');
+    if (selProduit) {
+      const valeurActuelle = selProduit.value;
+      selProduit.innerHTML = '<option value="">Tous les articles</option>' +
+        allProduitsAdmin.map(p => `<option value="${p.id}">${esc(p.nom)}</option>`).join('');
+      selProduit.value = valeurActuelle;
+    }
+    const selStick = document.getElementById('filtreStickDistribsAdmin');
+    if (selStick) {
+      const valeurActuelle = selStick.value;
+      selStick.innerHTML = '<option value="">Tous les sticks</option>' +
+        allSticksAdmin.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
+      selStick.value = valeurActuelle;
     }
 
     allCommandesAdmin = await UL.getAllCommandes();
@@ -711,16 +796,12 @@ async function loadAdminBoutique() {
 // ce moment-là. Les boutons de filtre eux-mêmes continuent d'appeler
 // filtrerCommandesAdmin/filtrerDistribsAdmin (avec la gestion active/inactive).
 function filtrerCommandesAdminSansEvent(mode) {
-  const filtered = mode === 'en_cours'
-    ? allCommandesAdmin.filter(c => STATUTS_EN_COURS.includes(c.statut))
-    : allCommandesAdmin;
-  renderToutesCommandes(filtered);
+  currentFiltreCommandesAdmin = mode;
+  appliquerFiltresCommandesAdmin();
 }
 function filtrerDistribsAdminSansEvent(mode) {
-  const filtered = mode === 'en_cours'
-    ? allDistribsAdmin.filter(d => STATUTS_EN_COURS.includes(d.statut))
-    : allDistribsAdmin;
-  renderToutesDistribs(filtered);
+  currentFiltreDistribsAdmin = mode;
+  appliquerFiltresDistribsAdmin();
 }
 
 // ═══════════════════════════════════════════════════════════════
