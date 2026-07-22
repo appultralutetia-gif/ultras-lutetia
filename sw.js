@@ -715,7 +715,17 @@
 //   onglets Stats : Déplacement, Matos, Stick (nouvelles fonctions
 //   getStatsDeplacements/getStatsMatos/getStatsSticks). Fichiers
 //   modifiés : index.html, admin.js, supabase-client.js.
-const CACHE_NAME = 'ul-v118';
+// v119 (22/07/2026) : CACHE_NAME bumpé (v118 → v119) — Boutique : un
+//   article/stick en mode 'precommande' dont precommande_fin est passée
+//   disparaît désormais entièrement du catalogue membre (getProduits/
+//   getSticks), remplaçant l'ancien comportement "visible mais fermé".
+//   Nouvel onglet admin "🗄️ Historique" (Matos et Sticks) listant ces
+//   articles archivés (getProduitsHistoriqueMatos/getSticksHistorique).
+//   Nouveau menu déroulant de filtre par article dans "Commandes en
+//   cours" (Matos et Sticks), combinable avec le filtre En cours/Toutes
+//   existant. Fichiers modifiés : index.html, boutique.js,
+//   supabase-client.js.
+const CACHE_NAME = 'ul-v119';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
