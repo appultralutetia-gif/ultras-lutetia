@@ -904,6 +904,10 @@ async function _enrichirDeplacements(depls) {
     return {
       ...d,
       _inscrits: inscritsDuDepl.length,
+      // Utilisé pour l'aperçu d'équilibre financier (Cellule Déplacement
+      // uniquement, cf. deplacements.js:renderDeplCard) — seuls les
+      // inscrits réellement PAYÉS comptent, pas les en_attente/refusés.
+      _inscritsPayes: inscritsDuDepl.filter(i => i.statut_paiement === 'paye_ha' || i.statut_paiement === 'paye_cash').length,
       monInscrit: inscritsDuDepl.find(i => i.membre_id === currentUser?.id) || null,
     };
   });
