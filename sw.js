@@ -725,7 +725,18 @@
 //   cours" (Matos et Sticks), combinable avec le filtre En cours/Toutes
 //   existant. Fichiers modifiés : index.html, boutique.js,
 //   supabase-client.js.
-const CACHE_NAME = 'ul-v119';
+// v120 (22/07/2026) : CACHE_NAME bumpé (v119 → v120) — correctif : les 5
+//   fonctions appelant helloasso-create-checkout affichaient le message
+//   générique du SDK Supabase ("Edge Function returned a non-2xx status
+//   code") au lieu du vrai message renvoyé par la fonction (ex. "Quota
+//   dépassé..."), perdu car non-2xx → data devient null côté SDK. Le
+//   vrai message est maintenant relu depuis error.context. Signalé par
+//   le cas Brahim Bennais / Tour de Cou (le déploiement du correctif de
+//   quota du 21/07 était en fait bon — vérifié directement via les logs
+//   et le code déployé, ce n'était pas la cause). Nouvelle fonction
+//   partagée appellerHelloAssoCheckout. Fichier modifié :
+//   supabase-client.js.
+const CACHE_NAME = 'ul-v120';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
