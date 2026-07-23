@@ -836,7 +836,15 @@
 //   helloasso-create-checkout (déployée directement, v32) et reflété
 //   dans le récap avant paiement. Fichiers modifiés : index.html,
 //   deplacements.js, supabase-client.js (statut ajouté à getMesAmis).
-const CACHE_NAME = 'ul-v131';
+// v132 (23/07/2026) : CACHE_NAME bumpé (v131 → v132) — correctif signalé
+//   par Remi : un paiement en attente ("Relancer le paiement") affichait
+//   "⏳ Inscrit — paiement en cours" (carte et détail), ce qui est
+//   trompeur puisque tant que le paiement n'est pas confirmé la personne
+//   n'est PAS inscrite (elle n'était déjà plus comptée dans les places,
+//   cf. v130, mais le texte disait le contraire). Devient "❌ Non
+//   inscrit (paiement en cours)" en rouge, carte et détail. Fichier
+//   modifié : deplacements.js.
+const CACHE_NAME = 'ul-v132';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
