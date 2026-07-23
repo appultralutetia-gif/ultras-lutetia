@@ -1596,7 +1596,7 @@ async function getStatsDeplacements() {
   const [deplRes, inscrRes, popRes] = await Promise.all([
     sb.from('deplacements').select('id, adversaire, date_match, statut, prix_total, places_max, quota_par_membre'),
     sb.from('inscriptions_deplacement')
-      .select('id, deplacement_id, statut_paiement, membre_id, invite_nom, created_at, membre:membres(prenom, nom, pseudo_telegram, statut, section_id)'),
+      .select('id, deplacement_id, statut_paiement, membre_id, invite_nom, created_at, membre:membres!inscriptions_deplacement_membre_id_fkey(prenom, nom, pseudo_telegram, statut, section_id)'),
     // Population de référence (Draft+Confirmé) pour situer la participation
     // aux déplacements dans l'ensemble du club — même logique que
     // getStatsTifo (tauxAvecSession/nbSansSession).
@@ -1684,7 +1684,7 @@ async function getStatsMatos() {
   const [produitsRes, commandesRes] = await Promise.all([
     sb.from('produits').select('id, nom, prix, categorie, mode, section:sections(nom)'),
     sb.from('commandes')
-      .select('id, statut, total, membre_id, created_at, commande_items(quantite, prix_unitaire, produit_id), membre:membres(prenom, nom, pseudo_telegram)'),
+      .select('id, statut, total, membre_id, created_at, commande_items(quantite, prix_unitaire, produit_id), membre:membres!commandes_membre_id_fkey(prenom, nom, pseudo_telegram)'),
   ]);
   if (produitsRes.error) throw produitsRes.error;
   if (commandesRes.error) throw commandesRes.error;
@@ -1753,7 +1753,7 @@ async function getStatsSticks() {
   const [sticksRes, distribRes] = await Promise.all([
     sb.from('sticks_catalogue').select('id, nom, prix, niveau_acces, section:sections(nom)'),
     sb.from('sticks_distribution')
-      .select('id, statut, quantite, membre_id, stick_id, created_at, membre:membres(prenom, nom, pseudo_telegram)'),
+      .select('id, statut, quantite, membre_id, stick_id, created_at, membre:membres!sticks_distribution_membre_id_fkey(prenom, nom, pseudo_telegram)'),
   ]);
   if (sticksRes.error) throw sticksRes.error;
   if (distribRes.error) throw distribRes.error;
