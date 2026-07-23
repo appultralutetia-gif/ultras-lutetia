@@ -181,7 +181,9 @@ function renderDeplCard(d) {
   } else if (estRefuse) {
     boutonAction = `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">❌ Réessayer le paiement</button>`;
   } else if (!estPaye) {
-    boutonAction = `<span class="badge badge-orange">⏳ Paiement en cours</span>`;
+    // Corrigé (demande Remi 23/07/2026) : tant que payé, pas inscrit —
+    // même règle que le détail ci-dessus.
+    boutonAction = `<span class="badge badge-rouge">❌ Non inscrit (paiement en cours)</span>`;
   } else {
     // Badge présence affiché uniquement une fois le paiement confirmé — un
     // membre non payé ne peut de toute façon pas avoir été scanné présent
@@ -301,7 +303,12 @@ async function openDepl(deplId) {
       html += `<div class="info-box error">❌ Paiement refusé</div>
         <button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">Réessayer le paiement</button>`;
     } else if (!estPaye) {
-      html += `<div class="info-box">⏳ Inscrit — paiement en cours</div>
+      // Corrigé (demande Remi 23/07/2026) : tant que le paiement n'est
+      // pas confirmé, la personne n'est PAS inscrite — l'ancien libellé
+      // "Inscrit — paiement en cours" était trompeur (déjà exclu du
+      // comptage de places, cf. _inscritsPayes, mais le texte disait le
+      // contraire).
+      html += `<div class="info-box error">❌ Non inscrit — paiement en cours</div>
         <p style="text-align:center;font-size:12px;color:var(--gris);margin-top:8px;">Si le paiement n'a pas démarré ou a été abandonné, tu peux réessayer.</p>
         <button class="btn btn-secondary" onclick="doInscritDepl('${d.id}',this)">Relancer le paiement</button>`;
     } else {
