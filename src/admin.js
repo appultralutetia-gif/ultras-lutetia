@@ -381,11 +381,60 @@ function switchStatsTab(tab) {
 
 function fmtPct(x) { return x === null || x === undefined ? '—' : Math.round(x * 100) + '%'; }
 function fmtEuros(x) { return (Number(x) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; }
+function nomMembre(m) { return m?.pseudo_telegram || (m?.prenom && m?.nom ? `${m.prenom} ${m.nom}` : (m?.prenom || m?.nom)) || '—'; }
+
+// Rendu générique d'une répartition (dict ou liste de paires) sous forme
+// de barres horizontales — même esprit que "Par section" de l'onglet
+// Général, réutilisé pour toutes les répartitions des 4 onglets Stats
+// (type, lieu, catégorie, section, mode de paiement, statuts…) — ajouté
+// le 23/07/2026 pour éviter de dupliquer ce code 4 fois (demande Remi :
+// pages Stats les plus complètes possible pour Tifo/Déplacement/Matos/Stick).
+function genererBarresHTML(entries, opts = {}) {
+  const liste = Array.isArray(entries) ? entries : Object.entries(entries || {});
+  if (!liste.length) return '<div class="empty-state" style="padding:12px 0;">Aucune donnée</div>';
+  const max = Math.max(...liste.map(([,v]) => v), 1);
+  const couleur = opts.couleur || 'var(--bleu, #5B48FF)';
+  const fmt = opts.fmt || (v => v);
+  return `<div style="display:flex;flex-direction:column;gap:6px;">${liste.map(([label, v]) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:8px;">
+      <span style="flex-shrink:0;">${esc(String(label))}</span>
+      <span style="display:flex;align-items:center;gap:8px;">
+        <span style="width:${Math.max(4, Math.round(v / max * 100))}px;height:6px;background:${couleur};border-radius:3px;"></span>
+        <b style="white-space:nowrap;">${fmt(v)}</b>
+      </span>
+    </div>`).join('')}</div>`;
+}
+
+// Courbe SVG générique (labels + valeurs), même principe que
+// genererCourbeInscriptionsSVG mais réutilisable pour n'importe quelle
+// série (évolution du CA Déplacements/Matos/Sticks, évolution des
+// présences Tifo…) — ajouté le 23/07/2026.
+function genererSparklineSVG(labels, values, opts = {}) {
+  if (!labels || labels.length < 2) return '<div class="empty-state" style="padding:20px 0;">Pas encore assez de données</div>';
+  const W = 320, H = 150, PAD = 28;
+  const maxVal = Math.max(...values, 1);
+  const step = (W - PAD * 2) / (labels.length - 1);
+  const y = v => H - PAD - (v / maxVal) * (H - PAD * 2.2);
+  const couleur = opts.couleur || 'var(--bleu, #5B48FF)';
+  const points = values.map((v, i) => `${PAD + i * step},${y(v)}`).join(' ');
+  const everyN = Math.max(1, Math.ceil(labels.length / 6));
+  const lbls = labels.map((l, i) => {
+    if (i % everyN !== 0 && i !== labels.length - 1) return '';
+    return `<text x="${PAD + i * step}" y="${H - 6}" font-size="9" fill="var(--gris)" text-anchor="middle">${esc(l)}</text>`;
+  }).join('');
+  return `
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible;">
+      <polyline points="${points}" fill="none" stroke="${couleur}" stroke-width="2"/>
+      ${values.map((v, i) => `<circle cx="${PAD + i * step}" cy="${y(v)}" r="2.5" fill="${couleur}"/>`).join('')}
+      ${lbls}
+    </svg>`;
+}
 
 async function loadStatsTifoUI() {
   const el = document.getElementById('statsTifoContent');
   try {
     const s = await UL.getStatsTifo();
+    const buckets = s.buckets || {};
     el.innerHTML = `
       <div class="kpi-grid">
         <div class="kpi"><div class="kpi-lbl">Sessions</div><div class="kpi-val">${s.totalSessions}</div></div>
@@ -401,6 +450,7 @@ async function loadStatsTifoUI() {
           <div class="stat-card"><div class="stat-value">${fmtPct(s.tauxRemplissageMoyen)}</div><div class="stat-label">Remplissage moyen</div></div>
         </div>
         ${s.sessionTop ? `<div style="margin-top:10px;font-size:13px;color:var(--gris);">🏆 Session la plus suivie : <b style="color:var(--blanc,#fff);">${esc(s.sessionTop.nom)}</b> (${s.sessionTop.nb} présents)</div>` : ''}
+        ${s.cadenceMoyenneJours ? `<div style="margin-top:4px;font-size:13px;color:var(--gris);">📆 Cadence moyenne entre 2 sessions : <b style="color:var(--blanc,#fff);">${s.cadenceMoyenneJours.toFixed(0)} jours</b></div>` : ''}
       </div>
       <div class="card">
         <div class="card-label">👥 Engagement</div>
@@ -410,6 +460,26 @@ async function loadStatsTifoUI() {
           <div class="stat-card"><div class="stat-value">${fmtPct(s.tauxRetention)}</div><div class="stat-label">Reviennent (2+)</div></div>
           <div class="stat-card"><div class="stat-value">${fmtPct(s.tauxNoShow)}</div><div class="stat-label">Absents non prévenus</div></div>
         </div>
+        <div class="stat-card" style="margin-top:10px;">
+          <div class="stat-value" style="color:var(--open);">${s.nouveauxParticipants}</div>
+          <div class="stat-label">Nouveaux participants (30 derniers jours)</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">📊 Nombre de présences par membre (Draft+Confirmé)</div>
+        ${genererBarresHTML([['0', buckets['0']||0], ['1', buckets['1']||0], ['2', buckets['2']||0], ['3-4', buckets['3-4']||0], ['5+', buckets['5+']||0]])}
+      </div>
+      <div class="card">
+        <div class="card-label">📈 Évolution (présences par mois / cumul de membres uniques vus)</div>
+        ${genererSparklineSVG(s.evolution?.mois, s.evolution?.cumulUniques, { couleur: 'var(--vert, #10B981)' })}
+      </div>
+      <div class="card">
+        <div class="card-label">🎨 Par type de session</div>
+        ${genererBarresHTML(s.repartitionType)}
+      </div>
+      <div class="card">
+        <div class="card-label">📍 Par lieu</div>
+        ${genererBarresHTML(s.repartitionLieu)}
       </div>
       <div class="card">
         <div class="card-label">🛡️ Par section (présences)</div>
@@ -420,12 +490,28 @@ async function loadStatsTifoUI() {
             </div>`).join('')}
         </div>
       </div>
+      ${s.celluleTifoTotal ? `
+      <div class="card">
+        <div class="card-label">🖌️ Cellule Tifo</div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--open);">${s.celluleTifoAvecPresence}/${s.celluleTifoTotal}</div><div class="stat-label">Membres de la cellule déjà venus (${fmtPct(s.tauxParticipationCelluleTifo)})</div></div>
+      </div>` : ''}
+      ${(s.decrocheurs||[]).length ? `
+      <div class="card">
+        <div class="card-label">⚠️ Décrocheurs (45+ jours sans venir)</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${s.decrocheurs.slice(0,10).map(d => `
+            <div style="display:flex;justify-content:space-between;font-size:13px;">
+              <span>${esc(nomMembre(d.membre))}</span>
+              <span style="color:var(--gris);">vu le ${new Date(d.derniereDate).toLocaleDateString('fr-FR')} (${d.nb})</span>
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
       <div class="card">
         <div class="card-label">🏅 Classement présences</div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${(s.classement||[]).slice(0,10).map(c => `
             <div style="display:flex;justify-content:space-between;font-size:13px;">
-              <span>${esc(c.membre?.pseudo_telegram || (c.membre?.prenom+' '+c.membre?.nom) || '—')}</span><b>${c.nb}</b>
+              <span>${esc(nomMembre(c.membre))}</span><b>${c.nb}</b>
             </div>`).join('')}
         </div>
       </div>`;
@@ -436,12 +522,17 @@ async function loadStatsDeplacementUI() {
   const el = document.getElementById('statsDeplacementContent');
   try {
     const s = await UL.getStatsDeplacements();
+    const modePaiement = [
+      ['HelloAsso', s.parModePaiement?.paye_ha || 0],
+      ['Cash', s.parModePaiement?.paye_cash || 0],
+    ];
     el.innerHTML = `
       <div class="kpi-grid">
         <div class="kpi"><div class="kpi-lbl">Déplacements</div><div class="kpi-val">${s.totalDeplacements}</div></div>
         <div class="kpi"><div class="kpi-lbl">À venir</div><div class="kpi-val" style="color:var(--open)">${s.aVenir}</div></div>
         <div class="kpi"><div class="kpi-lbl">Terminés</div><div class="kpi-val" style="color:var(--gris)">${s.termines}</div></div>
       </div>
+      ${s.annules ? `<div style="font-size:12px;color:var(--gris);margin:-6px 0 10px;">🚫 ${s.annules} déplacement(s) annulé(s)</div>` : ''}
       <div class="card">
         <div class="card-label">🚌 Inscriptions</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -450,8 +541,41 @@ async function loadStatsDeplacementUI() {
           <div class="stat-card"><div class="stat-value">${s.nbParticipantsDistincts}</div><div class="stat-label">Membres distincts</div></div>
           <div class="stat-card"><div class="stat-value">${fmtPct(s.tauxRemplissageMoyen)}</div><div class="stat-label">Remplissage moyen</div></div>
         </div>
-        <div class="stat-card" style="margin-top:10px;"><div class="stat-value" style="color:var(--open);">${fmtEuros(s.montantTotal)}</div><div class="stat-label">Montant collecté</div></div>
-        ${s.topDeplacement ? `<div style="margin-top:10px;font-size:13px;color:var(--gris);">🏆 Le plus demandé : <b style="color:var(--blanc,#fff);">${esc(s.topDeplacement.nom)}</b> (${s.topDeplacement.nb} inscrits)</div>` : ''}
+        ${s.nbInvites ? `<div style="margin-top:8px;font-size:12px;color:var(--gris);">👤 dont ${s.nbInvites} invité(s)</div>` : ''}
+        ${s.topDeplacement ? `<div style="margin-top:6px;font-size:13px;color:var(--gris);">🏆 Le plus demandé : <b style="color:var(--blanc,#fff);">${esc(s.topDeplacement.nom)}</b> (${s.topDeplacement.nb} inscrits)</div>` : ''}
+      </div>
+      <div class="card">
+        <div class="card-label">💶 Argent collecté</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-card"><div class="stat-value" style="color:var(--open);">${fmtEuros(s.montantTotal)}</div><div class="stat-label">Montant total</div></div>
+          <div class="stat-card"><div class="stat-value">${fmtEuros(s.montantMoyenParInscription)}</div><div class="stat-label">Moy. / inscription</div></div>
+        </div>
+        <div style="margin-top:10px;">${genererBarresHTML(modePaiement, { couleur: 'var(--vert, #10B981)' })}</div>
+        ${s.tauxRembourseOuRefuse ? `<div style="margin-top:8px;font-size:12px;color:var(--orange);">⚠️ ${fmtPct(s.tauxRembourseOuRefuse)} de paiements refusés/remboursés</div>` : ''}
+      </div>
+      <div class="card">
+        <div class="card-label">📈 Évolution du montant collecté (cumulé)</div>
+        ${genererSparklineSVG(s.evolution?.map(e=>e.mois), s.evolution?.map(e=>e.montantCumul), { couleur: 'var(--vert, #10B981)' })}
+      </div>
+      <div class="card">
+        <div class="card-label">👥 Engagement</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-card"><div class="stat-value">${fmtPct(s.tauxAvecParticipation)}</div><div class="stat-label">Ont déjà participé</div></div>
+          <div class="stat-card"><div class="stat-value">${s.nbSansParticipation}</div><div class="stat-label">Jamais partis (Draft+Confirmé)</div></div>
+          <div class="stat-card"><div class="stat-value">${fmtPct(s.tauxRetention)}</div><div class="stat-label">Reviennent (2+)</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">🏆 Classement des déplacements</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${(s.classementDeplacements||[]).slice(0,10).map(c => `<div style="display:flex;justify-content:space-between;font-size:13px;"><span>${esc(c.nom)}</span><b>${c.nb} inscrit${c.nb>1?'s':''} · ${fmtEuros(c.montant)}</b></div>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">🏅 Classement participants</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${(s.classementMembres||[]).slice(0,10).map(c => `<div style="display:flex;justify-content:space-between;font-size:13px;"><span>${esc(nomMembre(c.membre))}</span><b>${c.nb}</b></div>`).join('')}
+        </div>
       </div>
       <div class="card">
         <div class="card-label">📋 Détail des statuts</div>
@@ -466,6 +590,11 @@ async function loadStatsMatosUI() {
   const el = document.getElementById('statsMatosContent');
   try {
     const s = await UL.getStatsMatos();
+    const categories = Object.entries(s.repartitionCategorie||{}).map(([k,v]) => [k, v.qte]).sort((a,b)=>b[1]-a[1]);
+    const modeStockPrecommande = [
+      ['Stock', s.repartitionMode?.stock || 0],
+      ['Précommande', s.repartitionMode?.precommande || 0],
+    ];
     el.innerHTML = `
       <div class="kpi-grid">
         <div class="kpi"><div class="kpi-lbl">Articles</div><div class="kpi-val">${s.totalProduits}</div></div>
@@ -474,12 +603,35 @@ async function loadStatsMatosUI() {
       </div>
       <div class="card">
         <div class="card-label">🛍️ Chiffre d'affaires</div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--open);">${fmtEuros(s.chiffreAffaires)}</div><div class="stat-label">${s.nbAcheteursDistincts} acheteur(s) distinct(s)</div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-card"><div class="stat-value" style="color:var(--open);">${fmtEuros(s.chiffreAffaires)}</div><div class="stat-label">Total</div></div>
+          <div class="stat-card"><div class="stat-value">${fmtEuros(s.panierMoyen)}</div><div class="stat-label">Panier moyen</div></div>
+          <div class="stat-card"><div class="stat-value">${s.nbArticlesVendus}</div><div class="stat-label">Articles vendus</div></div>
+          <div class="stat-card"><div class="stat-value">${s.nbAcheteursDistincts}</div><div class="stat-label">Acheteurs distincts</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">📈 Évolution du CA (cumulé)</div>
+        ${genererSparklineSVG(s.evolution?.map(e=>e.mois), s.evolution?.map(e=>e.montantCumul), { couleur: 'var(--vert, #10B981)' })}
+      </div>
+      <div class="card">
+        <div class="card-label">🗂️ Par catégorie</div>
+        ${genererBarresHTML(categories)}
+      </div>
+      <div class="card">
+        <div class="card-label">📦 Stock vs Précommande</div>
+        ${genererBarresHTML(modeStockPrecommande, { couleur: 'var(--pizza, #F59E0B)' })}
       </div>
       <div class="card">
         <div class="card-label">🏆 Classement articles</div>
         <div style="display:flex;flex-direction:column;gap:6px;">
-          ${(s.classementProduits||[]).slice(0,10).map(c => `<div style="display:flex;justify-content:space-between;font-size:13px;"><span>${esc(c.nom)}</span><b>${c.qte}</b></div>`).join('')}
+          ${(s.classementProduits||[]).slice(0,10).map(c => `<div style="display:flex;justify-content:space-between;font-size:13px;"><span>${esc(c.nom)}</span><b>${c.qte} · ${fmtEuros(c.montant)}</b></div>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">🏅 Top acheteurs</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${(s.classementAcheteurs||[]).slice(0,10).map(c => `<div style="display:flex;justify-content:space-between;font-size:13px;"><span>${esc(nomMembre(c.membre))}</span><b>${fmtEuros(c.montant)}</b></div>`).join('')}
         </div>
       </div>
       <div class="card">
@@ -495,6 +647,9 @@ async function loadStatsStickUI() {
   const el = document.getElementById('statsStickContent');
   try {
     const s = await UL.getStatsSticks();
+    const LABELS_NIVEAU = { tous: 'Tous les membres', draft_confirme: 'Draft + Confirmé', confirme: 'Confirmé uniquement', inconnu: 'Non renseigné' };
+    const sections = Object.entries(s.repartitionSection||{}).sort((a,b)=>b[1]-a[1]);
+    const niveaux = Object.entries(s.repartitionNiveauAcces||{}).map(([k,v]) => [LABELS_NIVEAU[k]||k, v]).sort((a,b)=>b[1]-a[1]);
     el.innerHTML = `
       <div class="kpi-grid">
         <div class="kpi"><div class="kpi-lbl">Sticks</div><div class="kpi-val">${s.totalSticks}</div></div>
@@ -503,12 +658,34 @@ async function loadStatsStickUI() {
       </div>
       <div class="card">
         <div class="card-label">🎟️ Chiffre d'affaires</div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--open);">${fmtEuros(s.chiffreAffaires)}</div><div class="stat-label">${s.nbAcheteursDistincts} acheteur(s) distinct(s)</div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-card"><div class="stat-value" style="color:var(--open);">${fmtEuros(s.chiffreAffaires)}</div><div class="stat-label">Total</div></div>
+          <div class="stat-card"><div class="stat-value">${fmtEuros(s.panierMoyen)}</div><div class="stat-label">Panier moyen</div></div>
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:var(--gris);">${s.nbAcheteursDistincts} acheteur(s) distinct(s)</div>
+      </div>
+      <div class="card">
+        <div class="card-label">📈 Évolution du CA (cumulé)</div>
+        ${genererSparklineSVG(s.evolution?.map(e=>e.mois), s.evolution?.map(e=>e.montantCumul), { couleur: 'var(--vert, #10B981)' })}
+      </div>
+      <div class="card">
+        <div class="card-label">🛡️ Par section</div>
+        ${genererBarresHTML(sections)}
+      </div>
+      <div class="card">
+        <div class="card-label">🔒 Par niveau d'accès</div>
+        ${genererBarresHTML(niveaux, { couleur: 'var(--pizza, #F59E0B)' })}
       </div>
       <div class="card">
         <div class="card-label">🏆 Classement sticks</div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${(s.classementSticks||[]).slice(0,10).map(c => `<div style="display:flex;justify-content:space-between;font-size:13px;"><span>${esc(c.nom)}</span><b>${c.qte}</b></div>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">🏅 Top acheteurs</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${(s.classementAcheteurs||[]).slice(0,10).map(c => `<div style="display:flex;justify-content:space-between;font-size:13px;"><span>${esc(nomMembre(c.membre))}</span><b>${fmtEuros(c.montant)}</b></div>`).join('')}
         </div>
       </div>
       <div class="card">
