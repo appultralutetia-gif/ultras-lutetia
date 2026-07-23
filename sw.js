@@ -828,7 +828,15 @@
 //   inscriptions réellement payées (paye_ha/paye_cash), sur la carte
 //   (barre + "X/Y places") et dans le détail ("X inscrits / Y places").
 //   Fichier modifié : deplacements.js.
-const CACHE_NAME = 'ul-v130';
+// v131 (23/07/2026) : CACHE_NAME bumpé (v130 → v131) — nouveau
+//   supplément Visiteur par déplacement (demande Remi) : colonne
+//   deplacements.supplement_visiteur (10€ par défaut, configurable dans
+//   les formulaires création/modification). Appliqué par participant
+//   selon SON propre statut (pas celui du payeur) dans l'Edge Function
+//   helloasso-create-checkout (déployée directement, v32) et reflété
+//   dans le récap avant paiement. Fichiers modifiés : index.html,
+//   deplacements.js, supabase-client.js (statut ajouté à getMesAmis).
+const CACHE_NAME = 'ul-v131';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
