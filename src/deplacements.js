@@ -156,7 +156,11 @@ function formatEchelonnementDepl(d) {
 function renderDeplCard(d) {
   const m = UL.getCurrentMembre();
   const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}) : '';
-  const pct = d.places_max ? Math.min(100, Math.round(((d._inscrits||0)/d.places_max)*100)) : 0;
+  // Le nombre de places affiché ne doit compter que les inscriptions
+  // réellement PAYÉES (demande Remi 23/07/2026) — un paiement HelloAsso
+  // jamais finalisé (checkout abandonné) réservait visuellement une
+  // place alors qu'elle n'était pas vraiment prise.
+  const pct = d.places_max ? Math.min(100, Math.round(((d._inscritsPayes||0)/d.places_max)*100)) : 0;
   const { estInscrit, estPaye, estRefuse } = calculerStatutPaiementDepl(d.monInscrit);
   const estPresent = !!d.monInscrit?.present_at;
 
@@ -236,7 +240,7 @@ function renderDeplCard(d) {
     ${d.places_max ? `
     <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
       <div class="places-bar" style="flex:1;"><div class="places-fill" style="width:${pct}%"></div></div>
-      <span style="font-size:11px;color:var(--gris);flex-shrink:0;">${d._inscrits||0}/${d.places_max}</span>
+      <span style="font-size:11px;color:var(--gris);flex-shrink:0;">${d._inscritsPayes||0}/${d.places_max}</span>
     </div>` : ''}
     ${formatEchelonnementDepl(d) ? `<div style="font-size:11px;color:var(--gris);margin-top:6px;">📅 ${formatEchelonnementDepl(d)}</div>` : ''}
     <div style="margin-top:10px;">${boutonAction}</div>
@@ -276,7 +280,13 @@ async function openDepl(deplId) {
           return `Seuil équilibre: ${seuil.toFixed(1)}€/place — ${(d.prix_bus||0) >= seuil ? `✅ bénéf. plein bus ${benef.toFixed(0)}€` : `⚠️ perte plein bus ${benef.toFixed(0)}€`}`;
         })() : ''}
       </div>` : ''}
-      <div style="font-size:14px;margin-bottom:16px;font-weight:600;">👥 ${nbInscrits} inscrit${nbInscrits>1?'s':''}${d.places_max?' / '+d.places_max+' places':''}</div>`;
+      ${(() => {
+        // Même règle que la carte (demande Remi 23/07/2026) : le nombre
+        // de places affiché ne compte que les inscriptions PAYÉES, pas
+        // les paiements en attente jamais finalisés.
+        const nbPayes = inscrits.filter(i => i.statut_paiement === 'paye_ha' || i.statut_paiement === 'paye_cash').length;
+        return `<div style="font-size:14px;margin-bottom:16px;font-weight:600;">👥 ${nbPayes} inscrit${nbPayes>1?'s':''}${d.places_max?' / '+d.places_max+' places':''}</div>`;
+      })()}`;
 
     if (!estInscrit) {
       if (inscriptionsDeplFermees(d)) {
