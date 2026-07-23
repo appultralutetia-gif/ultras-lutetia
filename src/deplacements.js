@@ -389,6 +389,7 @@ async function doInscritDepl(id, btn) {
     document.getElementById('inscritDeplQuotaInfo').innerHTML = quotaHtml;
     _quotaDeplCourant = quota;
     _prixDeplCourant = d.prix_total || 0;
+    _supplementVisiteurCourant = d.supplement_visiteur || 0;
 
     majRecapInscritDepl();
     showModal('modalInscritDepl');
@@ -402,6 +403,7 @@ let _amisDeplDisponibles = [];
 let _amisDeplSelectionnes = new Set();
 let _quotaDeplCourant = null;
 let _prixDeplCourant = 0;
+let _supplementVisiteurCourant = 0;
 
 async function toggleAmisDepl() {
   const actif = document.getElementById('idAvecAmis').checked;
@@ -447,22 +449,24 @@ function majRecapInscritDepl() {
   const nbAmis = document.getElementById('idAvecAmis')?.checked ? _amisDeplSelectionnes.size : 0;
   const total = 1 + nbAmis; // 1 = soi-même
 
-  // Exemption de paiement (demande Remi 23/07/2026) : le récap affiché
-  // AVANT paiement doit refléter le même calcul que l'Edge Function
-  // (seuls les participants non-exemptés comptent), sinon il annonce un
-  // montant qui ne sera jamais réellement facturé — trompeur pour la
-  // personne qui inscrit le groupe.
+  // Exemption de paiement + supplément Visiteur (demande Remi 23/07/2026)
+  // : le récap affiché AVANT paiement doit refléter le même calcul que
+  // l'Edge Function (participants non-exemptés + supplément par
+  // participant visiteur), sinon il annonce un montant qui ne sera
+  // jamais réellement facturé.
   const moi = UL.getCurrentMembre();
+  const supplement = _supplementVisiteurCourant || 0;
   let nbExemptes = moi?.deplacements_gratuits ? 1 : 0;
+  let montant = 0;
+  if (!moi?.deplacements_gratuits) montant += _prixDeplCourant + (moi?.statut === 'visiteur' ? supplement : 0);
   if (document.getElementById('idAvecAmis')?.checked) {
     _amisDeplSelectionnes.forEach(id => {
       const ami = _amisDeplDisponibles.find(a => a.id === id);
-      if (ami?.deplacements_gratuits) nbExemptes++;
+      if (ami?.deplacements_gratuits) { nbExemptes++; return; }
+      montant += _prixDeplCourant + (ami?.statut === 'visiteur' ? supplement : 0);
     });
   }
-  const nbPayants = total - nbExemptes;
-  const montant = (_prixDeplCourant * nbPayants).toFixed(2);
-  let html = `👥 ${total} place${total>1?'s':''} — 💶 ${montant}€${nbExemptes ? ` <span style="color:var(--vert);font-weight:400;">(${nbExemptes} exempté${nbExemptes>1?'s':''})</span>` : ''}`;
+  let html = `👥 ${total} place${total>1?'s':''} — 💶 ${montant.toFixed(2)}€${nbExemptes ? ` <span style="color:var(--vert);font-weight:400;">(${nbExemptes} exempté${nbExemptes>1?'s':''})</span>` : ''}`;
   if (_quotaDeplCourant && total > _quotaDeplCourant.restant) {
     html += `<div style="color:var(--rouge);font-size:13px;font-weight:400;margin-top:4px;">⚠️ Dépasse ton quota restant (${_quotaDeplCourant.restant})</div>`;
   }
@@ -658,6 +662,7 @@ async function ouvrirCreerDepl() {
   document.getElementById('dRdvAutre').style.display = 'none';
   document.getElementById('dTelegram').value = '';
   ['dHeure','dPlaces','dLimite','dNotes','dDistance','dCoutBus','dPrixBus'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('dSupplementVisiteur').value = '10';
   document.getElementById('dPrixPlace').value = 10;
   document.getElementById('dEquilibreInfo').style.display = 'none';
   ['dQuota','dOuvConfirme','dOuvDraft','dOuvSympa'].forEach(id => document.getElementById(id).value = '');
@@ -781,6 +786,7 @@ async function doCreerDepl(btn) {
     prix_total: (prixBus + prixPlace) || null,
     places_max: parseInt(document.getElementById('dPlaces').value) || null,
     date_limite_inscription: document.getElementById('dLimite').value || null,
+    supplement_visiteur: parseFloat(document.getElementById('dSupplementVisiteur').value) || 0,
     notes: document.getElementById('dNotes').value || null,
     match_id: (source === 'match' && matchId) ? matchId : null,
     quota_par_membre: parseInt(document.getElementById('dQuota').value) || null,
@@ -849,6 +855,7 @@ async function ouvrirModifierDepl(deplId) {
     document.getElementById('dmPrixBus').value = d.prix_bus ?? (d.prix_total != null ? Math.max(0, d.prix_total - prixPlaceActuel) : '');
     document.getElementById('dmPlaces').value = d.places_max || '';
     document.getElementById('dmLimite').value = d.date_limite_inscription || '';
+    document.getElementById('dmSupplementVisiteur').value = d.supplement_visiteur ?? 10;
     document.getElementById('dmNotes').value = d.notes || '';
     document.getElementById('dmStatut').value = d.statut || 'ouvert';
     document.getElementById('dmQuota').value = d.quota_par_membre ?? '';
@@ -955,6 +962,7 @@ async function doModifierDepl(btn) {
     prix_total: ((parseFloat(document.getElementById('dmPrixBus').value) || 0) + (parseFloat(document.getElementById('dmPrixPlace').value) || 0)) || null,
     places_max: parseInt(document.getElementById('dmPlaces').value) || null,
     date_limite_inscription: document.getElementById('dmLimite').value || null,
+    supplement_visiteur: parseFloat(document.getElementById('dmSupplementVisiteur').value) || 0,
     notes: document.getElementById('dmNotes').value || null,
     statut: document.getElementById('dmStatut').value,
     match_id: (source === 'match' && matchId) ? matchId : null,
