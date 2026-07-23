@@ -659,3 +659,96 @@ Phase Key Users en cours sur la base de prod actuelle. Avant le lancement offici
 - Nom de famille mal orthographié "Roussrl" au lieu de "Roussel" (Bertrand Roussel) — corrigé sur signalement de Remi.
 - Codes de réabonnement de Julien et Keissy Constantin inversés entre deux emails lors d'un import — corrigé sur clarification de Remi.
 - Code de réabonnement de Da Costa Louka dupliqué avec celui d'Abel Stefani dans les données source de Remi — **non résolu**, laissé en l'état sur instruction explicite ("on laisse comme ça pour le moment").
+
+- ## 34. Quota Matos ne filtrait pas par article — additionnait toutes les commandes payées du membre, tous articles confondus
+
+**Symptôme** : un membre bloqué à l'achat d'un article A ("Quota dépassé — max X par membre") alors qu'il n'a **jamais** acheté cet article A — seulement un article B totalement différent, déjà payé.
+
+**Cause** : le contrôle de quota (`traiterMatos` dans l'Edge Function `helloasso-create-checkout`, et ses équivalents front `passerCommande`/`distribuerProduitAdmin` dans `supabase-client.js`) requêtait `commandes.select('commande_items(quantite)').eq('membre_id', membreId).in('statut', [...])` **sans jamais filtrer sur `produit_id`**. Le total sommé couvrait donc TOUTES les commandes payées du membre, tous articles confondus, comparé ensuite au quota du seul article en cours d'achat. Le correctif du 21/07/2026 (bug déjà documenté : ne compter que le payé) avait corrigé la liste des statuts pris en compte, mais pas cette absence de filtre par article — un problème plus profond et distinct.
+
+**Détecté par** : Brahim Bennais (déjà affecté par le bug du 21/07), bloqué une seconde fois sur "Tour de Cou UL" (quota 1) uniquement parce qu'il avait payé un "Pack Déplacement" (quota illimité, article sans rapport) — message d'erreur "Quota dépassé" cette fois lisible grâce au correctif du bug #35 ci-dessous, ce qui a permis de le diagnostiquer précisément au lieu de deviner.
+
+**Fix** : ajout de `.eq('commande_items.produit_id', produitId)` (avec `commande_items!inner(...)` pour que le filtre s'applique bien à la jointure) aux trois endroits concernés. **Sticks n'avait pas ce bug** : `stick_id` est directement une colonne de `sticks_distribution`, pas besoin de jointure vers une table d'items séparée, le filtre par article y était donc déjà correct.
+
+**Point de vigilance pour la suite** : un contrôle de quota "par article" doit **toujours** filtrer explicitement sur l'identifiant de l'article dans la requête elle-même — ne jamais se contenter de sommer "toutes les commandes payées du membre" en supposant qu'elles concernent forcément le bon article. Vérifier ce filtre en particulier chaque fois qu'un quota est calculé via une jointure vers une table d'items (par opposition à une colonne directe comme `stick_id`).
+
+**Fichiers concernés** : `src/supabase-client.js` (`passerCommande`, `distribuerProduitAdmin`), Edge Function `helloasso-create-checkout` (`traiterMatos`, déployée directement — cf. point de vigilance sur l'outillage, fin de fichier).
+
+---
+
+## 35. `sb.functions.invoke()` masque systématiquement le vrai message d'erreur métier
+
+**Symptôme** : n'importe quelle erreur renvoyée volontairement par une Edge Function (quota dépassé, déjà payé, cotisation déjà réglée, etc.) s'affichait côté utilisateur comme "Edge Function returned a non-2xx status code" — un texte générique qui ne permet ni au membre ni à l'admin de comprendre la vraie cause sans aller consulter les logs serveur.
+
+**Cause** : le SDK `supabase-js` (`sb.functions.invoke(...)`) traite tout code HTTP non-2xx comme une erreur de transport (`FunctionsHttpError`) plutôt que de tenter de parser le corps JSON de la réponse dans `data`. Résultat : `data` vaut `null`, et `error.message` contient le texte générique du SDK — le vrai JSON `{ error: "..." }` renvoyé par la fonction n'est accessible qu'en relisant manuellement `error.context` (la `Response` HTTP brute, via `await error.context.json()`).
+
+**Fix** : sur chacune des fonctions concernées, remplacement du simple `if (error) throw new Error(error.message || ...)` par une lecture explicite de `error.context` avant de construire le message final :
+```js
+if (error) {
+  let messageReel = error.message;
+  try {
+    const corps = await error.context?.json();
+    if (corps?.error) messageReel = corps.error;
+  } catch (_) { /* corps non lisible en JSON — on garde le message générique */ }
+  throw new Error(messageReel || 'Message par défaut');
+}
+```
+Appliqué aux 5 fonctions d'appel HelloAsso (déplacement solo, déplacement multi-participants, matos, stick, cartage — regroupées dans un helper commun `appellerHelloAssoCheckout`) et à `genererLienConnexionAdmin` ("Se connecter en tant que"), touchée par le même symptôme lors du diagnostic du bug #36.
+
+**Point de vigilance pour la suite** : reproduire systématiquement ce pattern de lecture pour **toute nouvelle fonction** invoquée via `sb.functions.invoke()` — ce n'est pas un cas particulier à ces 6 fonctions, c'est un comportement générique du SDK qui touchera toute future Edge Function si le correctif n'est pas repris.
+
+**Fichiers concernés** : `src/supabase-client.js` (`appellerHelloAssoCheckout` et ses 5 wrappers, `genererLienConnexionAdmin`).
+
+---
+
+## 36. Comptes membres créés à la main en SQL — deux pièges `auth.users` non couverts par le flux normal d'inscription
+
+**Contexte** : création manuelle complète d'un compte (INSERT direct dans `auth.users` + `membres`, hors du flux `inscription()`/OTP habituel) pour un cas où le membre ne pouvait pas s'inscrire lui-même. Deux symptômes distincts sont apparus après coup, chacun avec une cause différente.
+
+### 36a. Compte créé mais bloqué sans qu'aucun admin ne l'ait fait
+
+**Cause** : `membres.actif` vaut `false` par défaut au niveau de la colonne. Le flux normal (`inscription()`) ne le précise pas non plus explicitement à l'écriture, mais ce n'est normalement jamais un problème car un compte fraîchement inscrit passe par le circuit "Demandes d'inscription" où le Bureau active explicitement le compte en même temps qu'il choisit son statut. Un INSERT direct en SQL, lui, saute cette étape — le compte reste bloqué silencieusement, visible seulement en observant le bouton "Débloquer" (vert) au lieu de "Bloquer" (rouge) sur sa fiche.
+
+**Fix** : `update membres set actif = true where id = ...` — forcé explicitement après toute création manuelle.
+
+### 36b. "Se connecter en tant que" renvoie une erreur 500 pour ce compte spécifiquement
+
+**Cause** : les colonnes de tokens internes de `auth.users` (`confirmation_token`, `recovery_token`, `email_change_token_new`, `email_change`, `email_change_token_current`, `reauthentication_token`, `phone_change`, `phone_change_token`) sont restées `NULL` — l'INSERT manuel ne les avait pas précisées, et certaines de ces colonnes n'ont pas de valeur par défaut au niveau du schéma (`NULL` pur, contrairement à d'autres qui ont `''::character varying` par défaut). Supabase/GoTrue plante en tentant de lire ces colonnes comme des chaînes non-nulles au moment de générer un nouveau lien magique (`admin.generateLink`) — l'erreur 500 elle-même ne nomme jamais la colonne fautive, diagnostic confirmé uniquement en comparant un compte fonctionnel (créé par le flux normal) à celui créé à la main.
+
+**Fix** : `update auth.users set confirmation_token = coalesce(confirmation_token, ''), recovery_token = coalesce(recovery_token, ''), email_change_token_new = coalesce(email_change_token_new, ''), email_change = coalesce(email_change, ''), email_change_token_current = coalesce(email_change_token_current, ''), reauthentication_token = coalesce(reauthentication_token, ''), phone_change = coalesce(phone_change, ''), phone_change_token = coalesce(phone_change_token, '') where id = ...`
+
+**Point de vigilance pour la suite** : ces deux correctifs (36a + 36b) doivent être appliqués **systématiquement et immédiatement** à chaque création manuelle de compte via SQL brut — préventivement, avant même qu'un problème ne soit signalé, plutôt qu'en réaction à un symptôme.
+
+**Fichiers concernés** : aucun fichier de code — entièrement côté SQL/Dashboard Supabase (`auth.users`, `membres`).
+
+---
+
+## 37. Onglet Stats "Tifo" totalement mort — `switchStatsTab` n'existait tout simplement pas
+
+**Symptôme** : cliquer sur l'onglet "🎨 Tifo" de la page Stats ne produisait absolument aucun effet — pas de contenu, pas d'erreur visible.
+
+**Cause** : la fonction `switchStatsTab(tab)`, censée basculer l'affichage entre les différents onglets de la page Stats et déclencher le chargement paresseux du contenu correspondant, n'existait nulle part dans le code — ni dans `admin.js`, ni ailleurs. Pourtant, `getStatsTifo(saison)` (dans `supabase-client.js`) calculait déjà un jeu de statistiques très complet (sessions à venir/terminées, présences totales, taux de rétention, no-show, classement par section, classement par membre) — jamais affiché nulle part, invisible jusqu'à ce que l'absence du bouton fonctionnel soit signalée.
+
+**Fix** : implémentation de `switchStatsTab` (bascule d'onglet + chargement paresseux, un seul chargement par onglet visité) et de `loadStatsTifoUI()` pour rendre effectivement les données déjà calculées par `getStatsTifo()`. Deux autres onglets, également absents jusqu'ici (Déplacement, Matos, Stick), ont été construits dans la foulée avec leurs propres nouvelles fonctions de calcul (`getStatsDeplacements`, `getStatsMatos`, `getStatsSticks` — totaux, chiffre d'affaires, classements, détail par statut), suivant le même principe.
+
+**Point de vigilance pour la suite** : un bouton d'onglet visible dans le HTML ne garantit jamais que la fonction JS qu'il appelle existe réellement — vérifier systématiquement, pour toute page à onglets, que chaque `onclick` a bien sa fonction définie quelque part, pas seulement que la fonction de calcul des données associées existe (une fonction de calcul non branchée à un rendu est aussi invisible qu'un bouton mort).
+
+**Fichiers concernés** : `src/admin.js` (`switchStatsTab`, `loadStatsTifoUI`, `loadStatsDeplacementUI`, `loadStatsMatosUI`, `loadStatsStickUI`), `src/supabase-client.js` (`getStatsDeplacements`, `getStatsMatos`, `getStatsSticks` ajoutées), `index.html` (3 nouveaux onglets + sections).
+
+---
+
+## 38. Libellé trompeur "Inscrit — paiement en cours" sur un déplacement non payé
+
+**Symptôme** : un paiement déplacement jamais finalisé (checkout HelloAsso abandonné) affichait "⏳ Inscrit — paiement en cours", à la fois sur la carte et dans le détail — alors que la personne n'est, de fait, pas inscrite tant que le paiement n'est pas confirmé (et n'était déjà plus comptée dans le total de places affiché, cf. correctif antérieur dans la même série de sessions — seul le texte restait incohérent avec ce comptage).
+
+**Cause** : simple choix de libellé jamais reconsidéré depuis l'écriture initiale de `calculerStatutPaiementDepl()` et de son usage dans `renderDeplCard`/`openDepl` (`src/deplacements.js`) — la distinction entre "une ligne existe en base" (`estInscrit`) et "le paiement est confirmé" (`estPaye`) était déjà correctement calculée, mais le texte affiché pour le cas `estInscrit && !estPaye` employait quand même le mot "Inscrit".
+
+**Fix** : remplacé par "❌ Non inscrit (paiement en cours)" en rouge (`info-box error` / `badge-rouge`), sur la carte comme dans le détail — cohérent avec le fait que cette inscription n'est déjà plus comptée dans "X inscrits / Y places".
+
+**Fichiers concernés** : `src/deplacements.js` (badge de carte + bloc de détail).
+
+---
+
+## Point de vigilance transverse — accès direct aux Edge Functions désormais disponible
+
+Découverte d'outillage cette session, pas un bug : il est possible d'interroger et de déployer les Edge Functions directement (lecture des logs par service, lecture du code réellement déployé, déploiement d'une nouvelle version) sans jamais passer par un copier-coller manuel dans le Dashboard Supabase par un tiers. Utilisé pour diagnostiquer et corriger `helloasso-create-checkout` deux fois de suite (bug #34 puis l'ajout d'une exemption de paiement et d'un supplément tarifaire) sans aucune manipulation externe. **À utiliser systématiquement pour toute Edge Function désormais**, y compris pour vérifier qu'un correctif collé manuellement par ailleurs a bien pris effet, plutôt que de le supposer.
