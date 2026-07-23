@@ -819,7 +819,16 @@
 //   applique désormais le même calcul que l'Edge Function. Fichiers
 //   modifiés : deplacements.js, supabase-client.js (deplacements_gratuits
 //   ajouté à la sélection des amis, getMesAmis).
-const CACHE_NAME = 'ul-v129';
+// v130 (23/07/2026) : CACHE_NAME bumpé (v129 → v130) — correctif
+//   signalé par Remi (test réel) : le nombre de places affiché sur la
+//   carte et dans le détail d'un déplacement comptait TOUTES les
+//   inscriptions (y compris 'en_attente', paiement HelloAsso jamais
+//   finalisé) — un checkout abandonné réservait visuellement une place
+//   qui n'était pas vraiment prise. N'affiche désormais que les
+//   inscriptions réellement payées (paye_ha/paye_cash), sur la carte
+//   (barre + "X/Y places") et dans le détail ("X inscrits / Y places").
+//   Fichier modifié : deplacements.js.
+const CACHE_NAME = 'ul-v130';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
