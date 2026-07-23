@@ -967,8 +967,8 @@ async function getMesAmis() {
   const { data, error } = await sb.from('amities')
     .select(`
       id, demandeur_id, destinataire_id,
-      demandeur:membres!amities_demandeur_id_fkey(id, nom, prenom, pseudo_telegram, deplacements_gratuits),
-      destinataire:membres!amities_destinataire_id_fkey(id, nom, prenom, pseudo_telegram, deplacements_gratuits)
+      demandeur:membres!amities_demandeur_id_fkey(id, nom, prenom, pseudo_telegram, deplacements_gratuits, statut),
+      destinataire:membres!amities_destinataire_id_fkey(id, nom, prenom, pseudo_telegram, deplacements_gratuits, statut)
     `)
     .eq('statut', 'acceptee')
     .or(`demandeur_id.eq.${currentUser.id},destinataire_id.eq.${currentUser.id}`);
