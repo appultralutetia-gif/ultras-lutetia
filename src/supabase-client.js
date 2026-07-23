@@ -1546,38 +1546,104 @@ async function getSaisonsTifoDisponibles() {
 }
 
 // ────────────────────────────────────────────────────────────
-// Stats Déplacements / Matos / Sticks (22/07/2026, demande Remi) — même
-// esprit que getStatsTifo mais volontairement plus légères (pas
-// d'historique de participation aussi riche à exploiter pour ces 3-là).
+// Stats Déplacements / Matos / Sticks (22/07/2026, demande Remi ;
+// enrichies le 23/07/2026 pour être au même niveau de détail que
+// getStatsTifo — classements, évolution dans le temps, répartitions,
+// fidélité des acheteurs/participants) — 2 petits utilitaires partagés
+// pour éviter de dupliquer 3 fois la même logique de regroupement.
 // ────────────────────────────────────────────────────────────
+
+// Classement par membre à partir d'une liste de lignes "payées"
+// (inscriptions_deplacement, commandes ou sticks_distribution — toutes
+// ont un membre_id et une relation `membre` chargée). `valeurFn` calcule
+// le montant à additionner pour chaque ligne.
+function _classementParMembre(lignes, valeurFn) {
+  const parMembre = new Map();
+  for (const l of lignes) {
+    if (!l.membre_id) continue;
+    if (!parMembre.has(l.membre_id)) parMembre.set(l.membre_id, { membre: l.membre, nb: 0, montant: 0 });
+    const e = parMembre.get(l.membre_id);
+    e.nb++;
+    e.montant += valeurFn(l);
+  }
+  return [...parMembre.values()].sort((a, b) => b.montant - a.montant || b.nb - a.nb);
+}
+
+// Évolution mensuelle cumulée (nombre de lignes + montant) — même esprit
+// que la courbe "inscriptions cumulées" de l'onglet Général (getStats),
+// réutilisée ici pour visualiser la progression du CA dans le temps.
+function _evolutionMensuelleCumulee(lignes, montantFn) {
+  const parMois = new Map();
+  for (const l of lignes) {
+    if (!l.created_at) continue;
+    const mois = l.created_at.slice(0, 7);
+    if (!parMois.has(mois)) parMois.set(mois, { nb: 0, montant: 0 });
+    const e = parMois.get(mois);
+    e.nb++;
+    e.montant += montantFn(l);
+  }
+  const moisTries = [...parMois.keys()].sort();
+  let cumulNb = 0, cumulMontant = 0;
+  return moisTries.map(mois => {
+    const e = parMois.get(mois);
+    cumulNb += e.nb;
+    cumulMontant += e.montant;
+    return { mois, nbCumul: cumulNb, montantCumul: Math.round(cumulMontant * 100) / 100 };
+  });
+}
+
 async function getStatsDeplacements() {
-  const [deplRes, inscrRes] = await Promise.all([
-    sb.from('deplacements').select('id, adversaire, date_match, statut, prix_total, places_max'),
-    sb.from('inscriptions_deplacement').select('id, deplacement_id, statut_paiement, membre_id, invite_nom'),
+  const [deplRes, inscrRes, popRes] = await Promise.all([
+    sb.from('deplacements').select('id, adversaire, date_match, statut, prix_total, places_max, quota_par_membre'),
+    sb.from('inscriptions_deplacement')
+      .select('id, deplacement_id, statut_paiement, membre_id, invite_nom, created_at, membre:membres(prenom, nom, pseudo_telegram, statut, section_id)'),
+    // Population de référence (Draft+Confirmé) pour situer la participation
+    // aux déplacements dans l'ensemble du club — même logique que
+    // getStatsTifo (tauxAvecSession/nbSansSession).
+    sb.from('membres').select('id, statut').in('statut', ['confirme', 'draft']),
   ]);
   if (deplRes.error) throw deplRes.error;
   if (inscrRes.error) throw inscrRes.error;
+  if (popRes.error) throw popRes.error;
   const depls = deplRes.data || [];
   const inscrs = inscrRes.data || [];
+  const population = popRes.data || [];
   const deplById = new Map(depls.map(d => [d.id, d]));
 
   const payees = inscrs.filter(i => i.statut_paiement === 'paye_ha' || i.statut_paiement === 'paye_cash');
   const parStatut = inscrs.reduce((acc, i) => { acc[i.statut_paiement] = (acc[i.statut_paiement] || 0) + 1; return acc; }, {});
+  const parModePaiement = { paye_ha: 0, paye_cash: 0 };
+  payees.forEach(i => { if (parModePaiement[i.statut_paiement] !== undefined) parModePaiement[i.statut_paiement]++; });
 
   const montantTotal = payees.reduce((sum, i) => sum + (deplById.get(i.deplacement_id)?.prix_total || 0), 0);
+  const montantMoyenParInscription = payees.length ? montantTotal / payees.length : 0;
 
   const parDepl = new Map();
-  for (const i of payees) {
-    parDepl.set(i.deplacement_id, (parDepl.get(i.deplacement_id) || 0) + 1);
-  }
-  let topDepl = null, topNb = 0;
-  for (const [id, nb] of parDepl) { if (nb > topNb) { topNb = nb; topDepl = deplById.get(id); } }
+  for (const i of payees) parDepl.set(i.deplacement_id, (parDepl.get(i.deplacement_id) || 0) + 1);
+  const classementDeplacements = [...parDepl.entries()]
+    .map(([id, nb]) => ({ nom: deplById.get(id)?.adversaire || 'Déplacement supprimé', nb, montant: nb * (deplById.get(id)?.prix_total || 0) }))
+    .sort((a, b) => b.nb - a.nb);
+  const topDepl = classementDeplacements[0] || null;
 
-  const parMembre = new Map();
+  const classementMembres = _classementParMembre(payees, i => deplById.get(i.deplacement_id)?.prix_total || 0);
+
+  const parMembreId = new Map();
   for (const i of payees) {
     if (!i.membre_id) continue;
-    parMembre.set(i.membre_id, (parMembre.get(i.membre_id) || 0) + 1);
+    parMembreId.set(i.membre_id, (parMembreId.get(i.membre_id) || 0) + 1);
   }
+  const popIds = new Set(population.map(m => m.id));
+  const popAvecDepl = new Set([...parMembreId.keys()].filter(id => popIds.has(id)));
+  const tauxAvecParticipation = population.length ? popAvecDepl.size / population.length : 0;
+  const nbSansParticipation = population.length - popAvecDepl.size;
+  const nbAuMoinsDeux = [...parMembreId.values()].filter(nb => nb >= 2).length;
+  const tauxRetention = parMembreId.size ? nbAuMoinsDeux / parMembreId.size : 0;
+
+  const nbInvites = inscrs.filter(i => i.invite_nom).length;
+  const resolus = inscrs.filter(i => ['paye_ha', 'paye_cash', 'refuse', 'rembourse'].includes(i.statut_paiement));
+  const tauxRembourseOuRefuse = resolus.length
+    ? resolus.filter(i => i.statut_paiement === 'refuse' || i.statut_paiement === 'rembourse').length / resolus.length
+    : 0;
 
   const avecCapacite = depls.filter(d => d.places_max);
   let tauxRemplissageMoyen = null;
@@ -1585,6 +1651,8 @@ async function getStatsDeplacements() {
     const totalPct = avecCapacite.reduce((sum, d) => sum + Math.min(1, (parDepl.get(d.id) || 0) / d.places_max), 0);
     tauxRemplissageMoyen = totalPct / avecCapacite.length;
   }
+
+  const evolution = _evolutionMensuelleCumulee(payees, i => deplById.get(i.deplacement_id)?.prix_total || 0);
 
   return {
     totalDeplacements: depls.length,
@@ -1594,17 +1662,29 @@ async function getStatsDeplacements() {
     totalInscriptions: inscrs.length,
     totalPayees: payees.length,
     parStatut,
+    parModePaiement,
     montantTotal,
-    topDeplacement: topDepl ? { nom: topDepl.adversaire, nb: topNb } : null,
-    nbParticipantsDistincts: parMembre.size,
+    montantMoyenParInscription,
+    topDeplacement: topDepl ? { nom: topDepl.nom, nb: topDepl.nb } : null,
+    classementDeplacements,
+    classementMembres: classementMembres.slice(0, 10),
+    nbParticipantsDistincts: parMembreId.size,
+    populationTotal: population.length,
+    tauxAvecParticipation,
+    nbSansParticipation,
+    tauxRetention,
+    nbInvites,
+    tauxRembourseOuRefuse,
     tauxRemplissageMoyen,
+    evolution,
   };
 }
 
 async function getStatsMatos() {
   const [produitsRes, commandesRes] = await Promise.all([
-    sb.from('produits').select('id, nom, prix'),
-    sb.from('commandes').select('id, statut, total, membre_id, commande_items(quantite, prix_unitaire, produit_id)'),
+    sb.from('produits').select('id, nom, prix, categorie, mode, section:sections(nom)'),
+    sb.from('commandes')
+      .select('id, statut, total, membre_id, created_at, commande_items(quantite, prix_unitaire, produit_id), membre:membres(prenom, nom, pseudo_telegram)'),
   ]);
   if (produitsRes.error) throw produitsRes.error;
   if (commandesRes.error) throw commandesRes.error;
@@ -1617,18 +1697,40 @@ async function getStatsMatos() {
   const parStatut = commandes.reduce((acc, c) => { acc[c.statut] = (acc[c.statut] || 0) + 1; return acc; }, {});
 
   const chiffreAffaires = payees.reduce((sum, c) => sum + (Number(c.total) || 0), 0);
+  const panierMoyen = payees.length ? chiffreAffaires / payees.length : 0;
 
   const parProduit = new Map();
   for (const c of payees) {
     for (const item of (c.commande_items || [])) {
-      parProduit.set(item.produit_id, (parProduit.get(item.produit_id) || 0) + (item.quantite || 0));
+      const e = parProduit.get(item.produit_id) || { qte: 0, montant: 0 };
+      e.qte += item.quantite || 0;
+      e.montant += (item.quantite || 0) * (Number(item.prix_unitaire) || 0);
+      parProduit.set(item.produit_id, e);
     }
   }
   const classementProduits = [...parProduit.entries()]
-    .map(([id, qte]) => ({ nom: produitById.get(id)?.nom || 'Article supprimé', qte }))
+    .map(([id, v]) => ({ nom: produitById.get(id)?.nom || 'Article supprimé', qte: v.qte, montant: v.montant }))
     .sort((a, b) => b.qte - a.qte);
 
-  const parMembre = new Set(payees.map(c => c.membre_id).filter(Boolean));
+  const repartitionCategorie = {};
+  for (const [id, v] of parProduit) {
+    const cat = produitById.get(id)?.categorie || 'Sans catégorie';
+    if (!repartitionCategorie[cat]) repartitionCategorie[cat] = { qte: 0, montant: 0 };
+    repartitionCategorie[cat].qte += v.qte;
+    repartitionCategorie[cat].montant += v.montant;
+  }
+
+  const repartitionMode = { stock: 0, precommande: 0 };
+  for (const c of payees) {
+    for (const item of (c.commande_items || [])) {
+      const mode = produitById.get(item.produit_id)?.mode;
+      if (repartitionMode[mode] !== undefined) repartitionMode[mode] += item.quantite || 0;
+    }
+  }
+
+  const classementAcheteurs = _classementParMembre(payees, c => Number(c.total) || 0);
+  const nbArticlesVendus = [...parProduit.values()].reduce((sum, v) => sum + v.qte, 0);
+  const evolution = _evolutionMensuelleCumulee(payees, c => Number(c.total) || 0);
 
   return {
     totalProduits: produits.length,
@@ -1636,15 +1738,22 @@ async function getStatsMatos() {
     totalPayees: payees.length,
     parStatut,
     chiffreAffaires,
+    panierMoyen,
+    nbArticlesVendus,
     classementProduits,
-    nbAcheteursDistincts: parMembre.size,
+    repartitionCategorie,
+    repartitionMode,
+    classementAcheteurs: classementAcheteurs.slice(0, 10),
+    nbAcheteursDistincts: classementAcheteurs.length,
+    evolution,
   };
 }
 
 async function getStatsSticks() {
   const [sticksRes, distribRes] = await Promise.all([
-    sb.from('sticks_catalogue').select('id, nom, prix'),
-    sb.from('sticks_distribution').select('id, statut, quantite, membre_id, stick_id'),
+    sb.from('sticks_catalogue').select('id, nom, prix, niveau_acces, section:sections(nom)'),
+    sb.from('sticks_distribution')
+      .select('id, statut, quantite, membre_id, stick_id, created_at, membre:membres(prenom, nom, pseudo_telegram)'),
   ]);
   if (sticksRes.error) throw sticksRes.error;
   if (distribRes.error) throw distribRes.error;
@@ -1657,6 +1766,7 @@ async function getStatsSticks() {
   const parStatut = distribs.reduce((acc, d) => { acc[d.statut] = (acc[d.statut] || 0) + 1; return acc; }, {});
 
   const chiffreAffaires = payees.reduce((sum, d) => sum + (d.quantite || 0) * (stickById.get(d.stick_id)?.prix || 0), 0);
+  const panierMoyen = payees.length ? chiffreAffaires / payees.length : 0;
 
   const parStick = new Map();
   for (const d of payees) parStick.set(d.stick_id, (parStick.get(d.stick_id) || 0) + (d.quantite || 0));
@@ -1664,7 +1774,18 @@ async function getStatsSticks() {
     .map(([id, qte]) => ({ nom: stickById.get(id)?.nom || 'Stick supprimé', qte }))
     .sort((a, b) => b.qte - a.qte);
 
-  const parMembre = new Set(payees.map(d => d.membre_id).filter(Boolean));
+  const repartitionSection = {};
+  const repartitionNiveauAcces = {};
+  for (const d of payees) {
+    const stick = stickById.get(d.stick_id);
+    const sec = stick?.section?.nom || 'Sans section';
+    const niv = stick?.niveau_acces || 'inconnu';
+    repartitionSection[sec] = (repartitionSection[sec] || 0) + (d.quantite || 0);
+    repartitionNiveauAcces[niv] = (repartitionNiveauAcces[niv] || 0) + (d.quantite || 0);
+  }
+
+  const classementAcheteurs = _classementParMembre(payees, d => (d.quantite || 0) * (stickById.get(d.stick_id)?.prix || 0));
+  const evolution = _evolutionMensuelleCumulee(payees, d => (d.quantite || 0) * (stickById.get(d.stick_id)?.prix || 0));
 
   return {
     totalSticks: sticks.length,
@@ -1672,8 +1793,13 @@ async function getStatsSticks() {
     totalPayees: payees.length,
     parStatut,
     chiffreAffaires,
+    panierMoyen,
     classementSticks,
-    nbAcheteursDistincts: parMembre.size,
+    repartitionSection,
+    repartitionNiveauAcces,
+    classementAcheteurs: classementAcheteurs.slice(0, 10),
+    nbAcheteursDistincts: classementAcheteurs.length,
+    evolution,
   };
 }
 
