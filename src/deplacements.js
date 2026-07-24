@@ -615,6 +615,128 @@ async function copierListeBus(deplId) {
   } catch(e) { toast('Impossible de copier la liste bus', 'error'); }
 }
 
+// ────────────────────────────────────────────────────────────
+// Comparateur de rentabilité (Cellule Déplacement + Bureau + Admin) —
+// demande Remi 24/07/2026. Pas lié à un déplacement précis : sert à
+// comparer 2 ou 3 options de bus (coût, capacité, prix payé par le
+// membre) AVANT de créer le déplacement, pour choisir la meilleure.
+// Calcul 100% local (aucun appel serveur) — les 3 blocs d'options
+// restent toujours dans le DOM, seul le 3ᵉ est masqué par défaut, pour
+// pouvoir recalculer sur chaque frappe sans jamais réafficher les champs
+// (ce qui ferait perdre le focus/curseur en pleine saisie).
+// ────────────────────────────────────────────────────────────
+
+function ouvrirRentabiliteDepl() {
+  const optionHTML = (n, visible) => `
+    <div class="card" id="rentaOption${n}Wrap" style="${visible ? '' : 'display:none;'}margin-top:${n>1?'12':'0'}px;">
+      <div class="card-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Option ${n}</span>
+        ${n === 3 ? `<button class="btn btn-sm btn-secondary" onclick="supprimerOptionRentabilite()">✕ Retirer</button>` : ''}
+      </div>
+      <div class="form-group">
+        <label>Nom (ex: Autocar XYZ 50 places)</label>
+        <input type="text" id="rentaNom${n}" value="Option ${n}" oninput="recalculerRentabilite()">
+      </div>
+      <div class="form-group">
+        <label>Coût du bus (€)</label>
+        <input type="number" id="rentaCout${n}" inputmode="decimal" placeholder="ex: 900" oninput="recalculerRentabilite()">
+      </div>
+      <div class="form-group">
+        <label>Capacité max (places)</label>
+        <input type="number" id="rentaCap${n}" inputmode="numeric" placeholder="ex: 50" oninput="recalculerRentabilite()">
+      </div>
+      <div class="form-group">
+        <label>Prix payé par le membre (€)</label>
+        <input type="number" id="rentaPrix${n}" inputmode="decimal" placeholder="ex: 25" oninput="recalculerRentabilite()">
+      </div>
+    </div>`;
+
+  document.getElementById('modalAdminSessionContent').innerHTML = `
+    <h3 class="modal-title">🧮 Comparateur de rentabilité</h3>
+    <div class="card">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Nombre de participants estimé (pour comparer)</label>
+        <input type="number" id="rentaNbEstime" value="40" inputmode="numeric" oninput="recalculerRentabilite()">
+      </div>
+    </div>
+    ${optionHTML(1, true)}
+    ${optionHTML(2, true)}
+    ${optionHTML(3, false)}
+    <div id="rentaBtnAjouterWrap" style="margin-top:12px;">
+      <button class="btn btn-secondary" onclick="ajouterOptionRentabilite()">+ Ajouter une 3ᵉ option</button>
+    </div>
+    <div id="rentaResultats" style="margin-top:12px;"></div>
+  `;
+  showModal('modalAdminSession');
+  recalculerRentabilite();
+}
+
+function ajouterOptionRentabilite() {
+  document.getElementById('rentaOption3Wrap').style.display = 'block';
+  document.getElementById('rentaBtnAjouterWrap').style.display = 'none';
+  recalculerRentabilite();
+}
+
+function supprimerOptionRentabilite() {
+  document.getElementById('rentaOption3Wrap').style.display = 'none';
+  document.getElementById('rentaBtnAjouterWrap').style.display = 'block';
+  recalculerRentabilite();
+}
+
+function recalculerRentabilite() {
+  const nbEstime = Number(document.getElementById('rentaNbEstime').value) || 0;
+  const option3Visible = document.getElementById('rentaOption3Wrap').style.display !== 'none';
+  const numeros = option3Visible ? [1, 2, 3] : [1, 2];
+
+  const options = numeros.map(n => {
+    const nom = document.getElementById(`rentaNom${n}`).value || `Option ${n}`;
+    const cout = Number(document.getElementById(`rentaCout${n}`).value) || 0;
+    const capacite = Number(document.getElementById(`rentaCap${n}`).value) || 0;
+    const prix = Number(document.getElementById(`rentaPrix${n}`).value) || 0;
+
+    const participantsEffectifs = capacite ? Math.min(nbEstime, capacite) : nbEstime;
+    const placesPerdues = capacite && nbEstime > capacite ? nbEstime - capacite : 0;
+    const seuil = (cout > 0 && prix > 0) ? Math.ceil(cout / prix) : null;
+    const beneficeEstime = (participantsEffectifs * prix) - cout;
+    const beneficeSiComplet = capacite ? (capacite * prix) - cout : null;
+    const coutParPlace = capacite ? cout / capacite : null;
+    const margeParPersonne = coutParPlace !== null ? prix - coutParPlace : null;
+    const tauxRemplissagePourEquilibre = (capacite && seuil) ? seuil / capacite : null;
+
+    return { n, nom, cout, capacite, prix, participantsEffectifs, placesPerdues, seuil, beneficeEstime, beneficeSiComplet, coutParPlace, margeParPersonne, tauxRemplissagePourEquilibre };
+  });
+
+  const complet = options.filter(o => o.cout > 0 && o.capacite > 0 && o.prix > 0);
+  const meilleure = complet.length
+    ? complet.reduce((a, b) => (b.beneficeEstime > a.beneficeEstime ? b : (b.beneficeEstime === a.beneficeEstime && (b.seuil||Infinity) < (a.seuil||Infinity) ? b : a)))
+    : null;
+
+  document.getElementById('rentaResultats').innerHTML = options.map(o => {
+    const estMeilleure = meilleure && o.n === meilleure.n && complet.length > 1;
+    const incomplete = !(o.cout > 0 && o.capacite > 0 && o.prix > 0);
+    return `
+    <div class="card" style="${estMeilleure ? 'border:1px solid var(--vert);' : ''}">
+      <div class="card-label" style="display:flex;justify-content:space-between;">
+        <span>${esc(o.nom)}</span>
+        ${estMeilleure ? '<span class="badge badge-vert">🏆 Meilleure option</span>' : ''}
+      </div>
+      ${incomplete ? `<div class="empty-state" style="padding:8px 0;font-size:12px;">Renseigne coût, capacité et prix pour voir les résultats</div>` : `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="stat-card"><div class="stat-value" style="color:${o.beneficeEstime < 0 ? 'var(--rouge)' : 'var(--vert)'};">${o.beneficeEstime >= 0 ? '+' : ''}${o.beneficeEstime.toFixed(0)}€</div><div class="stat-label">Résultat à ${o.participantsEffectifs} pers.</div></div>
+        <div class="stat-card"><div class="stat-value">${o.seuil ?? '—'}</div><div class="stat-label">Seuil de rentabilité</div></div>
+        <div class="stat-card"><div class="stat-value">${o.beneficeSiComplet !== null ? (o.beneficeSiComplet >= 0 ? '+' : '') + o.beneficeSiComplet.toFixed(0) + '€' : '—'}</div><div class="stat-label">Si bus complet (${o.capacite})</div></div>
+        <div class="stat-card"><div class="stat-value">${o.coutParPlace !== null ? o.coutParPlace.toFixed(1) + '€' : '—'}</div><div class="stat-label">Coût / place au complet</div></div>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--gris);">
+        ${o.margeParPersonne !== null ? `Marge par personne au-delà du seuil : <b style="color:var(--blanc,#fff);">${o.margeParPersonne >= 0 ? '+' : ''}${o.margeParPersonne.toFixed(1)}€</b>` : ''}
+        ${o.tauxRemplissagePourEquilibre !== null ? ` · Remplissage nécessaire pour l'équilibre : <b style="color:var(--blanc,#fff);">${fmtPct(o.tauxRemplissagePourEquilibre)}</b>` : ''}
+      </div>
+      ${o.placesPerdues > 0 ? `<div style="margin-top:6px;font-size:12px;color:var(--orange);">⚠️ ${o.placesPerdues} personne(s) au-delà de la capacité — à mettre en liste d'attente</div>` : ''}
+      `}
+    </div>`;
+  }).join('') + (complet.length > 1 ? `<div style="font-size:11px;color:var(--gris);text-align:center;margin-top:6px;">Comparaison basée sur ${nbEstime} participants estimés</div>` : '');
+}
+
 // Stats détaillées d'un déplacement — bouton "📊 Stats" sur la carte,
 // visible Admin/Bureau/Cellule Déplacement uniquement (même garde que le
 // reste de adminBar, cf. renderDeplCard). Demande Remi 23/07/2026.
