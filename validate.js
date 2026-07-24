@@ -88,6 +88,7 @@ const KNOWN_DYNAMIC = new Set([
   'modalPropositionNotifs', // modale créée dynamiquement (cf. afficherModalePropositionNotifs, app.js) — jamais dans le HTML statique
   'profilReabonnementBtn', // conteneur du bouton "Mon (ré)abonnement", injecté dynamiquement dans le template loadProfil() (profil.js) — jamais dans le HTML statique lui-même (c'est le DIV parent qui l'accueille qui y est, pas cet id)
   'zoneImpressionStatsTifo', // conteneur créé dynamiquement par exporterPdfStatsTifo() (admin.js) au premier export PDF — jamais dans le HTML statique
+  'rentaNbEstime', 'rentaOption3Wrap', 'rentaBtnAjouterWrap', 'rentaResultats', // comparateur de rentabilité (deplacements.js, ouvrirRentabiliteDepl) — modale entièrement générée en JS, jamais dans le HTML statique
 ]);
 
 // ── Validation d'un fichier ─────────────────────────────────────
