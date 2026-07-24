@@ -1680,6 +1680,96 @@ async function getStatsDeplacements() {
   };
 }
 
+// Stats détaillées d'UN SEUL déplacement (bouton "📊 Stats" sur la carte,
+// visible Admin/Bureau/Cellule Déplacement uniquement — cf. ouvrirStatsDepl
+// dans deplacements.js) — remplissage, répartition par statut membre et
+// par section, répartition des modes de paiement, équilibre financier.
+// Demande Remi 23/07/2026. Reprend la logique déjà utilisée pour
+// l'aperçu d'équilibre affiché sur la carte (renderDeplCard) pour rester
+// cohérent avec les chiffres déjà visibles ailleurs dans l'app.
+async function getStatsDeplacement(deplacementId) {
+  const [deplRes, inscrRes, sectionsRes] = await Promise.all([
+    sb.from('deplacements').select('*').eq('id', deplacementId).single(),
+    sb.from('inscriptions_deplacement')
+      .select('id, statut_paiement, membre_id, invite_nom, present_at, membre:membres!inscriptions_deplacement_membre_id_fkey(statut, section_id)')
+      .eq('deplacement_id', deplacementId),
+    sb.from('sections').select('id, nom'),
+  ]);
+  if (deplRes.error) throw deplRes.error;
+  if (inscrRes.error) throw inscrRes.error;
+  const d = deplRes.data;
+  const inscrs = inscrRes.data || [];
+  const sections = sectionsRes.data || [];
+  const sectionById = new Map(sections.map(s => [s.id, s.nom]));
+
+  const payees = inscrs.filter(i => i.statut_paiement === 'paye_ha' || i.statut_paiement === 'paye_cash');
+  const enAttente = inscrs.filter(i => i.statut_paiement === 'en_attente').length;
+  const refuses = inscrs.filter(i => i.statut_paiement === 'refuse').length;
+  const rembourses = inscrs.filter(i => i.statut_paiement === 'rembourse').length;
+  const invites = inscrs.filter(i => i.invite_nom).length;
+
+  const placesPrises = payees.length;
+  const placesRestantes = d.places_max ? Math.max(0, d.places_max - placesPrises) : null;
+  const tauxRemplissage = d.places_max ? Math.min(1, placesPrises / d.places_max) : null;
+
+  const repartitionStatut = { confirme: 0, draft: 0, sympathisant: 0, visiteur: 0 };
+  const repartitionSection = {};
+  for (const i of payees) {
+    if (!i.membre_id) continue; // invité hors app : pas de statut/section à comptabiliser
+    const st = i.membre?.statut;
+    if (st && repartitionStatut[st] !== undefined) repartitionStatut[st]++;
+    const sec = sectionById.get(i.membre?.section_id) || 'Sans section';
+    repartitionSection[sec] = (repartitionSection[sec] || 0) + 1;
+  }
+
+  const parModePaiement = {
+    paye_ha: inscrs.filter(i => i.statut_paiement === 'paye_ha').length,
+    paye_cash: inscrs.filter(i => i.statut_paiement === 'paye_cash').length,
+  };
+
+  const montantCollecte = placesPrises * (d.prix_total || 0);
+
+  // Équilibre financier — même calcul que l'aperçu carte (renderDeplCard) :
+  // seul prix_bus sert à couvrir cout_bus, jamais prix_place.
+  let equilibre = null;
+  if (d.cout_bus && d.prix_bus) {
+    const seuilPersonnes = d.cout_bus / d.prix_bus;
+    const manque = Math.max(0, Math.ceil(seuilPersonnes) - placesPrises);
+    const beneficeActuel = (placesPrises * d.prix_bus) - d.cout_bus;
+    const beneficeSiComplet = d.places_max ? (d.places_max * d.prix_bus) - d.cout_bus : null;
+    equilibre = {
+      seuilPersonnes: Math.ceil(seuilPersonnes),
+      seuilPrixParPlace: d.places_max ? d.cout_bus / d.places_max : null,
+      manque,
+      beneficeActuel,
+      beneficeSiComplet,
+    };
+  }
+
+  const presents = payees.filter(i => i.present_at).length;
+  const matchPasse = !!d.date_match && d.date_match < new Date().toISOString().split('T')[0];
+
+  return {
+    adversaire: d.adversaire,
+    placesMax: d.places_max,
+    placesPrises,
+    placesRestantes,
+    tauxRemplissage,
+    enAttente, refuses, rembourses, invites,
+    totalInscriptions: inscrs.length,
+    repartitionStatut, repartitionSection, parModePaiement,
+    montantCollecte,
+    prixTotal: d.prix_total,
+    prixBus: d.prix_bus,
+    coutBus: d.cout_bus,
+    distanceKm: d.distance_km,
+    equilibre,
+    matchPasse,
+    presents,
+    absents: matchPasse ? Math.max(0, payees.length - presents) : null,
+  };
+}
+
 async function getStatsMatos() {
   const [produitsRes, commandesRes] = await Promise.all([
     sb.from('produits').select('id, nom, prix, categorie, mode, section:sections(nom)'),
@@ -2592,7 +2682,7 @@ window.UL = {
   getMesCodesReabonnement, getStatutReabonnement, setReabonnementOuvert, rechercherCodeReabonnementAdmin, listerCodesReabonnementAdmin,
   genererLienConnexionAdmin,
   getStats, getMesStats, getStatsTifo, getSaisonsTifoDisponibles,
-  getStatsDeplacements, getStatsMatos, getStatsSticks,
+  getStatsDeplacements, getStatsDeplacement, getStatsMatos, getStatsSticks,
   getMaPresenceMatch, declarerPresenceMatch, annulerPresenceMatch,
   getProduits, getProduitById, createProduit, updateProduit, archiverProduit, getProduitsHistoriqueMatos,
   passerCommande, demanderCommandeHelloAsso, confirmerPaiementCashCommande, receptionnerCommande, marquerCommandePreparee, distribuerProduitAdmin,
