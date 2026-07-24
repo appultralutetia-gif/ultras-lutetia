@@ -158,6 +158,17 @@ async function inscription(data) {
     if (membreError.code !== '23503') break;
     await new Promise(r => setTimeout(r, 500 * (tentative + 1)));
   }
+  // Pseudo déjà pris — contrainte unique insensible à la casse posée le
+  // 24/07/2026 (index membres_pseudo_telegram_lower_key) suite au bug
+  // "Erreur serveur" au login causé par 2 pseudos identiques à la casse
+  // près (JM / Jm). Message clair ici plutôt que l'erreur Postgres brute
+  // ("duplicate key value violates unique constraint…"). Le compte Auth
+  // créé juste avant reste orphelin (pas de ligne membres) — même
+  // compromis que documenté plus haut dans ce fichier pour signUp() : un
+  // membre du bureau peut le nettoyer manuellement si besoin.
+  if (dernierError?.code === '23505' && dernierError.message?.includes('pseudo_telegram')) {
+    throw new Error('Ce pseudo Telegram est déjà utilisé par quelqu\u2019un d\u2019autre — choisis-en un autre.');
+  }
   throw new Error(dernierError?.message || 'Impossible de créer le compte');
 }
 
@@ -236,6 +247,13 @@ async function updateMembre(id, updates) {
     .eq('id', id)
     .select()
     .single();
+  // Même contrainte unique insensible à la casse que pour l'inscription
+  // (index membres_pseudo_telegram_lower_key, 24/07/2026) — un admin qui
+  // renomme un membre vers un pseudo déjà pris (à la casse près) obtient
+  // ce message plutôt que l'erreur Postgres brute.
+  if (error?.code === '23505' && error.message?.includes('pseudo_telegram')) {
+    throw new Error('Ce pseudo Telegram est déjà utilisé par un autre membre.');
+  }
   if (error) throw error;
   return data;
 }
