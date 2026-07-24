@@ -783,6 +783,7 @@ function applyRights(membre) {
   // Boutons contextuels pages existantes
   if (hasCelluleTifo(membre)) document.getElementById('btnCreerTifo').style.display = 'block';
   if (hasCelluleDepl(membre)) document.getElementById('btnCreerDepl').style.display = 'block';
+  if (hasCelluleDepl(membre)) document.getElementById('btnRentabiliteDepl').style.display = 'block';
   if (isBureau(membre)) document.getElementById('btnPublierAnnonce').style.display = 'block';
   if (peutValiderInscriptions(membre)) document.getElementById('demandesSection').style.display = 'block';
 
