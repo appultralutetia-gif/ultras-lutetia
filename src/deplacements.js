@@ -221,6 +221,7 @@ function renderDeplCard(d) {
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();voirInscritsDepl('${d.id}')">👥 Inscrits</button>
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();copierListeBus('${d.id}')">📋 Liste bus</button>
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ouvrirModifierDepl('${d.id}')">✏️ Modifier</button>
+      <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ouvrirStatsDepl('${d.id}')">📊 Stats</button>
     </div>${equilibreApercu}` : '';
 
   return `<div class="depl-card" onclick="openDepl('${d.id}')">
@@ -613,6 +614,74 @@ async function copierListeBus(deplId) {
     toast('Liste bus copiée !', 'success');
   } catch(e) { toast('Impossible de copier la liste bus', 'error'); }
 }
+
+// Stats détaillées d'un déplacement — bouton "📊 Stats" sur la carte,
+// visible Admin/Bureau/Cellule Déplacement uniquement (même garde que le
+// reste de adminBar, cf. renderDeplCard). Demande Remi 23/07/2026.
+// Réutilise la modal générique modalAdminSession (déjà utilisée pour la
+// liste des inscrits Tifo/Déplacement) et les helpers de rendu
+// genererBarresHTML/fmtPct/fmtEuros écrits pour la page Stats globale
+// (admin.js) — même style visuel, pas de code dupliqué.
+const LABELS_STATUT_MEMBRE = { confirme: 'Confirmé', draft: 'Draft', sympathisant: 'Sympathisant', visiteur: 'Visiteur' };
+
+async function ouvrirStatsDepl(deplId) {
+  try {
+    const s = await UL.getStatsDeplacement(deplId);
+    const repartitionStatut = Object.entries(s.repartitionStatut)
+      .map(([k, v]) => [LABELS_STATUT_MEMBRE[k] || k, v]);
+    const repartitionSection = Object.entries(s.repartitionSection).sort((a, b) => b[1] - a[1]);
+    const modePaiement = [['HelloAsso', s.parModePaiement.paye_ha], ['Cash', s.parModePaiement.paye_cash]];
+
+    document.getElementById('modalAdminSessionContent').innerHTML = `
+      <h3 class="modal-title">📊 Stats — ${esc(s.adversaire)}</h3>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-lbl">Places prises</div><div class="kpi-val">${s.placesPrises}${s.placesMax ? '/' + s.placesMax : ''}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Restantes</div><div class="kpi-val" style="color:var(--open)">${s.placesRestantes ?? '—'}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Remplissage</div><div class="kpi-val">${fmtPct(s.tauxRemplissage)}</div></div>
+      </div>
+      <div class="card">
+        <div class="card-label">📋 Statuts des inscriptions</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;"><span>⏳ En attente de paiement</span><b>${s.enAttente}</b></div>
+          ${s.refuses ? `<div style="display:flex;justify-content:space-between;color:var(--rouge);"><span>❌ Refusés</span><b>${s.refuses}</b></div>` : ''}
+          ${s.rembourses ? `<div style="display:flex;justify-content:space-between;color:var(--orange);"><span>↩️ Remboursés</span><b>${s.rembourses}</b></div>` : ''}
+          ${s.invites ? `<div style="display:flex;justify-content:space-between;"><span>👤 Invités hors app</span><b>${s.invites}</b></div>` : ''}
+        </div>
+        <div style="margin-top:10px;">${genererBarresHTML(modePaiement, { couleur: 'var(--vert, #10B981)' })}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">👥 Répartition par statut (inscrits payés)</div>
+        ${genererBarresHTML(repartitionStatut)}
+      </div>
+      <div class="card">
+        <div class="card-label">🛡️ Répartition par section (inscrits payés)</div>
+        ${genererBarresHTML(repartitionSection)}
+      </div>
+      <div class="card">
+        <div class="card-label">💶 Finances</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-card"><div class="stat-value" style="color:var(--open);">${fmtEuros(s.montantCollecte)}</div><div class="stat-label">Collecté</div></div>
+          <div class="stat-card"><div class="stat-value">${fmtEuros(s.prixTotal)}</div><div class="stat-label">Prix / place</div></div>
+        </div>
+        ${s.equilibre ? `
+        <div style="margin-top:10px;font-size:13px;display:flex;flex-direction:column;gap:4px;">
+          <div style="color:var(--gris);">🎯 Seuil d'équilibre : <b style="color:var(--blanc,#fff);">${s.equilibre.seuilPersonnes} personnes</b>${s.equilibre.seuilPrixParPlace ? ` (${s.equilibre.seuilPrixParPlace.toFixed(1)}€/place au complet)` : ''}</div>
+          <div style="color:${s.equilibre.manque > 0 ? 'var(--orange)' : 'var(--vert)'};">${s.equilibre.manque > 0 ? `⚠️ Encore ${s.equilibre.manque} personne${s.equilibre.manque>1?'s':''} pour l'équilibre` : '✅ Équilibre atteint'}</div>
+          <div style="color:${s.equilibre.beneficeActuel < 0 ? 'var(--rouge)' : 'var(--vert)'};">${s.equilibre.beneficeActuel < 0 ? `📉 Perte actuelle : ${Math.abs(s.equilibre.beneficeActuel).toFixed(0)}€` : `📈 Bénéfice actuel : ${s.equilibre.beneficeActuel.toFixed(0)}€`}</div>
+          ${s.equilibre.beneficeSiComplet !== null ? `<div style="color:var(--gris);">🚌 Si le bus est complet : ${s.equilibre.beneficeSiComplet >= 0 ? '📈' : '📉'} ${s.equilibre.beneficeSiComplet.toFixed(0)}€</div>` : ''}
+        </div>` : `<div style="margin-top:10px;font-size:12px;color:var(--gris);">Coût du bus ou prix/place non renseigné — équilibre non calculable</div>`}
+        ${s.distanceKm ? `<div style="margin-top:8px;font-size:12px;color:var(--gris);">🛣️ ${s.distanceKm}km A/R</div>` : ''}
+      </div>
+      ${s.matchPasse ? `
+      <div class="card">
+        <div class="card-label">✅ Présence</div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--open);">${s.presents}/${s.placesPrises}</div><div class="stat-label">Présents (${s.absents} absent${s.absents>1?'s':''} non prévenu${s.absents>1?'s':''})</div></div>
+      </div>` : ''}
+    `;
+    showModal('modalAdminSession');
+  } catch(e) { toast('Impossible de charger les stats de ce déplacement', 'error'); }
+}
+
 // Correspondance stade → ville, pour pré-remplir le champ Ville à partir
 // du stade du match (la table `matchs` n'a pas de colonne ville dédiée).
 // Couvre les stades de Ligue 1 2026-2027 (18 clubs, dont les promus ESTAC
