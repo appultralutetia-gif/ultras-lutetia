@@ -525,6 +525,7 @@ let _filtreInscritsDepl = 'tous';
 const LABELS_STATUT_PAIEMENT = { en_attente: 'En attente', paye_cash: 'Payé (Cash)', paye_ha: 'Payé (HelloAsso)', refuse: 'Refusé', rembourse: 'Remboursé' };
 let _filtreStatutPaiementDepl = 'tous';
 let _filtreSectionDepl = 'tous';
+let _filtreStatutMembreDepl = 'tous';
 
 async function voirInscritsDepl(deplId) {
   try {
@@ -534,6 +535,7 @@ async function voirInscritsDepl(deplId) {
     _filtreInscritsDepl = 'tous';
     _filtreStatutPaiementDepl = 'tous';
     _filtreSectionDepl = 'tous';
+    _filtreStatutMembreDepl = 'tous';
     renderListeInscritsDepl();
     showModal('modalAdminSession');
   } catch(e) { toast('Impossible de charger les inscrits du déplacement', 'error'); }
@@ -551,6 +553,11 @@ function filtrerStatutPaiementInscritsDepl(val) {
 
 function filtrerSectionInscritsDepl(val) {
   _filtreSectionDepl = val;
+  renderListeInscritsDepl();
+}
+
+function filtrerStatutMembreInscritsDepl(val) {
+  _filtreStatutMembreDepl = val;
   renderListeInscritsDepl();
 }
 
@@ -574,6 +581,7 @@ function _inscritsDeplFiltres() {
     if (_filtreSectionDepl === '__sans_section__') liste = liste.filter(i => i.membre_id && !i.membre?.section?.nom);
     else liste = liste.filter(i => i.membre?.section?.nom === _filtreSectionDepl);
   }
+  if (_filtreStatutMembreDepl !== 'tous') liste = liste.filter(i => i.membre_id && i.membre?.statut === _filtreStatutMembreDepl);
   return liste;
 }
 
@@ -605,6 +613,10 @@ function renderListeInscritsDepl() {
         <option value="tous" ${_filtreSectionDepl==='tous'?'selected':''}>Section : toutes</option>
         ${sectionsPresentes.map(s => `<option value="${esc(s)}" ${_filtreSectionDepl===s?'selected':''}>${esc(s)}</option>`).join('')}
         ${aDesInvitesOuSansSection ? `<option value="__sans_section__" ${_filtreSectionDepl==='__sans_section__'?'selected':''}>Sans section</option>` : ''}
+      </select>
+      <select style="flex:1;min-width:140px;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;" onchange="filtrerStatutMembreInscritsDepl(this.value)">
+        <option value="tous" ${_filtreStatutMembreDepl==='tous'?'selected':''}>Membre : tous</option>
+        ${Object.entries(LABELS_STATUT_MEMBRE).map(([k,l]) => `<option value="${k}" ${_filtreStatutMembreDepl===k?'selected':''}>${l}</option>`).join('')}
       </select>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:12px;">
