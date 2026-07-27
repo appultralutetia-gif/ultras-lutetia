@@ -191,11 +191,22 @@ function renderDeplCard(d) {
       boutonAction = `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();showConfirmInscriptionDepl('${d.id}')">M'inscrire</button>`;
     }
   } else if (estRefuse) {
-    boutonAction = `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">❌ Réessayer le paiement</button>`;
+    // Conditionné à la capacité restante (demande Remi 27/07/2026, même
+    // logique que "Payer maintenant" ci-dessous) : un paiement refusé ne
+    // doit pas pouvoir être retenté si le bus est complet entre-temps.
+    boutonAction = busComplet
+      ? `<span class="badge badge-rouge">❌ Paiement refusé — bus complet</span>`
+      : `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">❌ Réessayer le paiement</button>`;
   } else if (!estPaye) {
     // Corrigé (demande Remi 23/07/2026) : tant que payé, pas inscrit —
-    // même règle que le détail ci-dessus.
-    boutonAction = `<span class="badge badge-rouge">❌ Non inscrit (paiement en cours)</span>`;
+    // même règle que le détail ci-dessus. Bouton ajouté le 27/07/2026
+    // (demande Remi), puis conditionné à la capacité restante le même
+    // jour : si le bus est redevenu complet entre-temps (une autre place
+    // a été prise), pas question de laisser payer une place qui n'existe
+    // plus — même logique que le blocage à l'inscription (doInscritDepl).
+    boutonAction = busComplet
+      ? `<span class="badge badge-rouge">❌ Non inscrit — bus complet</span>`
+      : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">💳 Payer maintenant</button>`;
   } else {
     // Badge présence affiché uniquement une fois le paiement confirmé — un
     // membre non payé ne peut de toute façon pas avoir été scanné présent
@@ -303,10 +314,11 @@ async function openDepl(deplId) {
         return `<div style="font-size:14px;margin-bottom:16px;font-weight:600;">👥 ${nbPayes} inscrit${nbPayes>1?'s':''}${d.places_max?' / '+d.places_max+' places':''}</div>`;
       })()}`;
 
+    const busCompletDetail = !!d.places_max && (d._inscritsPayes||0) >= d.places_max;
     if (estListeAttente) {
       html += `<div class="info-box">🕐 Tu es sur liste d'attente pour ce déplacement — on te recontacte si une place se libère ou si un 2ᵉ bus est ajouté.</div>`;
     } else if (!estInscrit) {
-      const busComplet = !!d.places_max && (d._inscritsPayes||0) >= d.places_max;
+      const busComplet = busCompletDetail;
       if (inscriptionsDeplFermees(d)) {
         html += `<div class="info-box">⏳ Les inscriptions sont terminées pour ce déplacement.</div>`;
       } else if (inscriptionPasEncoreOuvertePourMoi(d)) {
@@ -319,17 +331,29 @@ async function openDepl(deplId) {
         html += `<button class="btn btn-primary" onclick="showConfirmInscriptionDepl('${d.id}')">M'inscrire</button>`;
       }
     } else if (estRefuse) {
-      html += `<div class="info-box error">❌ Paiement refusé</div>
-        <button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">Réessayer le paiement</button>`;
+      // Conditionné à la capacité restante (demande Remi 27/07/2026, même
+      // logique que le cas "paiement en cours" ci-dessous).
+      if (busCompletDetail) {
+        html += `<div class="info-box error">❌ Paiement refusé — bus complet, nouvelle tentative impossible pour le moment</div>`;
+      } else {
+        html += `<div class="info-box error">❌ Paiement refusé</div>
+          <button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">Réessayer le paiement</button>`;
+      }
     } else if (!estPaye) {
       // Corrigé (demande Remi 23/07/2026) : tant que le paiement n'est
       // pas confirmé, la personne n'est PAS inscrite — l'ancien libellé
       // "Inscrit — paiement en cours" était trompeur (déjà exclu du
       // comptage de places, cf. _inscritsPayes, mais le texte disait le
-      // contraire).
-      html += `<div class="info-box error">❌ Non inscrit — paiement en cours</div>
-        <p style="text-align:center;font-size:12px;color:var(--gris);margin-top:8px;">Si le paiement n'a pas démarré ou a été abandonné, tu peux réessayer.</p>
-        <button class="btn btn-secondary" onclick="doInscritDepl('${d.id}',this)">Relancer le paiement</button>`;
+      // contraire). Bouton conditionné à la capacité restante (demande
+      // Remi 27/07/2026) : si le bus est redevenu complet entre-temps,
+      // pas de bouton pour payer une place qui n'existe plus.
+      if (busCompletDetail) {
+        html += `<div class="info-box error">❌ Non inscrit — bus complet, paiement impossible pour le moment</div>`;
+      } else {
+        html += `<div class="info-box error">❌ Non inscrit — paiement en cours</div>
+          <p style="text-align:center;font-size:12px;color:var(--gris);margin-top:8px;">Si le paiement n'a pas démarré ou a été abandonné, tu peux réessayer.</p>
+          <button class="btn btn-secondary" onclick="doInscritDepl('${d.id}',this)">Relancer le paiement</button>`;
+      }
     } else {
       html += `<div class="info-box success">✅ Paiement confirmé — ton billet est prêt</div>
         <div class="qr-container" id="qrDepl"></div>
@@ -387,6 +411,14 @@ async function doInscritDepl(id, btn) {
     }
 
     if (monInscrit) {
+      // Sécurité complémentaire (demande Remi 27/07/2026) : le bouton est
+      // déjà masqué côté carte/détail quand le bus est complet, mais on
+      // revérifie ici au cas où l'affichage était périmé (une autre
+      // place prise entre l'ouverture de la page et le clic).
+      if (d.places_max && (d._inscritsPayes || 0) >= d.places_max) {
+        toast('Bus complet — impossible de relancer le paiement pour le moment.', 'error');
+        return;
+      }
       // Relance de paiement pour une inscription déjà existante — appel
       // strictement inchangé par rapport à avant (cf. relancerPaiementDeplacement),
       // aucune dépendance à l'évolution de l'Edge Function pour ce cas.
@@ -712,6 +744,8 @@ function renderListeInscritsDepl() {
         ${(i.statut_paiement==='en_attente'||i.statut_paiement==='liste_attente') ? `
           <button class="btn btn-sm btn-success" onclick="validerCash('${d.id}','${i.id}')">Cash</button>
           <button class="btn btn-sm btn-danger" onclick="annulerInscritAdmin('${d.id}','${i.id}')">Annuler</button>` : ''}
+        ${i.statut_paiement==='liste_attente' ? `
+          <button class="btn btn-sm btn-primary" onclick="debloquerPaiement('${d.id}','${i.id}')">🔓 Débloquer le paiement</button>` : ''}
       </div>`;
     }).join('')}
   `;
@@ -773,6 +807,19 @@ function exporterInscritsDeplCsv() {
 async function validerCash(deplId, inscriptionId) {
   try { await UL.validerPaiementCash(inscriptionId); toast('Paiement cash validé ✅', 'success'); voirInscritsDepl(deplId); }
   catch(e) { toast('Impossible de valider le paiement cash', 'error'); }
+}
+
+// Débloque le paiement pour une personne en liste d'attente (demande
+// Remi 27/07/2026) — la fait passer en "en_attente" et la prévient par
+// notification push. Elle voit alors le bouton "💳 Payer maintenant" sur
+// sa fiche déplacement dès sa prochaine ouverture de l'app.
+async function debloquerPaiement(deplId, inscriptionId) {
+  if (!confirm('Débloquer le paiement pour cette personne ? Elle recevra une notification et pourra payer sa place.')) return;
+  try {
+    await UL.debloquerPaiementListeAttente(inscriptionId);
+    toast('Paiement débloqué — la personne a été prévenue ✅', 'success');
+    voirInscritsDepl(deplId);
+  } catch(e) { toast(e.message || 'Impossible de débloquer le paiement', 'error'); }
 }
 
 // Annulation admin d'une inscription en attente de paiement — uniquement
