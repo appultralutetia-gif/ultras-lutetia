@@ -66,7 +66,10 @@ function calculerStatutPaiementDepl(monInscrit) {
   const estInscrit = !!monInscrit;
   const estPaye = !!monInscrit && (monInscrit.statut_paiement === 'paye_cash' || monInscrit.statut_paiement === 'paye_ha');
   const estRefuse = !!monInscrit && monInscrit.statut_paiement === 'refuse';
-  return { estInscrit, estPaye, estRefuse };
+  // Bus déjà complet au moment de l'inscription (demande Remi 27/07/2026)
+  // — cf. rejoindreListeAttenteDeplacement (supabase-client.js).
+  const estListeAttente = !!monInscrit && monInscrit.statut_paiement === 'liste_attente';
+  return { estInscrit, estPaye, estRefuse, estListeAttente };
 }
 
 // Le champ date_limite_inscription existait déjà en base et était affiché
@@ -161,20 +164,29 @@ function renderDeplCard(d) {
   // jamais finalisé (checkout abandonné) réservait visuellement une
   // place alors qu'elle n'était pas vraiment prise.
   const pct = d.places_max ? Math.min(100, Math.round(((d._inscritsPayes||0)/d.places_max)*100)) : 0;
-  const { estInscrit, estPaye, estRefuse } = calculerStatutPaiementDepl(d.monInscrit);
+  const { estInscrit, estPaye, estRefuse, estListeAttente } = calculerStatutPaiementDepl(d.monInscrit);
   const estPresent = !!d.monInscrit?.present_at;
+  // Complet = capacité atteinte par les payés (demande Remi 27/07/2026,
+  // suite au surbook ESTAC Troyes) — sert à basculer automatiquement une
+  // nouvelle inscription vers la liste d'attente plutôt que le paiement
+  // (cf. doInscritDepl), et à adapter le libellé du bouton en conséquence.
+  const busComplet = !!d.places_max && (d._inscritsPayes||0) >= d.places_max;
 
   // Bouton d'action directement visible sur la carte, sans devoir l'ouvrir —
   // reflète le même statut que la modal de détail (cf. openDepl). Le
   // stopPropagation empêche le clic sur le bouton de déclencher en plus
   // l'ouverture de la modal (la carte entière reste cliquable pour le détail).
   let boutonAction;
-  if (!estInscrit) {
+  if (estListeAttente) {
+    boutonAction = `<span class="badge badge-orange">🕐 Sur liste d'attente</span>`;
+  } else if (!estInscrit) {
     if (inscriptionsDeplFermees(d)) {
       boutonAction = `<span class="badge badge-gris">⏳ Inscriptions terminées</span>`;
     } else if (inscriptionPasEncoreOuvertePourMoi(d)) {
       const dateOuv = d[champOuverturePourStatut(m?.statut)];
       boutonAction = `<span class="badge badge-gris">🔒 Ouverture le ${new Date(dateOuv).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>`;
+    } else if (busComplet) {
+      boutonAction = `<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();showConfirmInscriptionDepl('${d.id}')">🕐 Rejoindre la liste d'attente</button>`;
     } else {
       boutonAction = `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();showConfirmInscriptionDepl('${d.id}')">M'inscrire</button>`;
     }
@@ -256,7 +268,7 @@ async function openDepl(deplId) {
   const m = UL.getCurrentMembre();
   try {
     const { deplacement: d, inscrits, monInscrit, nbInscrits } = await UL.getDeplacement(deplId);
-    const { estInscrit, estPaye, estRefuse } = calculerStatutPaiementDepl(monInscrit);
+    const { estInscrit, estPaye, estRefuse, estListeAttente } = calculerStatutPaiementDepl(monInscrit);
     const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}) : '';
     let html = `
       <h3 class="modal-title">${esc(d.adversaire||d.match?.equipe_domicile||'?')} — Paris FC</h3>
@@ -291,12 +303,18 @@ async function openDepl(deplId) {
         return `<div style="font-size:14px;margin-bottom:16px;font-weight:600;">👥 ${nbPayes} inscrit${nbPayes>1?'s':''}${d.places_max?' / '+d.places_max+' places':''}</div>`;
       })()}`;
 
-    if (!estInscrit) {
+    if (estListeAttente) {
+      html += `<div class="info-box">🕐 Tu es sur liste d'attente pour ce déplacement — on te recontacte si une place se libère ou si un 2ᵉ bus est ajouté.</div>`;
+    } else if (!estInscrit) {
+      const busComplet = !!d.places_max && (d._inscritsPayes||0) >= d.places_max;
       if (inscriptionsDeplFermees(d)) {
         html += `<div class="info-box">⏳ Les inscriptions sont terminées pour ce déplacement.</div>`;
       } else if (inscriptionPasEncoreOuvertePourMoi(d)) {
         const dateOuv = d[champOuverturePourStatut(m?.statut)];
         html += `<div class="info-box">🔒 Ouverture de tes inscriptions le ${new Date(dateOuv).toLocaleDateString('fr-FR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})}</div>`;
+      } else if (busComplet) {
+        html += `<div class="info-box">🕐 Bus complet — inscris-toi en liste d'attente, on te recontacte si une place se libère ou si un 2ᵉ bus est ajouté.</div>
+          <button class="btn btn-secondary" onclick="showConfirmInscriptionDepl('${d.id}')">Rejoindre la liste d'attente</button>`;
       } else {
         html += `<button class="btn btn-primary" onclick="showConfirmInscriptionDepl('${d.id}')">M'inscrire</button>`;
       }
@@ -323,10 +341,12 @@ async function openDepl(deplId) {
     if (hasCelluleDepl(m)) {
       const payes = inscrits.filter(i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha');
       const refuses = inscrits.filter(i => i.statut_paiement === 'refuse');
+      const listeAttente = inscrits.filter(i => i.statut_paiement === 'liste_attente');
+      const enAttente = inscrits.length - payes.length - refuses.length - listeAttente.length;
       html += `
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
           <div class="card-label">Gestion déplacement</div>
-          <div style="font-size:13px;color:var(--gris);margin-bottom:10px;">✅ ${payes.length} payés · ⏳ ${inscrits.length-payes.length-refuses.length} en attente${refuses.length ? ' · ❌ '+refuses.length+' refusés' : ''}</div>
+          <div style="font-size:13px;color:var(--gris);margin-bottom:10px;">✅ ${payes.length} payés · ⏳ ${enAttente} en attente${refuses.length ? ' · ❌ '+refuses.length+' refusés' : ''}${listeAttente.length ? ' · 🕐 '+listeAttente.length+' en liste d\'attente' : ''}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-sm btn-secondary" onclick="voirInscritsDepl('${d.id}')">👥 Voir inscrits</button>
             <button class="btn btn-sm btn-secondary" onclick="copierListeBus('${d.id}')">📋 Liste bus</button>
@@ -361,6 +381,11 @@ async function doInscritDepl(id, btn) {
   try {
     const { deplacement: d, monInscrit } = await UL.getDeplacement(id);
 
+    if (monInscrit && monInscrit.statut_paiement === 'liste_attente') {
+      toast('Tu es déjà sur liste d\'attente pour ce déplacement.', 'info');
+      return;
+    }
+
     if (monInscrit) {
       // Relance de paiement pour une inscription déjà existante — appel
       // strictement inchangé par rapport à avant (cf. relancerPaiementDeplacement),
@@ -378,6 +403,29 @@ async function doInscritDepl(id, btn) {
         return;
       }
       afficherAvertissementHelloAsso(data.redirectUrl, 'deplacement', data.inscriptionId);
+      return;
+    }
+
+    // Bus déjà complet (places_max atteint par les payés) : on ne doit
+    // plus jamais pouvoir payer une place qui n'existe pas — demande
+    // Remi 27/07/2026, suite au surbook ESTAC Troyes (places_max=83, 84
+    // payés). Bascule automatiquement vers la liste d'attente, gratuite,
+    // au lieu d'ouvrir le paiement HelloAsso. ⚠️ Vérification côté app
+    // uniquement (cf. rejoindreListeAttenteDeplacement) — pas de
+    // garde-fou dans l'Edge Function helloasso-create-checkout (hors
+    // dépôt front), donc pas totalement infaillible en cas d'inscriptions
+    // strictement simultanées à la toute dernière place.
+    if (d.places_max && (d._inscritsPayes || 0) >= d.places_max) {
+      if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+      try {
+        await UL.rejoindreListeAttenteDeplacement(id);
+        toast('Bus complet — tu es inscrit sur liste d\'attente 🕐', 'success');
+        closeModal('modalDepl');
+        loadDeplacements();
+      } catch(e2) {
+        toast(e2.message || 'Impossible de rejoindre la liste d\'attente', 'error');
+      }
+      if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
       return;
     }
 
@@ -400,6 +448,7 @@ async function doInscritDepl(id, btn) {
     _supplementVisiteurCourant = d.supplement_visiteur || 0;
 
     majRecapInscritDepl();
+    _placesRestantesDeplCourant = d.places_max ? Math.max(0, d.places_max - (d._inscritsPayes||0)) : null;
     showModal('modalInscritDepl');
   } catch(e) {
     toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error');
@@ -412,6 +461,7 @@ let _amisDeplSelectionnes = new Set();
 let _quotaDeplCourant = null;
 let _prixDeplCourant = 0;
 let _supplementVisiteurCourant = 0;
+let _placesRestantesDeplCourant = null;
 
 async function toggleAmisDepl() {
   const actif = document.getElementById('idAvecAmis').checked;
@@ -490,6 +540,16 @@ async function doInscritDeplMulti(btn) {
   if (_quotaDeplCourant && participants.length > _quotaDeplCourant.restant) {
     return toast(`Quota dépassé — il te reste ${_quotaDeplCourant.restant} place(s)`, 'error');
   }
+  // Sécurité complémentaire (demande Remi 27/07/2026) : le nombre de
+  // places restantes a pu changer entre l'ouverture du modal et la
+  // soumission (soi + amis dépasse ce qu'il restait) — mieux vaut
+  // bloquer ici plutôt que de laisser payer plus de places qu'il n'en
+  // reste. N'empêche pas les inscriptions déjà comptées ailleurs (webhook
+  // HelloAsso, hors dépôt front) de créer un dépassement dans des cas
+  // très simultanés — ce n'est qu'un filet de sécurité côté app.
+  if (_placesRestantesDeplCourant !== null && participants.length > _placesRestantesDeplCourant) {
+    return toast(`Il ne reste que ${_placesRestantesDeplCourant} place(s) sur ce déplacement`, 'error');
+  }
 
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
@@ -522,7 +582,7 @@ let _filtreInscritsDepl = 'tous';
 // présence (existant), statut de paiement, section. Plus export Telegram
 // (texte à copier) et export CSV, tous deux appliqués sur la liste
 // FILTRÉE affichée à l'écran, pas sur la liste complète.
-const LABELS_STATUT_PAIEMENT = { en_attente: 'En attente', paye_cash: 'Payé (Cash)', paye_ha: 'Payé (HelloAsso)', refuse: 'Refusé', rembourse: 'Remboursé' };
+const LABELS_STATUT_PAIEMENT = { en_attente: 'En attente', paye_cash: 'Payé (Cash)', paye_ha: 'Payé (HelloAsso)', refuse: 'Refusé', rembourse: 'Remboursé', liste_attente: "Liste d'attente" };
 let _filtreStatutPaiementDepl = 'tous';
 let _filtreSectionDepl = 'tous';
 let _filtreStatutMembreDepl = 'tous';
@@ -644,12 +704,12 @@ function renderListeInscritsDepl() {
           ${ligneParticipant}
           ${ligneNaP}
         </div>
-        <span class="badge ${i.statut_paiement==='en_attente'?'badge-orange':i.statut_paiement.includes('paye')?'badge-vert':'badge-gris'}">
-          ${i.statut_paiement==='en_attente'?'⏳':i.statut_paiement==='paye_cash'?'Cash ✅':'HA ✅'}
+        <span class="badge ${i.statut_paiement==='en_attente'?'badge-orange':i.statut_paiement==='liste_attente'?'badge-orange':i.statut_paiement.includes('paye')?'badge-vert':'badge-gris'}">
+          ${i.statut_paiement==='en_attente'?'⏳':i.statut_paiement==='liste_attente'?"🕐 Liste d'attente":i.statut_paiement==='paye_cash'?'Cash ✅':i.statut_paiement==='paye_ha'?'HA ✅':LABELS_STATUT_PAIEMENT[i.statut_paiement]||i.statut_paiement}
         </span>
         ${(i.statut_paiement==='paye_cash'||i.statut_paiement==='paye_ha') ? `
           <span class="badge ${i.present_at?'badge-vert':'badge-orange'}">${i.present_at?'✅ Présent':'⏳ Absent'}</span>` : ''}
-        ${i.statut_paiement==='en_attente' ? `
+        ${(i.statut_paiement==='en_attente'||i.statut_paiement==='liste_attente') ? `
           <button class="btn btn-sm btn-success" onclick="validerCash('${d.id}','${i.id}')">Cash</button>
           <button class="btn btn-sm btn-danger" onclick="annulerInscritAdmin('${d.id}','${i.id}')">Annuler</button>` : ''}
       </div>`;
