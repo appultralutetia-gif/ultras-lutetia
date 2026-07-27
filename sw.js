@@ -844,7 +844,32 @@
 //   cf. v130, mais le texte disait le contraire). Devient "❌ Non
 //   inscrit (paiement en cours)" en rouge, carte et détail. Fichier
 //   modifié : deplacements.js.
-const CACHE_NAME = 'ul-v132';
+// v133 (27/07/2026) : CACHE_NAME bumpé (v132 → v133) — resté à v132
+//   pendant plusieurs déploiements par oubli, plusieurs évolutions
+//   Déplacements servies en cache périmé côté navigateurs. Regroupe tout
+//   ce qui n'avait encore jamais déclenché de vraie mise à jour :
+//   - Pages Stats (Tifo/Déplacement/Matos/Stick) très enrichies :
+//     courbes d'évolution, répartitions, classements, décrocheurs,
+//     cadence — admin.js, supabase-client.js.
+//   - Nouvelle modale "📊 Stats" par déplacement (remplissage, répartition
+//     statut/section, équilibre financier) — deplacements.js,
+//     supabase-client.js.
+//   - Filtres combinables (statut paiement, section, statut membre) +
+//     exports Telegram/CSV sur la liste des inscrits d'un déplacement —
+//     deplacements.js, supabase-client.js.
+//   - Nouveau "🧮 Comparateur de rentabilité" (2-3 options de bus) pour la
+//     Cellule Déplacement — index.html, app.js, deplacements.js.
+//   - Surbook ESTAC Troyes : nouveau statut "liste_attente" (gratuit, sans
+//     paiement pris) quand places_max est atteint, bouton "Rejoindre la
+//     liste d'attente" à la place de "M'inscrire", bouton admin
+//     "🔓 Débloquer le paiement" (notification push + passage en
+//     en_attente), bouton "💳 Payer maintenant" pour les en_attente
+//     (carte ET détail), le tout reconditionné à la capacité RESTANTE au
+//     moment du clic (carte, détail, et doInscritDepl en filet de
+//     sécurité) pour ne jamais permettre de payer une place qui n'existe
+//     plus — deplacements.js, supabase-client.js (+ migration DB
+//     ajout_statut_liste_attente_deplacement).
+const CACHE_NAME = 'ul-v133';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
