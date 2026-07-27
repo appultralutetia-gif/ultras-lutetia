@@ -1110,6 +1110,27 @@ async function demanderInscriptionDeplacementHelloAsso(deplacementId, participan
   return appellerHelloAssoCheckout({ deplacementId, participants });
 }
 
+// Inscription en liste d'attente — déclenchée automatiquement par
+// doInscritDepl (deplacements.js) quand le bus est déjà complet (nombre
+// de payés >= places_max). Gratuite, aucun paiement pris : la personne
+// est simplement enregistrée en attendant qu'une place se libère ou
+// qu'un 2ᵉ bus soit ajouté. Demande Remi 27/07/2026, suite au surbook
+// ESTAC Troyes (places_max=83, 84 payés).
+// ⚠️ Vérification de capacité faite côté app uniquement (cf.
+// doInscritDepl) — pas de garde-fou dans l'Edge Function
+// helloasso-create-checkout (hors dépôt front), donc pas totalement
+// infaillible en cas d'inscriptions strictement simultanées à la
+// toute dernière place.
+async function rejoindreListeAttenteDeplacement(deplacementId) {
+  const { error } = await sb.from('inscriptions_deplacement').insert({
+    deplacement_id: deplacementId,
+    membre_id: currentUser.id,
+    statut_paiement: 'liste_attente',
+  });
+  if (error) throw error;
+  return { success: true };
+}
+
 async function validerPaiementCash(inscriptionId) {
   const { data: inscription, error: fetchError } = await sb.from('inscriptions_deplacement')
     .select('id, membre_id').eq('id', inscriptionId).single();
@@ -2692,6 +2713,7 @@ window.UL = {
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   getDeplacements, getDeplacement, getStatutInscriptionDepl,
   getMonQuotaDepl, getMembresPourAmisDepl, relancerPaiementDeplacement, demanderInscriptionDeplacementHelloAsso,
+  rejoindreListeAttenteDeplacement,
   getMesAmis, getDemandesAmitieRecues, getDemandesAmitieEnvoyees, repondreDemandeAmitie, annulerDemandeAmitie,
   envoyerDemandeAmitie, rechercherMembrePourAmi,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
