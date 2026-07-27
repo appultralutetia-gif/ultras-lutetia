@@ -884,7 +884,16 @@
 //   _inscritsPayes calculé désormais dans getDeplacement() avec la même
 //   définition que _enrichirDeplacements. Fichier modifié :
 //   supabase-client.js.
-const CACHE_NAME = 'ul-v134';
+// v135 (27/07/2026) : CACHE_NAME bumpé (v134 → v135) — retours Remi sur
+//   la liste d'attente : (1) message enrichi pour une personne en liste
+//   d'attente (carte + détail) : précise maintenant explicitement "bus
+//   complet, paiement impossible pour le moment" en plus de "sur liste
+//   d'attente". (2) Nombre de personnes en liste d'attente affiché sur
+//   la carte (sous la barre de places) ET dans la modale "📊 Stats" par
+//   déplacement — nouveau compteur _inscritsListeAttente
+//   (_enrichirDeplacements) et champ listeAttente (getStatsDeplacement).
+//   Fichiers modifiés : deplacements.js, supabase-client.js.
+const CACHE_NAME = 'ul-v135';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
