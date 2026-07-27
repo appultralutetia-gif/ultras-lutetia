@@ -178,7 +178,7 @@ function renderDeplCard(d) {
   // l'ouverture de la modal (la carte entière reste cliquable pour le détail).
   let boutonAction;
   if (estListeAttente) {
-    boutonAction = `<span class="badge badge-orange">🕐 Sur liste d'attente</span>`;
+    boutonAction = `<span class="badge badge-orange">🕐 Sur liste d'attente — bus complet, paiement impossible pour le moment</span>`;
   } else if (!estInscrit) {
     if (inscriptionsDeplFermees(d)) {
       boutonAction = `<span class="badge badge-gris">⏳ Inscriptions terminées</span>`;
@@ -268,6 +268,7 @@ function renderDeplCard(d) {
       <div class="places-bar" style="flex:1;"><div class="places-fill" style="width:${pct}%"></div></div>
       <span style="font-size:11px;color:var(--gris);flex-shrink:0;">${d._inscritsPayes||0}/${d.places_max}</span>
     </div>` : ''}
+    ${d._inscritsListeAttente > 0 ? `<div style="font-size:11px;color:var(--orange);margin-top:4px;">🕐 ${d._inscritsListeAttente} en liste d'attente</div>` : ''}
     ${formatEchelonnementDepl(d) ? `<div style="font-size:11px;color:var(--gris);margin-top:6px;">📅 ${formatEchelonnementDepl(d)}</div>` : ''}
     <div style="margin-top:10px;">${boutonAction}</div>
     ${adminBar}
@@ -316,7 +317,7 @@ async function openDepl(deplId) {
 
     const busCompletDetail = !!d.places_max && (d._inscritsPayes||0) >= d.places_max;
     if (estListeAttente) {
-      html += `<div class="info-box">🕐 Tu es sur liste d'attente pour ce déplacement — on te recontacte si une place se libère ou si un 2ᵉ bus est ajouté.</div>`;
+      html += `<div class="info-box">🕐 Sur liste d'attente — bus complet, paiement impossible pour le moment. On te recontacte si une place se libère ou si un 2ᵉ bus est ajouté.</div>`;
     } else if (!estInscrit) {
       const busComplet = busCompletDetail;
       if (inscriptionsDeplFermees(d)) {
@@ -990,6 +991,7 @@ async function ouvrirStatsDepl(deplId) {
         <div class="card-label">📋 Statuts des inscriptions</div>
         <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;">
           <div style="display:flex;justify-content:space-between;"><span>⏳ En attente de paiement</span><b>${s.enAttente}</b></div>
+          ${s.listeAttente ? `<div style="display:flex;justify-content:space-between;color:var(--orange);"><span>🕐 En liste d'attente</span><b>${s.listeAttente}</b></div>` : ''}
           ${s.refuses ? `<div style="display:flex;justify-content:space-between;color:var(--rouge);"><span>❌ Refusés</span><b>${s.refuses}</b></div>` : ''}
           ${s.rembourses ? `<div style="display:flex;justify-content:space-between;color:var(--orange);"><span>↩️ Remboursés</span><b>${s.rembourses}</b></div>` : ''}
           ${s.invites ? `<div style="display:flex;justify-content:space-between;"><span>👤 Invités hors app</span><b>${s.invites}</b></div>` : ''}
