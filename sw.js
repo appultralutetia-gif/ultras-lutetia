@@ -893,7 +893,17 @@
 //   déplacement — nouveau compteur _inscritsListeAttente
 //   (_enrichirDeplacements) et champ listeAttente (getStatsDeplacement).
 //   Fichiers modifiés : deplacements.js, supabase-client.js.
-const CACHE_NAME = 'ul-v135';
+// v136 (27/07/2026) : CACHE_NAME bumpé (v135 → v136) — 2 demandes Remi :
+//   (1) Nouveau bouton "🕐 Liste d'attente" sur l'admin bar de chaque
+//   carte déplacement (à côté de Inscrits/Liste bus/Modifier/Stats),
+//   avec le nombre en attente affiché dans le libellé — ouvre la liste
+//   des inscrits déjà pré-filtrée sur liste_attente. (2) Bouton manuel
+//   "🕐 Vers liste d'attente" sur une inscription en_attente, visible
+//   uniquement quand le bus est déjà complet — bascule volontairement
+//   MANUELLE (pas automatique) pour ne pas entrer en conflit avec
+//   "🔓 Débloquer le paiement", qui remet sciemment quelqu'un en
+//   en_attente. Fichiers modifiés : deplacements.js, supabase-client.js.
+const CACHE_NAME = 'ul-v136';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
