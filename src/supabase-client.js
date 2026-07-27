@@ -1180,6 +1180,22 @@ async function debloquerPaiementListeAttente(inscriptionId) {
   return { success: true };
 }
 
+// Bascule manuelle vers liste d'attente (demande Remi 27/07/2026) — un
+// en_attente resté bloqué (paiement jamais finalisé) alors que le bus
+// est déjà complet, que la cellule veut clairement basculer en attente
+// d'une place plutôt que de laisser courir un paiement impossible.
+// Volontairement une action MANUELLE, pas une bascule automatique : un
+// trigger réagissant à "en_attente + bus complet" entrerait en conflit
+// avec debloquerPaiementListeAttente ci-dessus, qui remet SCIEMMENT
+// quelqu'un en en_attente pour lui laisser une chance de payer.
+async function basculerEnListeAttente(inscriptionId) {
+  const { error } = await sb.from('inscriptions_deplacement')
+    .update({ statut_paiement: 'liste_attente' })
+    .eq('id', inscriptionId);
+  if (error) throw error;
+  return { success: true };
+}
+
 async function validerPaiementCash(inscriptionId) {
   const { data: inscription, error: fetchError } = await sb.from('inscriptions_deplacement')
     .select('id, membre_id').eq('id', inscriptionId).single();
@@ -2764,7 +2780,7 @@ window.UL = {
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   getDeplacements, getDeplacement, getStatutInscriptionDepl,
   getMonQuotaDepl, getMembresPourAmisDepl, relancerPaiementDeplacement, demanderInscriptionDeplacementHelloAsso,
-  rejoindreListeAttenteDeplacement, debloquerPaiementListeAttente,
+  rejoindreListeAttenteDeplacement, debloquerPaiementListeAttente, basculerEnListeAttente,
   getMesAmis, getDemandesAmitieRecues, getDemandesAmitieEnvoyees, repondreDemandeAmitie, annulerDemandeAmitie,
   envoyerDemandeAmitie, rechercherMembrePourAmi,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
