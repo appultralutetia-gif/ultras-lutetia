@@ -245,6 +245,7 @@ function renderDeplCard(d) {
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();copierListeBus('${d.id}')">📋 Liste bus</button>
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ouvrirModifierDepl('${d.id}')">✏️ Modifier</button>
       <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ouvrirStatsDepl('${d.id}')">📊 Stats</button>
+      <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();voirListeAttenteDepl('${d.id}')">🕐 Liste d'attente${d._inscritsListeAttente > 0 ? ` (${d._inscritsListeAttente})` : ''}</button>
     </div>${equilibreApercu}` : '';
 
   return `<div class="depl-card" onclick="openDepl('${d.id}')">
@@ -624,7 +625,7 @@ async function voirInscritsDepl(deplId) {
   try {
     const { inscrits, deplacement: d } = await UL.getDeplacement(deplId);
     _inscritsDeplCourant = inscrits;
-    _deplCourantPourListe = { id: deplId, adversaire: d.adversaire };
+    _deplCourantPourListe = { id: deplId, adversaire: d.adversaire, placesMax: d.places_max, inscritsPayes: d._inscritsPayes || 0 };
     _filtreInscritsDepl = 'tous';
     _filtreStatutPaiementDepl = 'tous';
     _filtreSectionDepl = 'tous';
@@ -632,6 +633,15 @@ async function voirInscritsDepl(deplId) {
     renderListeInscritsDepl();
     showModal('modalAdminSession');
   } catch(e) { toast('Impossible de charger les inscrits du déplacement', 'error'); }
+}
+
+// Raccourci "🕐 Liste d'attente" de l'admin bar (demande Remi 27/07/2026)
+// — même modale/liste que "Inscrits", pré-filtrée sur liste_attente pour
+// aller droit au but plutôt que de filtrer manuellement à chaque fois.
+async function voirListeAttenteDepl(deplId) {
+  await voirInscritsDepl(deplId);
+  _filtreStatutPaiementDepl = 'liste_attente';
+  renderListeInscritsDepl();
 }
 
 function filtrerInscritsDepl(filtre) {
@@ -681,6 +691,11 @@ function _inscritsDeplFiltres() {
 function renderListeInscritsDepl() {
   const d = _deplCourantPourListe;
   if (!d) return;
+  // Utilisé pour proposer "🕐 Vers liste d'attente" sur un en_attente —
+  // volontairement PAS automatique (demande Remi 27/07/2026) : cf. note
+  // dans debloquerPaiement, une bascule automatique entrerait en conflit
+  // avec cette même action qui remet sciemment quelqu'un en en_attente.
+  const busComplet = !!d.placesMax && d.inscritsPayes >= d.placesMax;
 
   const liste = _inscritsDeplFiltres();
   const filtreBtn = (val, label) => `<button class="btn btn-sm ${_filtreInscritsDepl===val?'btn-primary':'btn-secondary'}" onclick="filtrerInscritsDepl('${val}')">${label}</button>`;
@@ -745,6 +760,8 @@ function renderListeInscritsDepl() {
         ${(i.statut_paiement==='en_attente'||i.statut_paiement==='liste_attente') ? `
           <button class="btn btn-sm btn-success" onclick="validerCash('${d.id}','${i.id}')">Cash</button>
           <button class="btn btn-sm btn-danger" onclick="annulerInscritAdmin('${d.id}','${i.id}')">Annuler</button>` : ''}
+        ${i.statut_paiement==='en_attente' && busComplet ? `
+          <button class="btn btn-sm btn-secondary" onclick="basculerVersListeAttente('${d.id}','${i.id}')">🕐 Vers liste d'attente</button>` : ''}
         ${i.statut_paiement==='liste_attente' ? `
           <button class="btn btn-sm btn-primary" onclick="debloquerPaiement('${d.id}','${i.id}')">🔓 Débloquer le paiement</button>` : ''}
       </div>`;
@@ -821,6 +838,19 @@ async function debloquerPaiement(deplId, inscriptionId) {
     toast('Paiement débloqué — la personne a été prévenue ✅', 'success');
     voirInscritsDepl(deplId);
   } catch(e) { toast(e.message || 'Impossible de débloquer le paiement', 'error'); }
+}
+
+// Bascule manuelle d'un en_attente vers liste_attente (demande Remi
+// 27/07/2026) — pour un paiement resté bloqué alors que le bus est déjà
+// complet. Volontairement manuelle, pas automatique (cf. commentaire
+// dans supabase-client.js).
+async function basculerVersListeAttente(deplId, inscriptionId) {
+  if (!confirm('Basculer cette personne en liste d\'attente ? Son paiement en cours ne sera plus possible tant qu\'une place ne se libère pas.')) return;
+  try {
+    await UL.basculerEnListeAttente(inscriptionId);
+    toast('Basculé en liste d\'attente ✅', 'success');
+    voirInscritsDepl(deplId);
+  } catch(e) { toast(e.message || 'Impossible de basculer cette inscription', 'error'); }
 }
 
 // Annulation admin d'une inscription en attente de paiement — uniquement
