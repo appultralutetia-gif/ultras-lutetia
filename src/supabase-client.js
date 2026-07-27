@@ -926,6 +926,10 @@ async function _enrichirDeplacements(depls) {
       // uniquement, cf. deplacements.js:renderDeplCard) — seuls les
       // inscrits réellement PAYÉS comptent, pas les en_attente/refusés.
       _inscritsPayes: inscritsDuDepl.filter(i => i.statut_paiement === 'paye_ha' || i.statut_paiement === 'paye_cash').length,
+      // Nombre de personnes en liste d'attente (demande Remi 27/07/2026,
+      // affiché sur la carte à côté de la barre de places) — cf.
+      // rejoindreListeAttenteDeplacement.
+      _inscritsListeAttente: inscritsDuDepl.filter(i => i.statut_paiement === 'liste_attente').length,
       monInscrit: inscritsDuDepl.find(i => i.membre_id === currentUser?.id) || null,
     };
   });
@@ -1791,6 +1795,8 @@ async function getStatsDeplacement(deplacementId) {
   const refuses = inscrs.filter(i => i.statut_paiement === 'refuse').length;
   const rembourses = inscrs.filter(i => i.statut_paiement === 'rembourse').length;
   const invites = inscrs.filter(i => i.invite_nom).length;
+  // Demande Remi 27/07/2026, suite au surbook ESTAC Troyes.
+  const listeAttente = inscrs.filter(i => i.statut_paiement === 'liste_attente').length;
 
   const placesPrises = payees.length;
   const placesRestantes = d.places_max ? Math.max(0, d.places_max - placesPrises) : null;
@@ -1839,7 +1845,7 @@ async function getStatsDeplacement(deplacementId) {
     placesPrises,
     placesRestantes,
     tauxRemplissage,
-    enAttente, refuses, rembourses, invites,
+    enAttente, refuses, rembourses, invites, listeAttente,
     totalInscriptions: inscrs.length,
     repartitionStatut, repartitionSection, parModePaiement,
     montantCollecte,
