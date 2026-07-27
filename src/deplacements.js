@@ -517,12 +517,23 @@ let _inscritsDeplCourant = [];
 let _deplCourantPourListe = null;
 let _filtreInscritsDepl = 'tous';
 
+// Filtres combinables sur la liste des inscrits d'un déplacement — Bureau
+// + Admin + Cellule Déplacement uniquement (demande Remi 24/07/2026) :
+// présence (existant), statut de paiement, section. Plus export Telegram
+// (texte à copier) et export CSV, tous deux appliqués sur la liste
+// FILTRÉE affichée à l'écran, pas sur la liste complète.
+const LABELS_STATUT_PAIEMENT = { en_attente: 'En attente', paye_cash: 'Payé (Cash)', paye_ha: 'Payé (HelloAsso)', refuse: 'Refusé', rembourse: 'Remboursé' };
+let _filtreStatutPaiementDepl = 'tous';
+let _filtreSectionDepl = 'tous';
+
 async function voirInscritsDepl(deplId) {
   try {
     const { inscrits, deplacement: d } = await UL.getDeplacement(deplId);
     _inscritsDeplCourant = inscrits;
     _deplCourantPourListe = { id: deplId, adversaire: d.adversaire };
     _filtreInscritsDepl = 'tous';
+    _filtreStatutPaiementDepl = 'tous';
+    _filtreSectionDepl = 'tous';
     renderListeInscritsDepl();
     showModal('modalAdminSession');
   } catch(e) { toast('Impossible de charger les inscrits du déplacement', 'error'); }
@@ -533,39 +544,81 @@ function filtrerInscritsDepl(filtre) {
   renderListeInscritsDepl();
 }
 
-function renderListeInscritsDepl() {
-  const d = _deplCourantPourListe;
-  if (!d) return;
+function filtrerStatutPaiementInscritsDepl(val) {
+  _filtreStatutPaiementDepl = val;
+  renderListeInscritsDepl();
+}
 
-  // Filtre appliqué uniquement sur les inscriptions payées — un membre non
-  // payé n'a de toute façon jamais pu être scanné présent (cf. note dans
-  // renderDeplCard), donc le filtre "Présents"/"Absents" n'a de sens que
-  // parmi les payés ; "Tous" continue d'afficher tout le monde, paiement
-  // en attente compris, pour ne pas perdre la visibilité d'ensemble.
+function filtrerSectionInscritsDepl(val) {
+  _filtreSectionDepl = val;
+  renderListeInscritsDepl();
+}
+
+// Applique les 3 filtres combinés — réutilisé par le rendu ET par les 2
+// exports, pour qu'ils portent toujours exactement sur ce qui est
+// affiché à l'écran.
+function _inscritsDeplFiltres() {
+  // Filtre présence appliqué uniquement sur les inscriptions payées — un
+  // membre non payé n'a de toute façon jamais pu être scanné présent
+  // (cf. note dans renderDeplCard) ; "Tous" continue d'afficher tout le
+  // monde, paiement en attente compris, pour ne pas perdre la visibilité
+  // d'ensemble.
   let liste = _inscritsDeplCourant;
   if (_filtreInscritsDepl === 'presents') liste = liste.filter(i => !!i.present_at);
   if (_filtreInscritsDepl === 'absents') {
     const estPaye = i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha';
     liste = liste.filter(i => estPaye(i) && !i.present_at);
   }
+  if (_filtreStatutPaiementDepl !== 'tous') liste = liste.filter(i => i.statut_paiement === _filtreStatutPaiementDepl);
+  if (_filtreSectionDepl !== 'tous') {
+    if (_filtreSectionDepl === '__sans_section__') liste = liste.filter(i => i.membre_id && !i.membre?.section?.nom);
+    else liste = liste.filter(i => i.membre?.section?.nom === _filtreSectionDepl);
+  }
+  return liste;
+}
 
+function renderListeInscritsDepl() {
+  const d = _deplCourantPourListe;
+  if (!d) return;
+
+  const liste = _inscritsDeplFiltres();
   const filtreBtn = (val, label) => `<button class="btn btn-sm ${_filtreInscritsDepl===val?'btn-primary':'btn-secondary'}" onclick="filtrerInscritsDepl('${val}')">${label}</button>`;
+
+  // Sections présentes parmi TOUS les inscrits (pas seulement le résultat
+  // filtré) pour que le menu section reste stable pendant qu'on filtre.
+  const sectionsPresentes = [...new Set(_inscritsDeplCourant.map(i => i.membre?.section?.nom).filter(Boolean))].sort();
+  const aDesInvitesOuSansSection = _inscritsDeplCourant.some(i => i.membre_id && !i.membre?.section?.nom);
 
   document.getElementById('modalAdminSessionContent').innerHTML = `
     <h3 class="modal-title">Inscrits — ${esc(d.adversaire)}</h3>
-    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
       ${filtreBtn('tous', 'Tous')}
       ${filtreBtn('presents', '✅ Présents')}
       ${filtreBtn('absents', '⏳ Absents')}
     </div>
-    ${!liste.length ? '<p style="color:var(--gris);font-size:13px;">Aucun inscrit pour ce filtre</p>' : liste.map(i => {
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select style="flex:1;min-width:140px;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;" onchange="filtrerStatutPaiementInscritsDepl(this.value)">
+        <option value="tous" ${_filtreStatutPaiementDepl==='tous'?'selected':''}>Statut : tous</option>
+        ${Object.entries(LABELS_STATUT_PAIEMENT).map(([k,l]) => `<option value="${k}" ${_filtreStatutPaiementDepl===k?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <select style="flex:1;min-width:140px;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;" onchange="filtrerSectionInscritsDepl(this.value)">
+        <option value="tous" ${_filtreSectionDepl==='tous'?'selected':''}>Section : toutes</option>
+        ${sectionsPresentes.map(s => `<option value="${esc(s)}" ${_filtreSectionDepl===s?'selected':''}>${esc(s)}</option>`).join('')}
+        ${aDesInvitesOuSansSection ? `<option value="__sans_section__" ${_filtreSectionDepl==='__sans_section__'?'selected':''}>Sans section</option>` : ''}
+      </select>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;">
+      <button class="btn btn-sm btn-secondary" style="flex:1;" onclick="exporterInscritsDeplTelegram()">📋 Export Telegram</button>
+      <button class="btn btn-sm btn-secondary" style="flex:1;" onclick="exporterInscritsDeplCsv()">📊 Export CSV</button>
+    </div>
+    ${!liste.length ? '<p style="color:var(--gris);font-size:13px;">Aucun inscrit pour ces filtres</p>' : liste.map(i => {
       // Participant : membre de l'app (pseudo + nom) ou invité hors app
       // (nom/prénom saisis à l'inscription, jamais de pseudo) — cf.
       // migration_deplacements_avance.sql.
       const estInvite = !i.membre_id;
       const ligneParticipant = estInvite
         ? `<div style="font-weight:600;">${esc(i.invite_prenom||'')} ${esc(i.invite_nom||'')}</div><div style="color:var(--gris);">👤 Invité hors app</div>`
-        : `<div style="font-weight:600;">@${esc(i.membre?.pseudo_telegram||'?')}</div><div style="color:var(--gris);">${esc(i.membre?.prenom||'')} ${esc(i.membre?.nom||'')}</div>`;
+        : `<div style="font-weight:600;">@${esc(i.membre?.pseudo_telegram||'?')}</div><div style="color:var(--gris);">${esc(i.membre?.prenom||'')} ${esc(i.membre?.nom||'')}${i.membre?.section?.nom ? ' · '+esc(i.membre.section.nom) : ''}</div>`;
       // Payeur affiché seulement s'il diffère du participant lui-même —
       // sinon "Payé par @toi-même" n'apporte rien (demande Remi
       // 09/07/2026 : savoir qui a payé pour un ami/invité).
@@ -591,6 +644,59 @@ function renderListeInscritsDepl() {
     }).join('')}
   `;
 }
+
+// Export Telegram (texte copié dans le presse-papier) de la liste
+// FILTRÉE — contrairement à copierListeBus/getListeBusTelegram (liste
+// fixe des payés, format "liste bus" officielle), celui-ci reflète
+// exactement ce que la cellule voit à l'écran avec ses filtres.
+function exporterInscritsDeplTelegram() {
+  const liste = _inscritsDeplFiltres();
+  if (!liste.length) return toast('Aucun inscrit à exporter avec ces filtres', 'error');
+  const d = _deplCourantPourListe;
+  const lignes = [
+    `👥 *INSCRITS — ${d.adversaire}* (${liste.length})`,
+    ``,
+    ...liste.map((i, n) => {
+      const nom = i.membre_id ? `@${i.membre?.pseudo_telegram || '?'}` : `${i.invite_prenom||''} ${i.invite_nom||''} (invité)`;
+      const statut = LABELS_STATUT_PAIEMENT[i.statut_paiement] || i.statut_paiement;
+      return `${n+1}. ${nom} — ${statut}`;
+    }),
+  ];
+  navigator.clipboard.writeText(lignes.join('\n'))
+    .then(() => toast('Liste copiée !', 'success'))
+    .catch(() => toast('Impossible de copier la liste', 'error'));
+}
+
+// Export CSV de la liste FILTRÉE — même convention que
+// exporterCsvMembresComite (admin.js) : csvEscape, BOM UTF-8, Blob.
+function exporterInscritsDeplCsv() {
+  const liste = _inscritsDeplFiltres();
+  if (!liste.length) return toast('Aucun inscrit à exporter avec ces filtres', 'error');
+  const d = _deplCourantPourListe;
+  const entete = ['Pseudo', 'Prénom', 'Nom', 'Type', 'Section', 'Statut membre', 'Statut paiement', 'Présence'];
+  const lignes = liste.map(i => [
+    i.membre_id ? (i.membre?.pseudo_telegram || '') : '',
+    i.membre_id ? (i.membre?.prenom || '') : (i.invite_prenom || ''),
+    i.membre_id ? (i.membre?.nom || '') : (i.invite_nom || ''),
+    i.membre_id ? 'Membre' : 'Invité',
+    i.membre?.section?.nom || '',
+    i.membre_id ? (LABELS_STATUT_MEMBRE[i.membre?.statut] || i.membre?.statut || '') : '',
+    LABELS_STATUT_PAIEMENT[i.statut_paiement] || i.statut_paiement,
+    i.present_at ? 'Présent' : ((i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha') ? 'Absent' : ''),
+  ]);
+  const csv = '\uFEFF' + [entete, ...lignes].map(l => l.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `inscrits_${(d.adversaire || 'deplacement').replace(/[^a-z0-9]+/gi, '_')}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Export CSV généré (${liste.length}) !`, 'success');
+}
+
 
 async function validerCash(deplId, inscriptionId) {
   try { await UL.validerPaiementCash(inscriptionId); toast('Paiement cash validé ✅', 'success'); voirInscritsDepl(deplId); }
