@@ -869,7 +869,22 @@
 //     sécurité) pour ne jamais permettre de payer une place qui n'existe
 //     plus — deplacements.js, supabase-client.js (+ migration DB
 //     ajout_statut_liste_attente_deplacement).
-const CACHE_NAME = 'ul-v133';
+// v134 (27/07/2026) : CACHE_NAME bumpé (v133 → v134) — VRAI bug trouvé
+//   derrière "le bouton Relancer le paiement apparaît encore alors que
+//   le bus est complet" (repéré via capture Remi : la carte de liste
+//   affichait bien "bus complet", mais la modale de détail non) :
+//   getDeplacement() (singulier, utilisée par la modale ET par
+//   doInscritDepl) ne calculait jamais _inscritsPayes sur l'objet
+//   déplacement retourné — contrairement à getDeplacements() (pluriel,
+//   liste des cartes) qui le fait via _enrichirDeplacements. Toutes les
+//   vérifications de capacité côté détail (busCompletDetail dans
+//   openDepl, le filet de sécurité dans doInscritDepl) tournaient donc
+//   sur undefined||0 = 0, donc TOUJOURS "pas complet" — la modale et le
+//   bouton de paiement ignoraient complètement le blocage de capacité.
+//   _inscritsPayes calculé désormais dans getDeplacement() avec la même
+//   définition que _enrichirDeplacements. Fichier modifié :
+//   supabase-client.js.
+const CACHE_NAME = 'ul-v134';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
