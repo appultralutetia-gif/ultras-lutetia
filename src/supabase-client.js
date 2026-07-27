@@ -954,7 +954,21 @@ async function getDeplacement(id) {
   if (inscritsError) console.error('[UL] getDeplacement — erreur chargement inscrits:', inscritsError.message);
   const monInscrit = (inscrits || []).find(i => i.membre_id === currentUser?.id);
   const nbInscrits = (inscrits || []).length;
-  return { deplacement: data, inscrits: inscrits || [], monInscrit, nbInscrits };
+  // Bug corrigé (27/07/2026, cas ESTAC Troyes) : cette fonction (singulier,
+  // utilisée par la modale de détail ET par doInscritDepl) ne calculait
+  // JAMAIS _inscritsPayes sur l'objet deplacement retourné, contrairement
+  // à _enrichirDeplacements (liste des cartes) qui le fait. Toutes les
+  // vérifications de capacité basées sur d._inscritsPayes (busCompletDetail
+  // dans openDepl, le filet de sécurité dans doInscritDepl) tournaient donc
+  // sur undefined||0 = 0, donc TOUJOURS "pas complet" — la modale et le
+  // bouton "Relancer le paiement" ignoraient complètement le blocage de
+  // capacité, même avec un bus déjà surbooké. Même définition que
+  // _enrichirDeplacements pour rester cohérent partout.
+  const deplacementAvecCompteurs = {
+    ...data,
+    _inscritsPayes: (inscrits || []).filter(i => i.statut_paiement === 'paye_ha' || i.statut_paiement === 'paye_cash').length,
+  };
+  return { deplacement: deplacementAvecCompteurs, inscrits: inscrits || [], monInscrit, nbInscrits };
 }
 
 async function getMonQuotaDepl(deplacementId) {
@@ -1128,6 +1142,37 @@ async function rejoindreListeAttenteDeplacement(deplacementId) {
     statut_paiement: 'liste_attente',
   });
   if (error) throw error;
+  return { success: true };
+}
+
+// Débloque le paiement pour une personne en liste d'attente (Cellule
+// Déplacement, bouton "Débloquer le paiement" dans la liste des
+// inscrits, cf. debloquerPaiement dans deplacements.js) — la fait passer
+// en "en_attente" (comme une inscription pas encore payée, exactement le
+// même état qu'un paiement abandonné) puis la prévient par notification
+// push qu'une place est disponible. Demande Remi 27/07/2026.
+async function debloquerPaiementListeAttente(inscriptionId) {
+  const { data: inscription, error: fetchError } = await sb.from('inscriptions_deplacement')
+    .select('id, membre_id, deplacement_id, statut_paiement')
+    .eq('id', inscriptionId).single();
+  if (fetchError) throw fetchError;
+  if (inscription.statut_paiement !== 'liste_attente') {
+    throw new Error('Cette inscription n\'est pas en liste d\'attente');
+  }
+  const { error } = await sb.from('inscriptions_deplacement')
+    .update({ statut_paiement: 'en_attente' })
+    .eq('id', inscriptionId);
+  if (error) throw error;
+
+  if (inscription.membre_id) {
+    const { data: depl } = await sb.from('deplacements').select('adversaire').eq('id', inscription.deplacement_id).single();
+    envoyerNotificationPush(
+      inscription.membre_id,
+      '🚌 Une place s\'est libérée !',
+      `Tu peux maintenant payer ta place pour ${depl?.adversaire || 'le déplacement'} — ouvre l'app pour t'inscrire définitivement.`,
+      '/ultras-lutetia/'
+    );
+  }
   return { success: true };
 }
 
@@ -2713,7 +2758,7 @@ window.UL = {
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   getDeplacements, getDeplacement, getStatutInscriptionDepl,
   getMonQuotaDepl, getMembresPourAmisDepl, relancerPaiementDeplacement, demanderInscriptionDeplacementHelloAsso,
-  rejoindreListeAttenteDeplacement,
+  rejoindreListeAttenteDeplacement, debloquerPaiementListeAttente,
   getMesAmis, getDemandesAmitieRecues, getDemandesAmitieEnvoyees, repondreDemandeAmitie, annulerDemandeAmitie,
   envoyerDemandeAmitie, rechercherMembrePourAmi,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
