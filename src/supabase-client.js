@@ -947,7 +947,7 @@ async function getDeplacement(id) {
   const { data: inscrits, error: inscritsError } = await sb.from('inscriptions_deplacement')
     .select(`
       *,
-      membre:membres!inscriptions_deplacement_membre_id_fkey(nom, prenom, pseudo_telegram),
+      membre:membres!inscriptions_deplacement_membre_id_fkey(nom, prenom, pseudo_telegram, statut, section:sections(nom)),
       payeur:membres!inscriptions_deplacement_payeur_id_fkey(nom, prenom, pseudo_telegram)
     `)
     .eq('deplacement_id', id);
