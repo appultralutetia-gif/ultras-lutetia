@@ -1853,7 +1853,7 @@ async function loadSectionsForModalStick() {
     sel.innerHTML = sections.map(s =>
       `<option value="${s.id}">${s.nom}</option>`
     ).join('');
-    // Pré-sélection par défaut sur Ultra Lutetia
+    // Pré-sélection par défaut sur Ultras Lutetia
     const ulOption = sections.find(s => s.nom?.toLowerCase().includes('ultra lutetia'));
     if (ulOption) sel.value = ulOption.id;
   } catch(e) {}
