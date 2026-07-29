@@ -295,11 +295,11 @@ console.log('\n── 8. renderMembres & filtrerMembres ────────
 
 const MEMBRES_DATA = [
   { id:'a', prenom:'Remi', nom:'VF',  pseudo_telegram:'RemiVF', statut:'confirme',
-    roles_app:['admin_app'], actif:true, section:{nom:'Ultra Lutetia'}, email:'remi@test.fr' },
+    roles_app:['admin_app'], actif:true, section:{nom:'Ultras Lutetia'}, email:'remi@test.fr' },
   { id:'b', prenom:'Hadri',nom:'UL',  pseudo_telegram:'HadriUL',statut:'draft',
     roles_app:['cellule_tifo'], actif:true, section:null, email:null },
   { id:'c', prenom:'Jamy', nom:'UL',  pseudo_telegram:'JamyUL', statut:'confirme',
-    roles_app:[], actif:false, section:{nom:'Ultra Lutetia'}, email:null },
+    roles_app:[], actif:false, section:{nom:'Ultras Lutetia'}, email:null },
 ];
 
 global.allMembres = MEMBRES_DATA;
@@ -309,7 +309,7 @@ global.document._els['filterStatut'] = { value:'' };
 
 renderMembres(MEMBRES_DATA);
 test('membres — Remi affiché',                    () => expect(document._els['membresList'].innerHTML).toContain('Remi'));
-test('membres — section Ultra Lutetia',           () => expect(document._els['membresList'].innerHTML).toContain('Ultra Lutetia'));
+test('membres — section Ultras Lutetia',           () => expect(document._els['membresList'].innerHTML).toContain('Ultras Lutetia'));
 test('membres — roles_app affiché',               () => expect(document._els['membresList'].innerHTML).toContain('admin'));
 test('membres — bouton Modifier',                 () => expect(document._els['membresList'].innerHTML).toContain('Modifier'));
 test('membres — bouton Bloquer (actif)',          () => expect(document._els['membresList'].innerHTML).toContain('Bloquer'));
