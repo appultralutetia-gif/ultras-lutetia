@@ -102,7 +102,7 @@ function renderMembres(membres) {
           ${Array.isArray(m.roles_app) && m.roles_app.length ? `<div style="font-size:10px;color:#818CF8;margin-top:2px;">🔑 ${m.roles_app.map(r=>r.replace('_',' ')).join(' · ')}</div>` : ''}
           <div style="font-size:10px;color:var(--gris);margin-top:2px;">🕐 ${formaterDerniereConnexion(_dernieresConnexionsParMembre[m.id])}</div>
         </div>
-        <span style="font-size:12px;color:var(--bleu-clair);">${esc(m.section?.nom||'Ultra Lutetia')}</span>
+        <span style="font-size:12px;color:var(--bleu-clair);">${esc(m.section?.nom||'Ultras Lutetia')}</span>
       </div>
       <div class="membre-card-actions">
         <button class="btn btn-sm btn-secondary" onclick="openEditMembre('${m.id}')">✏️ Modifier</button>
@@ -191,11 +191,11 @@ async function _ouvrirModalEditMembre(m, mode) {
     selSec.innerHTML = sections.map(s =>
       `<option value="${s.id}">${s.nom}</option>`
     ).join('');
-    // Défaut = Ultra Lutetia ou section du membre
+    // Défaut = Ultras Lutetia ou section du membre
     const membreSectionId = m.section?.id || m.section_id || '';
     const ulOption = sections.find(s => s.nom?.toLowerCase().includes('ultra lutetia'));
     selSec.value = membreSectionId || (ulOption ? ulOption.id : (sections[0]?.id || ''));
-  } catch(e) { document.getElementById('editSection').innerHTML = '<option value="">Ultra Lutetia</option>'; }
+  } catch(e) { document.getElementById('editSection').innerHTML = '<option value="">Ultras Lutetia</option>'; }
 
   // Rôles fonctionnels — Admin/Bureau exclus de la liste en mode 'comite'
   // (cf. commentaire sur _modalEditMembreMode ci-dessus).
@@ -1119,7 +1119,7 @@ async function loadDemandesAdmin(idListe = 'demandesListeAdmin', idBadge = 'dema
     }
 
     // Sections chargées une seule fois pour toute la liste (pas un appel
-    // par carte) — "Ultra Lutetia" présélectionnée par défaut sur chaque
+    // par carte) — "Ultras Lutetia" présélectionnée par défaut sur chaque
     // carte (demande Remi 10/07/2026 : "plus simple à gérer").
     let optionsSection = '<option value="">-- Sélectionner une section --</option>';
     try {
@@ -1162,7 +1162,7 @@ async function loadDemandesAdmin(idListe = 'demandesListeAdmin', idBadge = 'dema
 
 // Remplace l'ancien flux en 2 étapes (bouton statut → popup section à
 // part) — demande Remi 10/07/2026 : la section est choisie directement
-// sur la carte (présélectionnée sur Ultra Lutetia), un clic sur un statut
+// sur la carte (présélectionnée sur Ultras Lutetia), un clic sur un statut
 // suffit désormais à valider.
 async function validerDemandeInline(membreId, statut, btn, idListe) {
   const sectionId = document.getElementById('sectionDemande_' + idListe + '_' + membreId).value;
