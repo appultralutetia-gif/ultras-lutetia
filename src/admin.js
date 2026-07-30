@@ -1512,6 +1512,7 @@ function renderMembreComiteCard(m) {
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0;">
         <span class="badge ${m.actif?'badge-vert':'badge-rouge'}" style="font-size:10px;">${m.actif?'✅ Actif':'⛔ Bloqué'}</span>
         <span class="badge ${m.cotisation_a_jour ? 'badge-vert' : 'badge-orange'}" style="font-size:10px;">🎫 Cartage ${m.cotisation_a_jour ? 'OK' : 'non'}</span>
+        ${m.statut === 'visiteur' && !m.cartage_valide_visiteur ? `<span class="badge badge-gris" style="font-size:10px;">🔒 Cartage verrouillé</span>` : ''}
         ${m.cartage_depuis ? `<span style="font-size:10px;color:var(--gris);">Depuis ${esc(m.cartage_depuis)}</span>` : ''}
       </div>
     </div>
@@ -1535,11 +1536,13 @@ function renderMembreComiteCard(m) {
       }).join('')}
     </div>` : ''}
     ${!protege ? `
-    <div style="margin-top:10px;display:flex;gap:8px;">
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-sm btn-secondary" onclick="openEditMembreComite('${m.id}')">✏️ Modifier</button>
       <button class="btn btn-sm ${m.actif?'btn-danger':'btn-success'}" onclick="toggleMembreComite('${m.id}',${!m.actif})">
         ${m.actif?'⛔ Bloquer':'✅ Débloquer'}
       </button>
+      ${m.statut === 'visiteur' && !m.cartage_valide_visiteur ? `
+      <button class="btn btn-sm btn-primary" onclick="doValiderCartageVisiteur('${m.id}')">🔓 Débloquer le cartage</button>` : ''}
     </div>` : `
     <div style="margin-top:8px;font-size:11px;color:var(--gris);opacity:.7;">🔒 Hors de portée du Comité de passage</div>`}
   </div>`;
@@ -1551,6 +1554,19 @@ async function toggleMembreComite(id, actif) {
     toast(actif ? 'Compte réactivé' : 'Compte bloqué', 'success');
     loadMembresComite();
   } catch(e) { toast('Impossible de modifier le statut du membre', 'error'); }
+}
+
+// Débloque l'accès au paiement du cartage pour un Visiteur précis
+// (demande Remi 30/07/2026) — cf. validerCartageVisiteur
+// (supabase-client.js). Sans confirmation : action peu risquée
+// (débloque un paiement, ne change rien d'autre), cohérent avec
+// toggleMembreComite ci-dessus qui n'en demande pas non plus.
+async function doValiderCartageVisiteur(id) {
+  try {
+    await UL.validerCartageVisiteur(id);
+    toast('Cartage débloqué pour ce Visiteur ✅', 'success');
+    loadMembresComite();
+  } catch(e) { toast('Impossible de débloquer le cartage', 'error'); }
 }
 
 // ─── Exports (Telegram + CSV) ───────────────────────────────────
