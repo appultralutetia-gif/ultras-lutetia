@@ -927,7 +927,20 @@
 //   validé (Comité de passage). Migration DB déjà appliquée
 //   (ajout_validation_cartage_visiteur). Fichiers modifiés :
 //   boutique.js, admin.js, supabase-client.js.
-const CACHE_NAME = 'ul-v138';
+// v139 (30/07/2026) : CACHE_NAME bumpé (v138 → v139) — même verrou que
+//   v138, appliqué aux Déplacements (demande Remi) : un Visiteur ne peut
+//   plus s'inscrire/payer/relancer un paiement sur un déplacement tant
+//   que le Comité de passage ne l'a pas validé individuellement
+//   (nouvelle colonne membres.deplacements_valide_visiteur, default
+//   false — rétro-validée automatiquement pour tout Visiteur ayant déjà
+//   un déplacement payé, cf. migration). Message "🔒 Contacter le Comité
+//   de passage" à la place de M'inscrire/Payer maintenant/Réessayer/
+//   Rejoindre la liste d'attente — jamais appliqué à un paiement ou une
+//   liste d'attente déjà acquis (même précaution que pour le cartage :
+//   ne jamais masquer un état déjà obtenu). Nouveau bouton
+//   "🔓 Débloquer les déplacements" côté Comité de passage. Fichiers
+//   modifiés : deplacements.js, admin.js, supabase-client.js.
+const CACHE_NAME = 'ul-v139';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
