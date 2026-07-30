@@ -917,7 +917,17 @@
 //   getSticks (supabase-client.js) et les 3 présélections par défaut du
 //   sélecteur de section (admin.js ×2, boutique.js). Fichiers modifiés :
 //   supabase-client.js, admin.js, boutique.js.
-const CACHE_NAME = 'ul-v137';
+// v138 (30/07/2026) : CACHE_NAME bumpé (v137 → v138) — Cartage bloqué
+//   pour les Visiteurs (demande Remi) : un Visiteur ne peut plus payer
+//   le cartage tant que le Comité de passage ne l'a pas validé
+//   individuellement (nouvelle colonne membres.cartage_valide_visiteur,
+//   default false) — message "🔒 Cartage verrouillé — Veuillez
+//   contacter un membre du Comité de passage" à la place du catalogue.
+//   Nouveau bouton "🔓 Débloquer le cartage" sur la carte Visiteur non
+//   validé (Comité de passage). Migration DB déjà appliquée
+//   (ajout_validation_cartage_visiteur). Fichiers modifiés :
+//   boutique.js, admin.js, supabase-client.js.
+const CACHE_NAME = 'ul-v138';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
