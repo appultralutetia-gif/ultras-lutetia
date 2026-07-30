@@ -1417,7 +1417,14 @@ async function loadCotisation() {
     // validé individuellement — cf. validerCartageVisiteur (admin.js,
     // Comité de passage). Vérifié AVANT même de charger le catalogue,
     // pour ne jamais laisser apparaître un bouton de paiement.
-    if (membre?.statut === 'visiteur' && !membre?.cartage_valide_visiteur) {
+    // ⚠️ !membre?.cotisation_a_jour est indispensable ici — sans cette
+    // condition, un Visiteur ayant DÉJÀ payé son cartage avant l'ajout
+    // de cette colonne (default false pour tout le monde) se serait vu
+    // cacher sa confirmation "Cartage à jour" derrière ce message de
+    // blocage, alors qu'il n'a besoin d'aucune validation supplémentaire
+    // pour un cartage déjà réglé. Repéré avant déploiement (4 Visiteurs
+    // concernés au 30/07/2026).
+    if (membre?.statut === 'visiteur' && !membre?.cartage_valide_visiteur && !membre?.cotisation_a_jour) {
       el.innerHTML = `
         <div class="cotisation-badge nok">
           <div style="font-size:48px;">🔒</div>
@@ -1487,7 +1494,7 @@ async function doPayerCartage(cartageId, btn) {
   // déjà masqué côté loadCotisation pour un Visiteur non validé, mais on
   // revérifie ici au cas où l'affichage serait périmé.
   const membre = UL.getCurrentMembre();
-  if (membre?.statut === 'visiteur' && !membre?.cartage_valide_visiteur) {
+  if (membre?.statut === 'visiteur' && !membre?.cartage_valide_visiteur && !membre?.cotisation_a_jour) {
     return toast('Contacte un membre du Comité de passage pour débloquer l\'accès au cartage.', 'error');
   }
   const texteOriginal = btn ? btn.textContent : '';
