@@ -1513,6 +1513,7 @@ function renderMembreComiteCard(m) {
         <span class="badge ${m.actif?'badge-vert':'badge-rouge'}" style="font-size:10px;">${m.actif?'✅ Actif':'⛔ Bloqué'}</span>
         <span class="badge ${m.cotisation_a_jour ? 'badge-vert' : 'badge-orange'}" style="font-size:10px;">🎫 Cartage ${m.cotisation_a_jour ? 'OK' : 'non'}</span>
         ${m.statut === 'visiteur' && !m.cartage_valide_visiteur ? `<span class="badge badge-gris" style="font-size:10px;">🔒 Cartage verrouillé</span>` : ''}
+        ${m.statut === 'visiteur' && !m.deplacements_valide_visiteur ? `<span class="badge badge-gris" style="font-size:10px;">🔒 Déplacements verrouillés</span>` : ''}
         ${m.cartage_depuis ? `<span style="font-size:10px;color:var(--gris);">Depuis ${esc(m.cartage_depuis)}</span>` : ''}
       </div>
     </div>
@@ -1543,6 +1544,8 @@ function renderMembreComiteCard(m) {
       </button>
       ${m.statut === 'visiteur' && !m.cartage_valide_visiteur ? `
       <button class="btn btn-sm btn-primary" onclick="doValiderCartageVisiteur('${m.id}')">🔓 Débloquer le cartage</button>` : ''}
+      ${m.statut === 'visiteur' && !m.deplacements_valide_visiteur ? `
+      <button class="btn btn-sm btn-primary" onclick="doValiderDeplacementsVisiteur('${m.id}')">🔓 Débloquer les déplacements</button>` : ''}
     </div>` : `
     <div style="margin-top:8px;font-size:11px;color:var(--gris);opacity:.7;">🔒 Hors de portée du Comité de passage</div>`}
   </div>`;
@@ -1567,6 +1570,16 @@ async function doValiderCartageVisiteur(id) {
     toast('Cartage débloqué pour ce Visiteur ✅', 'success');
     loadMembresComite();
   } catch(e) { toast('Impossible de débloquer le cartage', 'error'); }
+}
+
+// Même principe pour les déplacements (demande Remi 30/07/2026) — cf.
+// validerDeplacementsVisiteur (supabase-client.js).
+async function doValiderDeplacementsVisiteur(id) {
+  try {
+    await UL.validerDeplacementsVisiteur(id);
+    toast('Déplacements débloqués pour ce Visiteur ✅', 'success');
+    loadMembresComite();
+  } catch(e) { toast('Impossible de débloquer les déplacements', 'error'); }
 }
 
 // ─── Exports (Telegram + CSV) ───────────────────────────────────
