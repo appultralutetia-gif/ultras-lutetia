@@ -1410,11 +1410,29 @@ async function doConfirmerDistributionManuelle(distribId) {
 // ── COTISATION (07/07/2026 : catalogue de cartages, plus lien statique) ─
 async function loadCotisation() {
   try {
+    const membre = UL.getCurrentMembre();
+    const el = document.getElementById('cotisationStatut');
+    // Blocage Visiteur (demande Remi 30/07/2026) : un Visiteur ne peut
+    // pas payer le cartage tant que le Comité de passage ne l'a pas
+    // validé individuellement — cf. validerCartageVisiteur (admin.js,
+    // Comité de passage). Vérifié AVANT même de charger le catalogue,
+    // pour ne jamais laisser apparaître un bouton de paiement.
+    if (membre?.statut === 'visiteur' && !membre?.cartage_valide_visiteur) {
+      el.innerHTML = `
+        <div class="cotisation-badge nok">
+          <div style="font-size:48px;">🔒</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.05em;">Cartage verrouillé</div>
+          <div style="font-size:13px;color:var(--gris);margin-top:6px;">Veuillez contacter un membre du Comité de passage pour débloquer l'accès au cartage.</div>
+        </div>`;
+      const lienAdmin = document.getElementById('cotisationAdminLien');
+      if (lienAdmin) lienAdmin.style.display = 'none';
+      return;
+    }
+
     const [catalogue, { paiements, aJour }] = await Promise.all([
       UL.getCartageCatalogue(),
       UL.getMesPaiementsCartage(),
     ]);
-    const el = document.getElementById('cotisationStatut');
 
     if (aJour) {
       const dernierPaye = paiements.find(p => p.statut === 'paye');
@@ -1465,6 +1483,13 @@ async function loadCotisation() {
 }
 
 async function doPayerCartage(cartageId, btn) {
+  // Sécurité complémentaire (demande Remi 30/07/2026) : le bouton est
+  // déjà masqué côté loadCotisation pour un Visiteur non validé, mais on
+  // revérifie ici au cas où l'affichage serait périmé.
+  const membre = UL.getCurrentMembre();
+  if (membre?.statut === 'visiteur' && !membre?.cartage_valide_visiteur) {
+    return toast('Contacte un membre du Comité de passage pour débloquer l\'accès au cartage.', 'error');
+  }
   const texteOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
   try {
