@@ -72,6 +72,21 @@ function calculerStatutPaiementDepl(monInscrit) {
   return { estInscrit, estPaye, estRefuse, estListeAttente };
 }
 
+// Un Visiteur ne peut pas s'inscrire/payer un déplacement tant que le
+// Comité de passage ne l'a pas validé individuellement (demande Remi
+// 30/07/2026, même principe que cartage_valide_visiteur) — cf.
+// validerDeplacementsVisiteur (supabase-client.js), bouton "🔓 Débloquer
+// les déplacements" côté Comité de passage (admin.js).
+// ⚠️ Ne bloque QUE les actions de paiement (M'inscrire/Payer maintenant/
+// Réessayer/Rejoindre la liste d'attente) — jamais un état déjà acquis
+// (payé, ou déjà en liste d'attente), pour ne pas masquer une inscription
+// existante à quelqu'un qui n'avait pas besoin de validation pour agir
+// (leçon tirée du blocage cartage : ne jamais bloquer rétroactivement un
+// état déjà acquis).
+function visiteurDeplVerrouille(m) {
+  return m?.statut === 'visiteur' && !m?.deplacements_valide_visiteur;
+}
+
 // Le champ date_limite_inscription existait déjà en base et était affiché
 // en simple texte informatif ("⏳ Limite: ..."), sans jamais bloquer
 // réellement une nouvelle inscription une fois la date passée (05/07/2026,
@@ -171,6 +186,7 @@ function renderDeplCard(d) {
   // nouvelle inscription vers la liste d'attente plutôt que le paiement
   // (cf. doInscritDepl), et à adapter le libellé du bouton en conséquence.
   const busComplet = !!d.places_max && (d._inscritsPayes||0) >= d.places_max;
+  const verrouilleVisiteur = visiteurDeplVerrouille(m);
 
   // Bouton d'action directement visible sur la carte, sans devoir l'ouvrir —
   // reflète le même statut que la modal de détail (cf. openDepl). Le
@@ -182,6 +198,8 @@ function renderDeplCard(d) {
   } else if (!estInscrit) {
     if (inscriptionsDeplFermees(d)) {
       boutonAction = `<span class="badge badge-gris">⏳ Inscriptions terminées</span>`;
+    } else if (verrouilleVisiteur) {
+      boutonAction = `<span class="badge badge-gris">🔒 Contacter le Comité de passage</span>`;
     } else if (inscriptionPasEncoreOuvertePourMoi(d)) {
       const dateOuv = d[champOuverturePourStatut(m?.statut)];
       boutonAction = `<span class="badge badge-gris">🔒 Ouverture le ${new Date(dateOuv).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>`;
@@ -194,7 +212,10 @@ function renderDeplCard(d) {
     // Conditionné à la capacité restante (demande Remi 27/07/2026, même
     // logique que "Payer maintenant" ci-dessous) : un paiement refusé ne
     // doit pas pouvoir être retenté si le bus est complet entre-temps.
-    boutonAction = busComplet
+    // Conditionné aussi au verrou Visiteur (30/07/2026).
+    boutonAction = verrouilleVisiteur
+      ? `<span class="badge badge-gris">🔒 Contacter le Comité de passage</span>`
+      : busComplet
       ? `<span class="badge badge-rouge">❌ Paiement refusé — bus complet</span>`
       : `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">❌ Réessayer le paiement</button>`;
   } else if (!estPaye) {
@@ -204,7 +225,10 @@ function renderDeplCard(d) {
     // jour : si le bus est redevenu complet entre-temps (une autre place
     // a été prise), pas question de laisser payer une place qui n'existe
     // plus — même logique que le blocage à l'inscription (doInscritDepl).
-    boutonAction = busComplet
+    // Conditionné aussi au verrou Visiteur (30/07/2026).
+    boutonAction = verrouilleVisiteur
+      ? `<span class="badge badge-gris">🔒 Contacter le Comité de passage</span>`
+      : busComplet
       ? `<span class="badge badge-rouge">❌ Non inscrit — bus complet</span>`
       : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">💳 Payer maintenant</button>`;
   } else {
@@ -317,12 +341,15 @@ async function openDepl(deplId) {
       })()}`;
 
     const busCompletDetail = !!d.places_max && (d._inscritsPayes||0) >= d.places_max;
+    const verrouilleVisiteur = visiteurDeplVerrouille(m);
     if (estListeAttente) {
       html += `<div class="info-box">🕐 Sur liste d'attente — bus complet, paiement impossible pour le moment. On te recontacte si une place se libère ou si un 2ᵉ bus est ajouté.</div>`;
     } else if (!estInscrit) {
       const busComplet = busCompletDetail;
       if (inscriptionsDeplFermees(d)) {
         html += `<div class="info-box">⏳ Les inscriptions sont terminées pour ce déplacement.</div>`;
+      } else if (verrouilleVisiteur) {
+        html += `<div class="info-box">🔒 Contacte un membre du Comité de passage pour débloquer ton accès aux déplacements.</div>`;
       } else if (inscriptionPasEncoreOuvertePourMoi(d)) {
         const dateOuv = d[champOuverturePourStatut(m?.statut)];
         html += `<div class="info-box">🔒 Ouverture de tes inscriptions le ${new Date(dateOuv).toLocaleDateString('fr-FR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})}</div>`;
@@ -334,8 +361,11 @@ async function openDepl(deplId) {
       }
     } else if (estRefuse) {
       // Conditionné à la capacité restante (demande Remi 27/07/2026, même
-      // logique que le cas "paiement en cours" ci-dessous).
-      if (busCompletDetail) {
+      // logique que le cas "paiement en cours" ci-dessous). Conditionné
+      // aussi au verrou Visiteur (30/07/2026).
+      if (verrouilleVisiteur) {
+        html += `<div class="info-box error">❌ Paiement refusé — contacte un membre du Comité de passage pour débloquer ton accès</div>`;
+      } else if (busCompletDetail) {
         html += `<div class="info-box error">❌ Paiement refusé — bus complet, nouvelle tentative impossible pour le moment</div>`;
       } else {
         html += `<div class="info-box error">❌ Paiement refusé</div>
@@ -348,8 +378,11 @@ async function openDepl(deplId) {
       // comptage de places, cf. _inscritsPayes, mais le texte disait le
       // contraire). Bouton conditionné à la capacité restante (demande
       // Remi 27/07/2026) : si le bus est redevenu complet entre-temps,
-      // pas de bouton pour payer une place qui n'existe plus.
-      if (busCompletDetail) {
+      // pas de bouton pour payer une place qui n'existe plus. Conditionné
+      // aussi au verrou Visiteur (30/07/2026).
+      if (verrouilleVisiteur) {
+        html += `<div class="info-box error">❌ Non inscrit — contacte un membre du Comité de passage pour débloquer ton accès</div>`;
+      } else if (busCompletDetail) {
         html += `<div class="info-box error">❌ Non inscrit — bus complet, paiement impossible pour le moment</div>`;
       } else {
         html += `<div class="info-box error">❌ Non inscrit — paiement en cours</div>
@@ -409,6 +442,17 @@ async function doInscritDepl(id, btn) {
 
     if (monInscrit && monInscrit.statut_paiement === 'liste_attente') {
       toast('Tu es déjà sur liste d\'attente pour ce déplacement.', 'info');
+      return;
+    }
+
+    // Sécurité complémentaire (demande Remi 30/07/2026) : le bouton est
+    // déjà masqué côté carte/détail pour un Visiteur non validé, mais on
+    // revérifie ici — jamais appliqué à une inscription déjà payée
+    // (leçon tirée du cartage : ne jamais bloquer rétroactivement un état
+    // déjà acquis).
+    const dejaPaye = monInscrit && (monInscrit.statut_paiement === 'paye_ha' || monInscrit.statut_paiement === 'paye_cash');
+    if (!dejaPaye && visiteurDeplVerrouille(UL.getCurrentMembre())) {
+      toast('Contacte un membre du Comité de passage pour débloquer ton accès aux déplacements.', 'error');
       return;
     }
 
