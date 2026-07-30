@@ -903,7 +903,21 @@
 //   MANUELLE (pas automatique) pour ne pas entrer en conflit avec
 //   "🔓 Débloquer le paiement", qui remet sciemment quelqu'un en
 //   en_attente. Fichiers modifiés : deplacements.js, supabase-client.js.
-const CACHE_NAME = 'ul-v136';
+// v137 (30/07/2026) : CACHE_NAME bumpé (v136 → v137) — RÉGRESSION
+//   corrigée, causée par le renommage de la section "Ultra Lutetia" en
+//   "Ultras Lutetia" (demande Remi) : 5 comparaisons codées en dur sur
+//   l'ancien nom en minuscules ('ultra lutetia') ne matchaient plus,
+//   cassant silencieusement la règle spéciale "un article/stick réservé
+//   à la section Ultra(s) Lutetia est visible par TOUS les membres au
+//   niveau d'accès requis, peu importe leur propre section" (Ultra(s)
+//   Lutetia = section générique/historique du club, pas un sous-groupe
+//   comme les 5 autres). Repéré via un membre de la section Jeunesse qui
+//   ne voyait plus du tout "Tour de Cou UL" (Matos) ni le Stick en cours
+//   — les deux réservés à cette section. Corrigé dans getProduits/
+//   getSticks (supabase-client.js) et les 3 présélections par défaut du
+//   sélecteur de section (admin.js ×2, boutique.js). Fichiers modifiés :
+//   supabase-client.js, admin.js, boutique.js.
+const CACHE_NAME = 'ul-v137';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
