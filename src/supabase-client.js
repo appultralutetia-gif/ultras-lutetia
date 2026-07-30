@@ -374,6 +374,12 @@ async function validerCartageVisiteur(membreId) {
   return updateMembre(membreId, { cartage_valide_visiteur: true });
 }
 
+// Même principe pour les déplacements (demande Remi 30/07/2026) — cf.
+// visiteurDeplVerrouille (deplacements.js).
+async function validerDeplacementsVisiteur(membreId) {
+  return updateMembre(membreId, { deplacements_valide_visiteur: true });
+}
+
 async function adminResetPassword(membreId, newPassword) {
   return { success: true, message: 'Non implémenté' };
 }
@@ -2772,7 +2778,7 @@ window.UL = {
   loginByTelegram, logout, changePassword, inscription, demanderResetMdp,
   verifierCodeInscription, renvoyerCodeInscription,
   getMembre, getAllMembres, updateMembre, updateStatutMembre, confirmerEmailMembre, getDernieresConnexionsParMembre,
-  updateSectionMembre, toggleBlocageMembre, validerCartageVisiteur,
+  updateSectionMembre, toggleBlocageMembre, validerCartageVisiteur, validerDeplacementsVisiteur,
   noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
   getParticipationBatch,
   adminResetPassword, updateMembreMdp, supprimerMembre,
