@@ -1854,7 +1854,7 @@ async function loadSectionsForModalStick() {
       `<option value="${s.id}">${s.nom}</option>`
     ).join('');
     // Pré-sélection par défaut sur Ultras Lutetia
-    const ulOption = sections.find(s => s.nom?.toLowerCase().includes('ultra lutetia'));
+    const ulOption = sections.find(s => s.nom?.toLowerCase().includes('ultras lutetia'));
     if (ulOption) sel.value = ulOption.id;
   } catch(e) {}
 }
