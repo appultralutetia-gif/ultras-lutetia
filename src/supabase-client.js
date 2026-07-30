@@ -365,6 +365,15 @@ async function toggleBlocageMembre(membreId, actif) {
   return updateMembre(membreId, { actif });
 }
 
+// Débloque l'accès au paiement du cartage pour un Visiteur précis
+// (Comité de passage, cf. renderMembreComiteCard) — demande Remi
+// 30/07/2026 : un Visiteur ne peut plus payer le cartage tant que le
+// Comité ne l'a pas validé individuellement, comme pour une validation
+// de statut, mais sans changer son statut.
+async function validerCartageVisiteur(membreId) {
+  return updateMembre(membreId, { cartage_valide_visiteur: true });
+}
+
 async function adminResetPassword(membreId, newPassword) {
   return { success: true, message: 'Non implémenté' };
 }
@@ -2763,7 +2772,7 @@ window.UL = {
   loginByTelegram, logout, changePassword, inscription, demanderResetMdp,
   verifierCodeInscription, renvoyerCodeInscription,
   getMembre, getAllMembres, updateMembre, updateStatutMembre, confirmerEmailMembre, getDernieresConnexionsParMembre,
-  updateSectionMembre, toggleBlocageMembre,
+  updateSectionMembre, toggleBlocageMembre, validerCartageVisiteur,
   noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
   getParticipationBatch,
   adminResetPassword, updateMembreMdp, supprimerMembre,
