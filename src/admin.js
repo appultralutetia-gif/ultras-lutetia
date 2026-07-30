@@ -193,7 +193,7 @@ async function _ouvrirModalEditMembre(m, mode) {
     ).join('');
     // Défaut = Ultras Lutetia ou section du membre
     const membreSectionId = m.section?.id || m.section_id || '';
-    const ulOption = sections.find(s => s.nom?.toLowerCase().includes('ultra lutetia'));
+    const ulOption = sections.find(s => s.nom?.toLowerCase().includes('ultras lutetia'));
     selSec.value = membreSectionId || (ulOption ? ulOption.id : (sections[0]?.id || ''));
   } catch(e) { document.getElementById('editSection').innerHTML = '<option value="">Ultras Lutetia</option>'; }
 
@@ -1124,7 +1124,7 @@ async function loadDemandesAdmin(idListe = 'demandesListeAdmin', idBadge = 'dema
     let optionsSection = '<option value="">-- Sélectionner une section --</option>';
     try {
       const sections = await UL.getSections();
-      const ulOption = sections.find(s => s.nom?.toLowerCase().includes('ultra lutetia'));
+      const ulOption = sections.find(s => s.nom?.toLowerCase().includes('ultras lutetia'));
       optionsSection = sections.map(s =>
         `<option value="${s.id}" ${ulOption && s.id === ulOption.id ? 'selected' : ''}>${esc(s.nom)}</option>`
       ).join('');
