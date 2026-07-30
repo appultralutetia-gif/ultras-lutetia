@@ -2046,7 +2046,7 @@ async function getProduits() {
     if (p.visible_membres === false && !voitBrouillon) return false;
     if (isAdminBureauCellule) return true;
     if (p.niveau_acces === 'tous') return true;
-    const sectionEstUltraLutetia = p.section?.nom?.toLowerCase() === 'ultra lutetia';
+    const sectionEstUltraLutetia = p.section?.nom?.toLowerCase() === 'ultras lutetia';
     const memeSection = sectionEstUltraLutetia || (sectionId && p.section_id === sectionId);
     if (p.niveau_acces === 'draft_confirme') {
       return memeSection && (statut === 'draft' || statut === 'confirme');
@@ -2292,7 +2292,7 @@ async function getSticks() {
     if (s.visible_membres === false && !voitBrouillon) return false;
     if (isAdminBureauCellule) return true;
     if (s.niveau_acces === 'tous') return true;
-    const sectionEstUltraLutetia = s.section?.nom?.toLowerCase() === 'ultra lutetia';
+    const sectionEstUltraLutetia = s.section?.nom?.toLowerCase() === 'ultras lutetia';
     const memeSection = sectionEstUltraLutetia || (sectionId && s.section_id === sectionId);
     if (s.niveau_acces === 'draft_confirme') {
       return memeSection && (statut === 'draft' || statut === 'confirme');
