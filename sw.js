@@ -940,7 +940,14 @@
 //   ne jamais masquer un état déjà obtenu). Nouveau bouton
 //   "🔓 Débloquer les déplacements" côté Comité de passage. Fichiers
 //   modifiés : deplacements.js, admin.js, supabase-client.js.
-const CACHE_NAME = 'ul-v139';
+// v140 (30/07/2026) : CACHE_NAME bumpé (v139 → v140) — affectation à un
+//   bus (A/B/C) pour un déplacement à plusieurs bus (demande Remi, cas
+//   ESTAC Troyes 2 bus/103 places) : nouvelle colonne
+//   inscriptions_deplacement.bus, sélecteur d'affectation dans la liste
+//   "Inscrits" (Cellule Déplacement), affiché sur le billet du membre
+//   ("🚌 Bus X") entre le nombre d'inscrits et le QR code. Fichiers
+//   modifiés : deplacements.js, supabase-client.js.
+const CACHE_NAME = 'ul-v140';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
