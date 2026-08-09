@@ -391,6 +391,7 @@ async function openDepl(deplId) {
       }
     } else {
       html += `<div class="info-box success">✅ Paiement confirmé — ton billet est prêt</div>
+        ${monInscrit.bus ? `<div style="text-align:center;font-size:15px;font-weight:600;margin:10px 0;">🚌 Bus ${esc(monInscrit.bus)}</div>` : ''}
         <div class="qr-container" id="qrDepl"></div>
         <p style="text-align:center;font-size:12px;color:var(--gris);">Code: ${monInscrit.qr_code||''}</p>
         ${d.lien_telegram ? `<a href="${esc(d.lien_telegram)}" target="_blank"><button class="btn btn-secondary" style="margin-top:10px;">💬 Groupe Telegram du déplacement</button></a>` : ''}`;
@@ -800,7 +801,13 @@ function renderListeInscritsDepl() {
           ${i.statut_paiement==='en_attente'?'⏳':i.statut_paiement==='liste_attente'?"🕐 Liste d'attente":i.statut_paiement==='paye_cash'?'Cash ✅':i.statut_paiement==='paye_ha'?'HA ✅':LABELS_STATUT_PAIEMENT[i.statut_paiement]||i.statut_paiement}
         </span>
         ${(i.statut_paiement==='paye_cash'||i.statut_paiement==='paye_ha') ? `
-          <span class="badge ${i.present_at?'badge-vert':'badge-orange'}">${i.present_at?'✅ Présent':'⏳ Absent'}</span>` : ''}
+          <span class="badge ${i.present_at?'badge-vert':'badge-orange'}">${i.present_at?'✅ Présent':'⏳ Absent'}</span>
+          <select style="background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:6px 8px;border-radius:8px;font-size:12px;" onchange="assignerBus('${d.id}','${i.id}',this.value)">
+            <option value="" ${!i.bus?'selected':''}>Bus —</option>
+            <option value="A" ${i.bus==='A'?'selected':''}>Bus A</option>
+            <option value="B" ${i.bus==='B'?'selected':''}>Bus B</option>
+            <option value="C" ${i.bus==='C'?'selected':''}>Bus C</option>
+          </select>` : ''}
         ${(i.statut_paiement==='en_attente'||i.statut_paiement==='liste_attente') ? `
           <button class="btn btn-sm btn-success" onclick="validerCash('${d.id}','${i.id}')">Cash</button>
           <button class="btn btn-sm btn-danger" onclick="annulerInscritAdmin('${d.id}','${i.id}')">Annuler</button>` : ''}
@@ -895,6 +902,20 @@ async function basculerVersListeAttente(deplId, inscriptionId) {
     toast('Basculé en liste d\'attente ✅', 'success');
     voirInscritsDepl(deplId);
   } catch(e) { toast(e.message || 'Impossible de basculer cette inscription', 'error'); }
+}
+
+// Affecte un bus à un inscrit payé (demande Remi 30/07/2026, suite à
+// l'ajout d'un 2e bus sur ESTAC Troyes) — affiché ensuite sur son billet
+// (cf. openDepl). Pas de confirmation ni de rechargement complet : le
+// select reflète déjà le nouveau choix, inutile de re-render toute la
+// liste pour un simple changement de valeur.
+async function assignerBus(deplId, inscriptionId, bus) {
+  try {
+    await UL.assignerBus(inscriptionId, bus);
+    const inscrit = _inscritsDeplCourant.find(i => i.id === inscriptionId);
+    if (inscrit) inscrit.bus = bus || null;
+    toast(bus ? `Affecté au bus ${bus} ✅` : 'Bus retiré', 'success');
+  } catch(e) { toast('Impossible d\'affecter le bus', 'error'); }
 }
 
 // Annulation admin d'une inscription en attente de paiement — uniquement
