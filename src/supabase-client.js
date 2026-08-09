@@ -1211,6 +1211,17 @@ async function basculerEnListeAttente(inscriptionId) {
   return { success: true };
 }
 
+// Affecte (ou retire) un bus sur une inscription payée — demande Remi
+// 30/07/2026, suite à l'ajout d'un 2e bus sur ESTAC Troyes. bus vide
+// ("") remet à null (pas d'affectation).
+async function assignerBus(inscriptionId, bus) {
+  const { error } = await sb.from('inscriptions_deplacement')
+    .update({ bus: bus || null })
+    .eq('id', inscriptionId);
+  if (error) throw error;
+  return { success: true };
+}
+
 async function validerPaiementCash(inscriptionId) {
   const { data: inscription, error: fetchError } = await sb.from('inscriptions_deplacement')
     .select('id, membre_id').eq('id', inscriptionId).single();
@@ -2795,7 +2806,7 @@ window.UL = {
   updateSession, getSessionsWithStats, updateInscriptionStatut, getPizzaOrders,
   getDeplacements, getDeplacement, getStatutInscriptionDepl,
   getMonQuotaDepl, getMembresPourAmisDepl, relancerPaiementDeplacement, demanderInscriptionDeplacementHelloAsso,
-  rejoindreListeAttenteDeplacement, debloquerPaiementListeAttente, basculerEnListeAttente,
+  rejoindreListeAttenteDeplacement, debloquerPaiementListeAttente, basculerEnListeAttente, assignerBus,
   getMesAmis, getDemandesAmitieRecues, getDemandesAmitieEnvoyees, repondreDemandeAmitie, annulerDemandeAmitie,
   envoyerDemandeAmitie, rechercherMembrePourAmi,
   validerPaiementCash, validerPaiementHelloAsso, createDeplacement, updateDeplacement, getListeBusTelegram,
