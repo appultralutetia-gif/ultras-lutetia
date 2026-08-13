@@ -665,6 +665,9 @@ const LABELS_STATUT_PAIEMENT = { en_attente: 'En attente', paye_cash: 'Payé (Ca
 let _filtreStatutPaiementDepl = 'tous';
 let _filtreSectionDepl = 'tous';
 let _filtreStatutMembreDepl = 'tous';
+let _filtreBusDepl = 'tous';
+let _rechercheInscritsDepl = '';
+let _rechercheInscritsDeplAvaitFocus = false;
 
 async function voirInscritsDepl(deplId) {
   try {
@@ -675,6 +678,9 @@ async function voirInscritsDepl(deplId) {
     _filtreStatutPaiementDepl = 'tous';
     _filtreSectionDepl = 'tous';
     _filtreStatutMembreDepl = 'tous';
+    _filtreBusDepl = 'tous';
+    _rechercheInscritsDepl = '';
+    _rechercheInscritsDeplAvaitFocus = false;
     renderListeInscritsDepl();
     showModal('modalAdminSession');
   } catch(e) { toast('Impossible de charger les inscrits du déplacement', 'error'); }
@@ -691,21 +697,42 @@ async function voirListeAttenteDepl(deplId) {
 
 function filtrerInscritsDepl(filtre) {
   _filtreInscritsDepl = filtre;
+  _rechercheInscritsDeplAvaitFocus = false;
   renderListeInscritsDepl();
 }
 
 function filtrerStatutPaiementInscritsDepl(val) {
   _filtreStatutPaiementDepl = val;
+  _rechercheInscritsDeplAvaitFocus = false;
   renderListeInscritsDepl();
 }
 
 function filtrerSectionInscritsDepl(val) {
   _filtreSectionDepl = val;
+  _rechercheInscritsDeplAvaitFocus = false;
   renderListeInscritsDepl();
 }
 
 function filtrerStatutMembreInscritsDepl(val) {
   _filtreStatutMembreDepl = val;
+  _rechercheInscritsDeplAvaitFocus = false;
+  renderListeInscritsDepl();
+}
+
+function filtrerBusInscritsDepl(val) {
+  _filtreBusDepl = val;
+  _rechercheInscritsDeplAvaitFocus = false;
+  renderListeInscritsDepl();
+}
+
+// Recherche par nom/prénom/pseudo (demande Remi 31/07/2026) — le rendu
+// complet ci-dessous recrée le champ à chaque frappe (même mécanisme que
+// les selects), donc on remet nous-mêmes le focus + la position du
+// curseur après coup, sinon la recherche perdrait le focus à chaque
+// lettre tapée.
+function rechercherInscritsDepl(val) {
+  _rechercheInscritsDepl = val;
+  _rechercheInscritsDeplAvaitFocus = true;
   renderListeInscritsDepl();
 }
 
@@ -730,6 +757,23 @@ function _inscritsDeplFiltres() {
     else liste = liste.filter(i => i.membre?.section?.nom === _filtreSectionDepl);
   }
   if (_filtreStatutMembreDepl !== 'tous') liste = liste.filter(i => i.membre_id && i.membre?.statut === _filtreStatutMembreDepl);
+  if (_filtreBusDepl !== 'tous') {
+    if (_filtreBusDepl === '__sans_bus__') {
+      const estPaye = i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha';
+      liste = liste.filter(i => estPaye(i) && !i.bus);
+    } else {
+      liste = liste.filter(i => i.bus === _filtreBusDepl);
+    }
+  }
+  if (_rechercheInscritsDepl.trim()) {
+    const q = _rechercheInscritsDepl.trim().toLowerCase();
+    liste = liste.filter(i => {
+      const texte = i.membre_id
+        ? `${i.membre?.prenom||''} ${i.membre?.nom||''} ${i.membre?.pseudo_telegram||''}`
+        : `${i.invite_prenom||''} ${i.invite_nom||''}`;
+      return texte.toLowerCase().includes(q);
+    });
+  }
   return liste;
 }
 
@@ -749,9 +793,16 @@ function renderListeInscritsDepl() {
   // filtré) pour que le menu section reste stable pendant qu'on filtre.
   const sectionsPresentes = [...new Set(_inscritsDeplCourant.map(i => i.membre?.section?.nom).filter(Boolean))].sort();
   const aDesInvitesOuSansSection = _inscritsDeplCourant.some(i => i.membre_id && !i.membre?.section?.nom);
+  // Bus présents parmi tous les inscrits (demande Remi 31/07/2026).
+  const busPresents = [...new Set(_inscritsDeplCourant.map(i => i.bus).filter(Boolean))].sort();
+  const estPayeFn = i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha';
+  const aDesPayesSansBus = _inscritsDeplCourant.some(i => estPayeFn(i) && !i.bus);
 
   document.getElementById('modalAdminSessionContent').innerHTML = `
     <h3 class="modal-title">Inscrits — ${esc(d.adversaire)}</h3>
+    <div class="form-group" style="margin-bottom:8px;">
+      <input type="text" id="inscritsDeplRecherche" placeholder="🔍 Chercher par nom ou prénom..." value="${esc(_rechercheInscritsDepl)}" oninput="rechercherInscritsDepl(this.value)">
+    </div>
     <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
       ${filtreBtn('tous', 'Tous')}
       ${filtreBtn('presents', '✅ Présents')}
@@ -770,6 +821,11 @@ function renderListeInscritsDepl() {
       <select style="flex:1;min-width:140px;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;" onchange="filtrerStatutMembreInscritsDepl(this.value)">
         <option value="tous" ${_filtreStatutMembreDepl==='tous'?'selected':''}>Membre : tous</option>
         ${Object.entries(LABELS_STATUT_MEMBRE).map(([k,l]) => `<option value="${k}" ${_filtreStatutMembreDepl===k?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <select style="flex:1;min-width:140px;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;" onchange="filtrerBusInscritsDepl(this.value)">
+        <option value="tous" ${_filtreBusDepl==='tous'?'selected':''}>Bus : tous</option>
+        ${busPresents.map(b => `<option value="${esc(b)}" ${_filtreBusDepl===b?'selected':''}>Bus ${esc(b)}</option>`).join('')}
+        ${aDesPayesSansBus ? `<option value="__sans_bus__" ${_filtreBusDepl==='__sans_bus__'?'selected':''}>Sans bus</option>` : ''}
       </select>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:12px;">
@@ -818,6 +874,19 @@ function renderListeInscritsDepl() {
       </div>`;
     }).join('')}
   `;
+
+  // Restaure le focus + la position du curseur sur le champ recherche
+  // après le re-rendu complet déclenché par sa propre frappe (cf.
+  // rechercherInscritsDepl) — jamais fait pour un autre filtre, pour ne
+  // pas rouvrir le clavier mobile sans raison.
+  if (_rechercheInscritsDeplAvaitFocus) {
+    const inputRecherche = document.getElementById('inscritsDeplRecherche');
+    if (inputRecherche) {
+      inputRecherche.focus();
+      const pos = inputRecherche.value.length;
+      inputRecherche.setSelectionRange(pos, pos);
+    }
+  }
 }
 
 // Export Telegram (texte copié dans le presse-papier) de la liste
