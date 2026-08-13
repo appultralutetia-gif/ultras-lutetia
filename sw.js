@@ -947,7 +947,16 @@
 //   "Inscrits" (Cellule Déplacement), affiché sur le billet du membre
 //   ("🚌 Bus X") entre le nombre d'inscrits et le QR code. Fichiers
 //   modifiés : deplacements.js, supabase-client.js.
-const CACHE_NAME = 'ul-v140';
+// v141 (30/07/2026) : CACHE_NAME bumpé (v140 → v141) — nouveau type de
+//   session Tifo "Mise en place" (demande Remi, ex: mise en place à
+//   Troyes) — ajouté aux sélecteurs Créer/Modifier une session
+//   (index.html). Exclu de TOUTES les stats Tifo (getStatsTifo,
+//   supabase-client.js), filtré dès la base pour que présences/buckets/
+//   classement/évolution/décrocheurs en aval l'ignorent aussi — reste
+//   visible normalement sur la page Tifos elle-même (liste, inscriptions,
+//   participants), seules les stats l'ignorent. Fichiers modifiés :
+//   index.html, supabase-client.js.
+const CACHE_NAME = 'ul-v141';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
