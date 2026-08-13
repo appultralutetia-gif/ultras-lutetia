@@ -956,7 +956,15 @@
 //   visible normalement sur la page Tifos elle-même (liste, inscriptions,
 //   participants), seules les stats l'ignorent. Fichiers modifiés :
 //   index.html, supabase-client.js.
-const CACHE_NAME = 'ul-v141';
+// v142 (31/07/2026) : CACHE_NAME bumpé (v141 → v142) — liste "Inscrits"
+//   d'un déplacement : nouveau champ de recherche par nom/prénom/pseudo
+//   (avec préservation du focus/curseur entre deux frappes, le rendu de
+//   cette liste étant entièrement recréé à chaque filtre) + nouveau
+//   filtre par bus (A/B/C/Sans bus), combinable avec les filtres
+//   existants et pris en compte par les exports Telegram/CSV. Fichiers
+//   modifiés : deplacements.js, validate.js (nouvel id dynamique
+//   inscritsDeplRecherche).
+const CACHE_NAME = 'ul-v142';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
