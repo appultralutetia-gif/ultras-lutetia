@@ -1497,7 +1497,14 @@ async function getStatsTifo(saison = null) {
   if (celluleTifoRes.error) throw celluleTifoRes.error;
   if (sectionsRes.error) throw sectionsRes.error;
 
-  const sessions = sessionsRes.data || [];
+  // "Mise en place" (logistique tifo, pas une vraie session de
+  // confection) exclue de TOUTES les stats — demande Remi 30/07/2026.
+  // Filtrée ici, à la base : tout ce qui en dérive plus bas (présences,
+  // buckets, classement, évolution, décrocheurs...) l'exclut donc aussi
+  // automatiquement. Reste visible normalement sur la page Tifos
+  // elle-même (liste à venir/historique, inscriptions, participants) —
+  // seules les STATS l'ignorent.
+  const sessions = (sessionsRes.data || []).filter(s => s.type_session !== 'Mise en place');
   const sessionIds = new Set(sessions.map(s => s.id));
   const inscriptions = (inscriptionsRes.data || []).filter(i => sessionIds.has(i.session_id));
   const population = popRes.data || [];
