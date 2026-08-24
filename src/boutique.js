@@ -69,13 +69,18 @@ function renderMatos(produits) {
         stockBadge = '';
       }
     } else {
-      stockBadge = p.stock <= 3 && p.stock > 0
+      // Stock réellement disponible (demande Remi 31/07/2026) — cf.
+      // _attacherStockRestant (supabase-client.js) : p.stock reste le
+      // stock configuré par l'admin, p._stockRestant en déduit les
+      // commandes déjà passées (tous statuts sauf refusé/annulé).
+      const restant = p._stockRestant ?? p.stock;
+      stockBadge = restant <= 3 && restant > 0
         ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
-        : p.stock === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
+        : restant === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
     }
     const sectionBadge = p.section
       ? `<span class="badge badge-bleu" style="font-size:10px;">Section ${p.section.nom}</span>` : '';
-    const peutCommander = (p.stock > 0 || p.mode === 'precommande') && precommandeOuverte;
+    const peutCommander = ((p._stockRestant ?? p.stock) > 0 || p.mode === 'precommande') && precommandeOuverte;
     return `<div class="produit-card">
       <div class="produit-img">${p.photo_url ? `<img src="${p.photo_url}" alt="${esc(p.nom)}">` : icones[p.categorie] || '📦'}</div>
       <div class="produit-info">
@@ -127,7 +132,7 @@ async function openCommander(produitId) {
         <div>
           <div style="font-size:24px;font-family:'Bebas Neue',sans-serif;color:var(--bleu-clair);">${p.prix}€</div>
           <div style="font-size:12px;color:var(--gris);">${p.categorie}${p.mode==='precommande'?' · Précommande':''}</div>
-          ${p.stock > 0 ? `<div style="font-size:12px;color:var(--vert);">Stock: ${p.stock}</div>` : `<div style="font-size:12px;color:var(--orange);">Précommande</div>`}
+          ${(p._stockRestant ?? p.stock) > 0 ? `<div style="font-size:12px;color:var(--vert);">Stock: ${p._stockRestant ?? p.stock}</div>` : `<div style="font-size:12px;color:var(--orange);">Précommande</div>`}
         </div>
       </div>
       ${p.description ? `<p style="font-size:13px;color:var(--gris);margin-bottom:14px;line-height:1.6;">${esc(p.description)}</p>` : ''}
@@ -169,7 +174,7 @@ function changerQuantiteCommande(delta) {
   const input = document.getElementById('cmdQuantite');
   const affichage = document.getElementById('cmdQuantiteAffichage');
   let max = 99;
-  if (p.mode !== 'precommande' && p.stock > 0) max = Math.min(max, p.stock);
+  if (p.mode !== 'precommande' && (p._stockRestant ?? p.stock) > 0) max = Math.min(max, p._stockRestant ?? p.stock);
   if (p.quota_par_membre) max = Math.min(max, p.quota_par_membre);
   const nouvelle = Math.max(1, Math.min(max, (parseInt(input.value) || 1) + delta));
   input.value = nouvelle;
@@ -1089,9 +1094,13 @@ function renderMatosAdmin(produits) {
         stockBadge = `<span class="badge badge-bleu" style="font-size:10px;">Précommande en cours</span>`;
       }
     } else {
-      stockBadge = p.stock <= 3 && p.stock > 0
+      // Même stock restant que côté membre (demande Remi 31/07/2026) —
+      // cf. _attacherStockRestant (supabase-client.js). Sans ça, l'admin
+      // voyait "3 en stock" alors que les 3 étaient déjà commandées.
+      const restant = p._stockRestant ?? p.stock;
+      stockBadge = restant <= 3 && restant > 0
         ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
-        : p.stock === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
+        : restant === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
     }
     const sectionBadge = p.section
       ? `<span class="badge badge-bleu" style="font-size:10px;">Section ${esc(p.section.nom)}</span>` : '';
@@ -1099,11 +1108,15 @@ function renderMatosAdmin(produits) {
       ? `<span class="badge badge-rouge" style="font-size:10px;">Archivé</span>` : '';
     const brouillonBadge = p.visible_membres === false
       ? `<span class="badge badge-rouge" style="font-size:10px;">🔒 Brouillon</span>` : '';
+    // "Stock" reste le chiffre configuré (celui que 📦 Stock modifie) —
+    // le restant réellement disponible est précisé à côté quand il diffère.
+    const stockDetail = p.mode !== 'precommande' && p._stockRestant !== undefined && p._stockRestant !== p.stock
+      ? ` (${p._stockRestant} restant${p._stockRestant>1?'s':''})` : '';
     return `<div class="produit-card">
       <div class="produit-img">${p.photo_url ? `<img src="${p.photo_url}" alt="${esc(p.nom)}">` : icones[p.categorie] || '📦'}</div>
       <div class="produit-info">
         <div class="produit-nom">${esc(p.nom)}</div>
-        <div class="produit-prix">${p.prix}€ · Stock: ${p.stock} · Lot de 1</div>
+        <div class="produit-prix">${p.prix}€ · Stock: ${p.stock}${stockDetail} · Lot de 1</div>
         <div class="produit-meta">
           ${labelTypeTailles(p.type_tailles) ? `• ${labelTypeTailles(p.type_tailles)}` : ''}
           ${p.quota_par_membre ? `• Quota: ${p.quota_par_membre} max` : ''}
