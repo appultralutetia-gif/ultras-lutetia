@@ -964,7 +964,20 @@
 //   existants et pris en compte par les exports Telegram/CSV. Fichiers
 //   modifiés : deplacements.js, validate.js (nouvel id dynamique
 //   inscritsDeplRecherche).
-const CACHE_NAME = 'ul-v142';
+// v143 (31/07/2026) : CACHE_NAME bumpé (v142 → v143) — bug corrigé
+//   (demande Remi, cas "Les lunettes" stock=3, 3 commandes déjà passées,
+//   bouton "Commander" resté actif) : p.stock n'était décrémenté qu'au
+//   passage en statut "distribué" (remise physique), jamais au moment de
+//   la commande/du paiement — donc tant que rien n'était distribué, le
+//   stock affiché restait plein quel que soit le nombre de commandes en
+//   cours. Nouveau calcul _stockRestant (stock configuré − quantité déjà
+//   commandée, tous statuts sauf refusé/annulé) dans
+//   _attacherStockRestant, utilisé par le catalogue membre (badge,
+//   bouton Commander, borne de quantité) ET par la fiche admin (même
+//   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
+//   serveur dans passerCommande (paiement cash) au cas où l'affichage
+//   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
+const CACHE_NAME = 'ul-v143';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
