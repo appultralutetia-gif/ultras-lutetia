@@ -2058,6 +2058,40 @@ async function annulerPresenceMatch(matchId) {
 // BOUTIQUE — MATOS
 // ============================================================
 
+// Calcule le stock réellement disponible pour une liste de produits =
+// stock configuré − quantité déjà commandée, tous statuts sauf refusé/
+// annulé (y compris "en attente", pour ne pas permettre de survendre
+// pendant qu'un paiement cash est en cours de validation) — demande
+// Remi 31/07/2026, cas "Les lunettes" (stock=3, 3 commandes déjà
+// passées, bouton "Commander" resté actif car seul le passage en
+// "distribué" décrémentait jusque-là p.stock, cf. updateCommandeStatut).
+// Calculé à la volée plutôt que stocké, pour ne dépendre d'aucun webhook
+// externe (HelloAsso) : le décompte reste juste quel que soit le canal
+// de paiement. Attache _stockRestant directement sur chaque produit
+// (mode 'stock' uniquement — la précommande n'a pas cette notion).
+async function _attacherStockRestant(produits) {
+  const idsEnStock = produits.filter(p => p.mode !== 'precommande').map(p => p.id);
+  if (!idsEnStock.length) return produits;
+  const { data: items, error } = await sb.from('commande_items')
+    .select('produit_id, quantite, commande:commandes!inner(statut)')
+    .in('produit_id', idsEnStock);
+  if (error) {
+    console.error('[UL] _attacherStockRestant — erreur:', error.message);
+    return produits;
+  }
+  const venduParProduit = {};
+  for (const it of (items || [])) {
+    if (it.commande?.statut === 'refuse' || it.commande?.statut === 'annulee') continue;
+    venduParProduit[it.produit_id] = (venduParProduit[it.produit_id] || 0) + (it.quantite || 0);
+  }
+  for (const p of produits) {
+    if (p.mode !== 'precommande') {
+      p._stockRestant = Math.max(0, (p.stock || 0) - (venduParProduit[p.id] || 0));
+    }
+  }
+  return produits;
+}
+
 async function getProduits() {
   const membre = currentMembre;
   if (!membre) return [];
@@ -2070,7 +2104,7 @@ async function getProduits() {
     .eq('statut', 'disponible')
     .order('nom');
   if (error) throw error;
-  return (data || []).filter(p => {
+  const produitsVisibles = (data || []).filter(p => {
     // Précommande terminée = archivée (demande Remi 22/07/2026) : plus
     // visible dans le catalogue membre du tout, quel que soit le statut
     // ou visible_membres — seul l'onglet "Historique" de l'admin y donne
@@ -2089,6 +2123,7 @@ async function getProduits() {
     }
     return false;
   });
+  return _attacherStockRestant(produitsVisibles);
 }
 
 // Articles Matos dont la précommande est terminée — réservé à l'admin,
@@ -2111,6 +2146,7 @@ async function getProduitById(id) {
     .select('*, section:sections(id, nom)')
     .eq('id', id).single();
   if (error) throw error;
+  await _attacherStockRestant([data]);
   return data;
 }
 
@@ -2137,6 +2173,13 @@ async function passerCommande(produitId, taille, quantite = 1) {
   if (!produit) throw new Error('Article introuvable');
   if (produit.mode === 'precommande') {
     throw new Error('Le paiement Cash n\'est pas disponible pour une précommande — utilise HelloAsso');
+  }
+  // Sécurité complémentaire (demande Remi 31/07/2026, cas "Les lunettes")
+  // : le bouton est déjà masqué côté catalogue quand le stock restant
+  // est à 0, mais on revérifie ici au cas où l'affichage serait périmé
+  // (quelqu'un d'autre a pris la dernière unité entre-temps).
+  if ((produit._stockRestant ?? produit.stock ?? 0) < quantite) {
+    throw new Error('Stock insuffisant — il ne reste plus assez d\'unités disponibles.');
   }
   if (produit.quota_par_membre) {
     // Corrigé (22/07/2026, cas Brahim Bennais/Tour de Cou) : le quota
