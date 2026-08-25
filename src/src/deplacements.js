@@ -1,0 +1,1578 @@
+// ─── DÉPLACEMENTS ─────────────────────────────────────────────
+async function loadDeplacements() {
+  document.getElementById('deplacementsListe').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+  try {
+    // ⚠️ Refonte 09/07/2026 (demande Remi) : le découpage à venir/historique
+    // se fait par STATUT effectif, pas par date — un déplacement "Fermé"
+    // (ou "Annulé") va dans l'historique même si sa date est encore dans
+    // le futur (ex: fermé manuellement en avance). Un seul appel (tous,
+    // sans filtre de date), partitionné ensuite en JS.
+    const tous = await UL.getDeplacements(false);
+    const aVenir = tous.filter(d => !estHistoriqueDepl(d));
+    const historique = tous.filter(estHistoriqueDepl);
+
+    // Ouverts en premier dans "à venir" (le seul groupe qui peut encore
+    // contenir un mélange ouvert/complet), chronologique dans chaque cas.
+    aVenir.sort((a, b) => {
+      const ao = statutEffectifDepl(a) === 'ouvert' ? 0 : 1;
+      const bo = statutEffectifDepl(b) === 'ouvert' ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      return (a.date_match || '').localeCompare(b.date_match || '');
+    });
+    historique.sort((a, b) => (b.date_match || '').localeCompare(a.date_match || '')); // plus récent d'abord
+
+    document.getElementById('deplacementsListe').innerHTML = aVenir.length
+      ? aVenir.map(d => renderDeplCard(d)).join('')
+      : '<div class="empty-state"><div>✈️</div>Aucun déplacement à venir</div>';
+    document.getElementById('deplacementsHistorique').innerHTML = historique.length
+      ? historique.map(d => renderDeplCard(d)).join('')
+      : '<div class="empty-state"><div>📋</div>Aucun historique</div>';
+  } catch(e) { toast('Erreur chargement déplacements', 'error'); }
+}
+
+// Statut EFFECTIF d'un déplacement (demande Remi 09/07/2026) : une fois
+// la date du match échue, le déplacement doit se comporter comme "fermé"
+// même si le champ statut est resté à "ouvert" OU "complet" en base —
+// jamais appliqué à "annulé" (un déplacement annulé reste annulé, la
+// date ne change rien à ça). Purement calculé à l'affichage : ne modifie
+// rien en base.
+function statutEffectifDepl(d) {
+  const matchPasse = !!d.date_match && d.date_match < new Date().toISOString().split('T')[0];
+  if (matchPasse && (d.statut === 'ouvert' || d.statut === 'complet')) {
+    return 'ferme';
+  }
+  return d.statut;
+}
+
+// Un déplacement va dans "Historique" dès que son statut effectif est
+// "fermé" ou "annulé" — qu'importe si sa date est encore dans le futur
+// (ex: fermé manuellement en avance par le Bureau) ou déjà passée.
+// "Ouvert" et "complet" (tant que la date n'est pas dépassée) restent
+// dans "À venir".
+function estHistoriqueDepl(d) {
+  const s = statutEffectifDepl(d);
+  return s === 'ferme' || s === 'annule';
+}
+
+// Calcule le statut de paiement du membre courant pour un déplacement, à
+// partir de son inscription (ou son absence). Centralisé ici pour être
+// utilisé à la fois par la carte de liste (renderDeplCard) et la modal de
+// détail (openDepl) — éviter que les deux affichages divergent un jour.
+// ⚠️ Avec l'ajout du statut 'refuse' (paiement HelloAsso refusé), on ne
+// peut plus se contenter de "!== 'en_attente'" pour détecter un paiement
+// confirmé — un paiement refusé n'est pas 'en_attente' mais n'est pas
+// payé non plus. On distingue explicitement les 3 cas.
+function calculerStatutPaiementDepl(monInscrit) {
+  const estInscrit = !!monInscrit;
+  const estPaye = !!monInscrit && (monInscrit.statut_paiement === 'paye_cash' || monInscrit.statut_paiement === 'paye_ha');
+  const estRefuse = !!monInscrit && monInscrit.statut_paiement === 'refuse';
+  // Bus déjà complet au moment de l'inscription (demande Remi 27/07/2026)
+  // — cf. rejoindreListeAttenteDeplacement (supabase-client.js).
+  const estListeAttente = !!monInscrit && monInscrit.statut_paiement === 'liste_attente';
+  return { estInscrit, estPaye, estRefuse, estListeAttente };
+}
+
+// Un Visiteur ne peut pas s'inscrire/payer un déplacement tant que le
+// Comité de passage ne l'a pas validé individuellement (demande Remi
+// 30/07/2026, même principe que cartage_valide_visiteur) — cf.
+// validerDeplacementsVisiteur (supabase-client.js), bouton "🔓 Débloquer
+// les déplacements" côté Comité de passage (admin.js).
+// ⚠️ Ne bloque QUE les actions de paiement (M'inscrire/Payer maintenant/
+// Réessayer/Rejoindre la liste d'attente) — jamais un état déjà acquis
+// (payé, ou déjà en liste d'attente), pour ne pas masquer une inscription
+// existante à quelqu'un qui n'avait pas besoin de validation pour agir
+// (leçon tirée du blocage cartage : ne jamais bloquer rétroactivement un
+// état déjà acquis).
+function visiteurDeplVerrouille(m) {
+  return m?.statut === 'visiteur' && !m?.deplacements_valide_visiteur;
+}
+
+// Le champ date_limite_inscription existait déjà en base et était affiché
+// en simple texte informatif ("⏳ Limite: ..."), sans jamais bloquer
+// réellement une nouvelle inscription une fois la date passée (05/07/2026,
+// même chantier que les plages de précommande Matos/Sticks — demande
+// Remi : auto-fermeture à la date). Optionnel : un déplacement sans date
+// limite reste ouvert sans limite, comportement inchangé.
+// ⚠️ Complété le 09/07/2026 : ferme aussi une fois la date du MATCH elle-
+// même dépassée, même sans date_limite_inscription renseignée — sinon un
+// déplacement passé, affiché dans l'historique (cf. estHistoriqueDepl),
+// montrerait encore un bouton "M'inscrire" pour un bus déjà parti.
+function inscriptionsDeplFermees(d) {
+  const dateLimitePassee = !!d.date_limite_inscription && new Date() > new Date(d.date_limite_inscription);
+  const matchDejaPasse = !!d.date_match && d.date_match < new Date().toISOString().split('T')[0];
+  return dateLimitePassee || matchDejaPasse;
+}
+
+// Accès échelonné par statut (demande Remi 09/07/2026) : un Confirmé peut
+// avoir accès en avance par rapport à un Draft, lui-même avant un
+// Sympathisant. Un déplacement sans date configurée pour un statut donné
+// reste ouvert sans restriction pour ce statut (comportement par défaut
+// inchangé si Remi ne remplit rien) — seule une date FUTURE bloque.
+function champOuverturePourStatut(statut) {
+  if (statut === 'confirme') return 'ouverture_confirme';
+  if (statut === 'draft') return 'ouverture_draft';
+  if (statut === 'visiteur') return 'ouverture_visiteur';
+  return 'ouverture_sympathisant'; // sympathisant, ou tout statut non prioritaire
+}
+// Les dates d'ouverture (datetime-local) étaient envoyées telles quelles
+// à la base, sans passer par un objet Date — Postgres les stockait alors
+// en interprétant la chaîne "naïve" (ex. "2026-07-23T09:00", sans fuseau)
+// comme de l'UTC, alors que Rémi la saisit en heure de Paris. Résultat :
+// un décalage de 1h (hiver, CET = UTC+1) ou 2h (été, CEST = UTC+2) entre
+// l'heure saisie et l'heure réellement appliquée (demande Remi
+// 22/07/2026). new Date(valeur) interprète correctement la chaîne comme
+// heure LOCALE du navigateur (le fuseau du navigateur, Europe/Paris pour
+// cette app), gérant nativement le passage heure d'été/hiver — pas de
+// calcul de décalage à faire à la main.
+function datetimeLocalVersUTC(valeur) {
+  return valeur ? new Date(valeur).toISOString() : null;
+}
+// Inverse : reformate une date stockée (UTC) en chaîne locale compatible
+// avec un input datetime-local, pour que le formulaire de modification
+// réaffiche bien l'heure de Paris telle que saisie à l'origine — pas
+// l'heure UTC brute (ancien bug : simple slice(0,16) sur la valeur ISO).
+function utcVersDatetimeLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function inscriptionPasEncoreOuvertePourMoi(d) {
+  const m = UL.getCurrentMembre();
+  // Admin/Bureau/Cellule Déplacement peuvent toujours prendre leur place,
+  // même avant l'ouverture échelonnée correspondant à leur propre statut
+  // et même sur un déplacement en brouillon — utile pour tester un
+  // paiement avant publication (demande Remi 22/07/2026). La visibilité
+  // des brouillons pour ce même groupe existait déjà (getDeplacements) ;
+  // seule cette restriction d'horaire les bloquait encore.
+  if (hasCelluleDepl(m)) return false;
+  const champ = champOuverturePourStatut(m?.statut);
+  const dateOuverture = d[champ];
+  if (!dateOuverture) return false; // pas de restriction configurée pour ce statut
+  return new Date() < new Date(dateOuverture);
+}
+
+// Affiche systématiquement les dates d'ouverture échelonnée configurées
+// (12/07/2026, demande Remi) — jusqu'ici, la date n'était visible QUE
+// tant que ce n'était pas encore ouvert pour le membre courant ; une fois
+// l'ouverture passée, plus aucune trace de quand elle avait eu lieu.
+// N'affiche que les paliers réellement configurés (au moins une des 3
+// dates) ; vide si Remi n'a rien renseigné (comportement neutre inchangé
+// pour les déplacements sans accès échelonné).
+function formatEchelonnementDepl(d) {
+  const paliers = [
+    { label: 'Confirmés', date: d.ouverture_confirme },
+    { label: 'Draft', date: d.ouverture_draft },
+    { label: 'Sympathisants', date: d.ouverture_sympathisant },
+    { label: 'Visiteur', date: d.ouverture_visiteur },
+  ].filter(p => p.date);
+  if (!paliers.length) return '';
+  const fmt = iso => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return paliers.map(p => `${p.label} dès le ${fmt(p.date)}`).join(' · ');
+}
+
+function renderDeplCard(d) {
+  const m = UL.getCurrentMembre();
+  const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}) : '';
+  // Le nombre de places affiché ne doit compter que les inscriptions
+  // réellement PAYÉES (demande Remi 23/07/2026) — un paiement HelloAsso
+  // jamais finalisé (checkout abandonné) réservait visuellement une
+  // place alors qu'elle n'était pas vraiment prise.
+  const pct = d.places_max ? Math.min(100, Math.round(((d._inscritsPayes||0)/d.places_max)*100)) : 0;
+  const { estInscrit, estPaye, estRefuse, estListeAttente } = calculerStatutPaiementDepl(d.monInscrit);
+  const estPresent = !!d.monInscrit?.present_at;
+  // Complet = capacité atteinte par les payés (demande Remi 27/07/2026,
+  // suite au surbook ESTAC Troyes) — sert à basculer automatiquement une
+  // nouvelle inscription vers la liste d'attente plutôt que le paiement
+  // (cf. doInscritDepl), et à adapter le libellé du bouton en conséquence.
+  const busComplet = !!d.places_max && (d._inscritsPayes||0) >= d.places_max;
+  const verrouilleVisiteur = visiteurDeplVerrouille(m);
+
+  // Bouton d'action directement visible sur la carte, sans devoir l'ouvrir —
+  // reflète le même statut que la modal de détail (cf. openDepl). Le
+  // stopPropagation empêche le clic sur le bouton de déclencher en plus
+  // l'ouverture de la modal (la carte entière reste cliquable pour le détail).
+  let boutonAction;
+  if (estListeAttente) {
+    boutonAction = `<span class="badge badge-orange">🕐 Sur liste d'attente — bus complet, paiement impossible pour le moment</span>`;
+  } else if (!estInscrit) {
+    if (inscriptionsDeplFermees(d)) {
+      boutonAction = `<span class="badge badge-gris">⏳ Inscriptions terminées</span>`;
+    } else if (verrouilleVisiteur) {
+      boutonAction = `<span class="badge badge-gris">🔒 Contacter le Comité de passage</span>`;
+    } else if (inscriptionPasEncoreOuvertePourMoi(d)) {
+      const dateOuv = d[champOuverturePourStatut(m?.statut)];
+      boutonAction = `<span class="badge badge-gris">🔒 Ouverture le ${new Date(dateOuv).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span>`;
+    } else if (busComplet) {
+      boutonAction = `<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();showConfirmInscriptionDepl('${d.id}')">🕐 Rejoindre la liste d'attente</button>`;
+    } else {
+      boutonAction = `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();showConfirmInscriptionDepl('${d.id}')">M'inscrire</button>`;
+    }
+  } else if (estRefuse) {
+    // Conditionné à la capacité restante (demande Remi 27/07/2026, même
+    // logique que "Payer maintenant" ci-dessous) : un paiement refusé ne
+    // doit pas pouvoir être retenté si le bus est complet entre-temps.
+    // Conditionné aussi au verrou Visiteur (30/07/2026).
+    boutonAction = verrouilleVisiteur
+      ? `<span class="badge badge-gris">🔒 Contacter le Comité de passage</span>`
+      : busComplet
+      ? `<span class="badge badge-rouge">❌ Paiement refusé — bus complet</span>`
+      : `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">❌ Réessayer le paiement</button>`;
+  } else if (!estPaye) {
+    // Corrigé (demande Remi 23/07/2026) : tant que payé, pas inscrit —
+    // même règle que le détail ci-dessus. Bouton ajouté le 27/07/2026
+    // (demande Remi), puis conditionné à la capacité restante le même
+    // jour : si le bus est redevenu complet entre-temps (une autre place
+    // a été prise), pas question de laisser payer une place qui n'existe
+    // plus — même logique que le blocage à l'inscription (doInscritDepl).
+    // Conditionné aussi au verrou Visiteur (30/07/2026).
+    boutonAction = verrouilleVisiteur
+      ? `<span class="badge badge-gris">🔒 Contacter le Comité de passage</span>`
+      : busComplet
+      ? `<span class="badge badge-rouge">❌ Non inscrit — bus complet</span>`
+      : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();doInscritDepl('${d.id}',this)">💳 Payer maintenant</button>`;
+  } else {
+    // Badge présence affiché uniquement une fois le paiement confirmé — un
+    // membre non payé ne peut de toute façon pas avoir été scanné présent
+    // (confirmerPresenceDeplacement bloque le scan sans paiement, sauf
+    // force=true côté admin, cf. supabase-client.js).
+    boutonAction = `<span class="badge badge-vert">✅ Payé</span> <span class="badge ${estPresent?'badge-vert':'badge-orange'}">${estPresent?'✅ Présent':'⏳ Pas encore présent'}</span>`;
+  }
+
+  // Barre de places + boutons admin bus
+  // Aperçu équilibre (12/07/2026) — visible seulement par la cellule
+  // Déplacement, uniquement si coût bus + places max sont renseignés.
+  // Recalculé à l'affichage de la carte, indépendant du formulaire.
+  let equilibreApercu = '';
+  if (hasCelluleDepl(m) && d.cout_bus && d.places_max) {
+    const seuil = d.cout_bus / d.places_max;
+    const auDessus = (d.prix_bus || 0) >= seuil;
+    equilibreApercu = `<div style="font-size:11px;color:var(--gris);margin-top:6px;">🎯 Seuil ${seuil.toFixed(1)}€/place ${auDessus ? '✅' : '⚠️'} ${d.distance_km ? `· 🛣️ ${d.distance_km}km A/R` : ''}</div>`;
+    // Manque pour l'équilibre + bénéfice/perte RÉEL au nombre d'inscrits
+    // payés actuel (demande Remi 22/07/2026) — jusqu'ici seul le scénario
+    // "bus plein" était visible (dans le détail, pas sur la carte). Basé
+    // uniquement sur prix_bus, jamais prix_place (le prix de la place ne
+    // sert pas à couvrir le coût du bus — précisé par Remi).
+    if (d.prix_bus) {
+      const seuilPersonnes = d.cout_bus / d.prix_bus;
+      const inscritsPayes = d._inscritsPayes || 0;
+      const manque = Math.max(0, Math.ceil(seuilPersonnes) - inscritsPayes);
+      const beneficeActuel = (inscritsPayes * d.prix_bus) - d.cout_bus;
+      const enPerte = beneficeActuel < 0;
+      equilibreApercu += `<div style="font-size:11px;color:${manque > 0 ? 'var(--orange)' : 'var(--vert)'};margin-top:2px;">${manque > 0 ? `⚠️ Encore ${manque} personne${manque>1?'s':''} pour l'équilibre` : '✅ Équilibre atteint'}</div>`;
+      equilibreApercu += `<div style="font-size:11px;color:${enPerte ? 'var(--rouge)' : 'var(--vert)'};margin-top:2px;">${enPerte ? `📉 Perte actuelle : ${Math.abs(beneficeActuel).toFixed(0)}€` : `📈 Bénéfice actuel : ${beneficeActuel.toFixed(0)}€`} (${inscritsPayes} payé${inscritsPayes>1?'s':''})</div>`;
+    }
+  }
+  const adminBar = hasCelluleDepl(m) ? `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();voirInscritsDepl('${d.id}')">👥 Inscrits</button>
+      <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();copierListeBus('${d.id}')">📋 Liste bus</button>
+      <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ouvrirModifierDepl('${d.id}')">✏️ Modifier</button>
+      <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ouvrirStatsDepl('${d.id}')">📊 Stats</button>
+      <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();voirListeAttenteDepl('${d.id}')">🕐 Liste d'attente${d._inscritsListeAttente > 0 ? ` (${d._inscritsListeAttente})` : ''}</button>
+    </div>${equilibreApercu}` : '';
+
+  return `<div class="depl-card" onclick="openDepl('${d.id}')">
+    ${d.visible_membres === false ? `<div style="margin-bottom:6px;"><span class="badge badge-rouge">🔒 Brouillon — invisible pour les membres</span></div>` : ''}
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+      <div style="flex:1;min-width:0;">
+        <div class="depl-match">${esc(d.adversaire || d.match?.equipe_domicile || '?')} — Paris FC</div>
+        <div class="depl-infos">
+          ${date ? `<span>📅 ${date}</span>` : ''}
+          ${d.stade||d.match?.stade ? `<span>📍 ${d.stade||d.match?.stade}</span>` : ''}
+          ${d.prix_total ? `<span>💶 ${d.prix_total}€</span>` : ''}
+          ${d.places_max ? `<span>🪑 ${d.places_max} places</span>` : ''}
+        </div>
+      </div>
+      <span class="badge ${statutEffectifDepl(d)==='ouvert'?'badge-vert':statutEffectifDepl(d)==='complet'?'badge-rouge':'badge-gris'}" style="flex-shrink:0;margin-top:2px;">
+        ${statutEffectifDepl(d)==='ouvert'?'Ouvert':statutEffectifDepl(d)==='complet'?'Complet':statutEffectifDepl(d)==='ferme'?'Fermé':'Annulé'}
+      </span>
+    </div>
+    ${d.places_max ? `
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+      <div class="places-bar" style="flex:1;"><div class="places-fill" style="width:${pct}%"></div></div>
+      <span style="font-size:11px;color:var(--gris);flex-shrink:0;">${d._inscritsPayes||0}/${d.places_max}</span>
+    </div>` : ''}
+    ${d._inscritsListeAttente > 0 ? `<div style="font-size:11px;color:var(--orange);margin-top:4px;">🕐 ${d._inscritsListeAttente} en liste d'attente</div>` : ''}
+    ${formatEchelonnementDepl(d) ? `<div style="font-size:11px;color:var(--gris);margin-top:6px;">📅 ${formatEchelonnementDepl(d)}</div>` : ''}
+    <div style="margin-top:10px;">${boutonAction}</div>
+    ${adminBar}
+  </div>`;
+}
+
+async function openDepl(deplId) {
+  currentDeplId = deplId;
+  const m = UL.getCurrentMembre();
+  try {
+    const { deplacement: d, inscrits, monInscrit, nbInscrits } = await UL.getDeplacement(deplId);
+    const { estInscrit, estPaye, estRefuse, estListeAttente } = calculerStatutPaiementDepl(monInscrit);
+    const date = d.date_match ? new Date(d.date_match).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}) : '';
+    let html = `
+      <h3 class="modal-title">${esc(d.adversaire||d.match?.equipe_domicile||'?')} — Paris FC</h3>
+      <div style="color:var(--gris);font-size:14px;margin-bottom:16px;line-height:2.2;">
+        ${date ? `📅 ${date}<br>` : ''}
+        ${d.stade||d.match?.stade ? `🏟️ ${d.stade||d.match?.stade}<br>` : ''}
+        ${d.ville ? `📍 ${d.ville}<br>` : ''}
+        ${d.point_rdv ? `🚌 RDV: ${d.point_rdv}<br>` : ''}
+        ${d.heure_depart && (estPaye || hasCelluleDepl(m)) ? `⏰ Heure de RDV: ${d.heure_depart}<br>` : ''}
+        ${d.heure_depart && !estPaye && !hasCelluleDepl(m) ? `🔒 Heure de RDV visible une fois inscrit<br>` : ''}
+        ${d.prix_total ? `💶 ${d.prix_total}€ (bus + entrée)<br>` : ''}
+        ${d.distance_km ? `🛣️ ${d.distance_km}km A/R<br>` : ''}
+        ${d.date_limite_inscription ? `⏳ Limite: ${new Date(d.date_limite_inscription).toLocaleDateString('fr-FR')}<br>` : ''}
+        ${formatEchelonnementDepl(d) ? `📅 Ouverture : ${formatEchelonnementDepl(d)}<br>` : ''}
+      </div>
+      ${hasCelluleDepl(m) && (d.cout_bus || d.prix_bus) ? `
+      <div class="info-box" style="font-size:12px;margin-bottom:16px;">
+        🎯 <strong>Détail cellule</strong><br>
+        ${d.prix_bus != null ? `Prix bus: ${d.prix_bus}€ + Prix place: ${d.prix_place ?? 10}€<br>` : ''}
+        ${d.cout_bus ? `Coût devis bus: ${d.cout_bus}€<br>` : ''}
+        ${d.cout_bus && d.places_max ? (() => {
+          const seuil = d.cout_bus / d.places_max;
+          const benef = ((d.prix_bus || 0) - seuil) * d.places_max;
+          return `Seuil équilibre: ${seuil.toFixed(1)}€/place — ${(d.prix_bus||0) >= seuil ? `✅ bénéf. plein bus ${benef.toFixed(0)}€` : `⚠️ perte plein bus ${benef.toFixed(0)}€`}`;
+        })() : ''}
+      </div>` : ''}
+      ${(() => {
+        // Même règle que la carte (demande Remi 23/07/2026) : le nombre
+        // de places affiché ne compte que les inscriptions PAYÉES, pas
+        // les paiements en attente jamais finalisés.
+        const nbPayes = inscrits.filter(i => i.statut_paiement === 'paye_ha' || i.statut_paiement === 'paye_cash').length;
+        return `<div style="font-size:14px;margin-bottom:16px;font-weight:600;">👥 ${nbPayes} inscrit${nbPayes>1?'s':''}${d.places_max?' / '+d.places_max+' places':''}</div>`;
+      })()}`;
+
+    const busCompletDetail = !!d.places_max && (d._inscritsPayes||0) >= d.places_max;
+    const verrouilleVisiteur = visiteurDeplVerrouille(m);
+    if (estListeAttente) {
+      html += `<div class="info-box">🕐 Sur liste d'attente — bus complet, paiement impossible pour le moment. On te recontacte si une place se libère ou si un 2ᵉ bus est ajouté.</div>`;
+    } else if (!estInscrit) {
+      const busComplet = busCompletDetail;
+      if (inscriptionsDeplFermees(d)) {
+        html += `<div class="info-box">⏳ Les inscriptions sont terminées pour ce déplacement.</div>`;
+      } else if (verrouilleVisiteur) {
+        html += `<div class="info-box">🔒 Contacte un membre du Comité de passage pour débloquer ton accès aux déplacements.</div>`;
+      } else if (inscriptionPasEncoreOuvertePourMoi(d)) {
+        const dateOuv = d[champOuverturePourStatut(m?.statut)];
+        html += `<div class="info-box">🔒 Ouverture de tes inscriptions le ${new Date(dateOuv).toLocaleDateString('fr-FR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})}</div>`;
+      } else if (busComplet) {
+        html += `<div class="info-box">🕐 Bus complet — inscris-toi en liste d'attente, on te recontacte si une place se libère ou si un 2ᵉ bus est ajouté.</div>
+          <button class="btn btn-secondary" onclick="showConfirmInscriptionDepl('${d.id}')">Rejoindre la liste d'attente</button>`;
+      } else {
+        html += `<button class="btn btn-primary" onclick="showConfirmInscriptionDepl('${d.id}')">M'inscrire</button>`;
+      }
+    } else if (estRefuse) {
+      // Conditionné à la capacité restante (demande Remi 27/07/2026, même
+      // logique que le cas "paiement en cours" ci-dessous). Conditionné
+      // aussi au verrou Visiteur (30/07/2026).
+      if (verrouilleVisiteur) {
+        html += `<div class="info-box error">❌ Paiement refusé — contacte un membre du Comité de passage pour débloquer ton accès</div>`;
+      } else if (busCompletDetail) {
+        html += `<div class="info-box error">❌ Paiement refusé — bus complet, nouvelle tentative impossible pour le moment</div>`;
+      } else {
+        html += `<div class="info-box error">❌ Paiement refusé</div>
+          <button class="btn btn-primary" onclick="doInscritDepl('${d.id}',this)">Réessayer le paiement</button>`;
+      }
+    } else if (!estPaye) {
+      // Corrigé (demande Remi 23/07/2026) : tant que le paiement n'est
+      // pas confirmé, la personne n'est PAS inscrite — l'ancien libellé
+      // "Inscrit — paiement en cours" était trompeur (déjà exclu du
+      // comptage de places, cf. _inscritsPayes, mais le texte disait le
+      // contraire). Bouton conditionné à la capacité restante (demande
+      // Remi 27/07/2026) : si le bus est redevenu complet entre-temps,
+      // pas de bouton pour payer une place qui n'existe plus. Conditionné
+      // aussi au verrou Visiteur (30/07/2026).
+      if (verrouilleVisiteur) {
+        html += `<div class="info-box error">❌ Non inscrit — contacte un membre du Comité de passage pour débloquer ton accès</div>`;
+      } else if (busCompletDetail) {
+        html += `<div class="info-box error">❌ Non inscrit — bus complet, paiement impossible pour le moment</div>`;
+      } else {
+        html += `<div class="info-box error">❌ Non inscrit — paiement en cours</div>
+          <p style="text-align:center;font-size:12px;color:var(--gris);margin-top:8px;">Si le paiement n'a pas démarré ou a été abandonné, tu peux réessayer.</p>
+          <button class="btn btn-secondary" onclick="doInscritDepl('${d.id}',this)">Relancer le paiement</button>`;
+      }
+    } else {
+      html += `<div class="info-box success">✅ Paiement confirmé — ton billet est prêt</div>
+        ${monInscrit.bus ? `<div style="text-align:center;font-size:15px;font-weight:600;margin:10px 0;">🚌 Bus ${esc(monInscrit.bus)}</div>` : ''}
+        <div class="qr-container" id="qrDepl"></div>
+        <p style="text-align:center;font-size:12px;color:var(--gris);">Code: ${monInscrit.qr_code||''}</p>
+        ${d.lien_telegram ? `<a href="${esc(d.lien_telegram)}" target="_blank"><button class="btn btn-secondary" style="margin-top:10px;">💬 Groupe Telegram du déplacement</button></a>` : ''}`;
+    }
+
+    // Boutons admin déplacement
+    if (hasCelluleDepl(m)) {
+      const payes = inscrits.filter(i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha');
+      const refuses = inscrits.filter(i => i.statut_paiement === 'refuse');
+      const listeAttente = inscrits.filter(i => i.statut_paiement === 'liste_attente');
+      const enAttente = inscrits.length - payes.length - refuses.length - listeAttente.length;
+      html += `
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+          <div class="card-label">Gestion déplacement</div>
+          <div style="font-size:13px;color:var(--gris);margin-bottom:10px;">✅ ${payes.length} payés · ⏳ ${enAttente} en attente${refuses.length ? ' · ❌ '+refuses.length+' refusés' : ''}${listeAttente.length ? ' · 🕐 '+listeAttente.length+' en liste d\'attente' : ''}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-sm btn-secondary" onclick="voirInscritsDepl('${d.id}')">👥 Voir inscrits</button>
+            <button class="btn btn-sm btn-secondary" onclick="copierListeBus('${d.id}')">📋 Liste bus</button>
+            <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierDepl('${d.id}')">✏️ Modifier</button>
+          </div>
+        </div>`;
+    }
+
+    if (d.notes) html += `<div style="margin-top:12px;font-size:13px;color:var(--gris);">📝 ${d.notes}</div>`;
+    document.getElementById('modalDeplContent').innerHTML = html;
+    if (estPaye && monInscrit?.qr_code) {
+      document.getElementById('qrDepl').innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(monInscrit.qr_code)}" width="160" height="160">`;
+    }
+    showModal('modalDepl');
+  } catch(e) { toast('Erreur chargement déplacement', 'error'); }
+}
+
+// Ouvre le choix "seul / avec des amis" avant de lancer le paiement —
+// remplace l'ancien clic direct sur "M'inscrire" qui appelait le checkout
+// HelloAsso immédiatement (demande Remi 09/07/2026 : inscrire plusieurs
+// personnes — membres de l'app ou invités hors app — en une seule fois).
+//
+// ⚠️ Cas "Réessayer/Relancer le paiement" (une inscription existe déjà
+// pour soi, statut refuse ou en_attente) : on NE PASSE PAS par le modal
+// multi-personnes — ça relancerait un paiement pour un tout nouveau
+// participant "moi" au lieu de reprendre l'inscription existante, donc
+// un doublon. Dans ce cas, on garde l'appel direct à un seul participant,
+// identique à l'ancien comportement d'avant cette évolution.
+let _deplIdCourantInscription = null;
+async function doInscritDepl(id, btn) {
+  const texteOriginal = btn ? btn.textContent : '';
+  try {
+    const { deplacement: d, monInscrit } = await UL.getDeplacement(id);
+
+    if (monInscrit && monInscrit.statut_paiement === 'liste_attente') {
+      toast('Tu es déjà sur liste d\'attente pour ce déplacement.', 'info');
+      return;
+    }
+
+    // Sécurité complémentaire (demande Remi 30/07/2026) : le bouton est
+    // déjà masqué côté carte/détail pour un Visiteur non validé, mais on
+    // revérifie ici — jamais appliqué à une inscription déjà payée
+    // (leçon tirée du cartage : ne jamais bloquer rétroactivement un état
+    // déjà acquis).
+    const dejaPaye = monInscrit && (monInscrit.statut_paiement === 'paye_ha' || monInscrit.statut_paiement === 'paye_cash');
+    if (!dejaPaye && visiteurDeplVerrouille(UL.getCurrentMembre())) {
+      toast('Contacte un membre du Comité de passage pour débloquer ton accès aux déplacements.', 'error');
+      return;
+    }
+
+    if (monInscrit) {
+      // Sécurité complémentaire (demande Remi 27/07/2026) : le bouton est
+      // déjà masqué côté carte/détail quand le bus est complet, mais on
+      // revérifie ici au cas où l'affichage était périmé (une autre
+      // place prise entre l'ouverture de la page et le clic).
+      if (d.places_max && (d._inscritsPayes || 0) >= d.places_max) {
+        toast('Bus complet — impossible de relancer le paiement pour le moment.', 'error');
+        return;
+      }
+      // Relance de paiement pour une inscription déjà existante — appel
+      // strictement inchangé par rapport à avant (cf. relancerPaiementDeplacement),
+      // aucune dépendance à l'évolution de l'Edge Function pour ce cas.
+      if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+      const data = await UL.relancerPaiementDeplacement(id);
+      closeModal('modalDepl');
+      if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+      // Cas gratuit (demande Remi 23/07/2026, membres.deplacements_gratuits)
+      // : l'Edge Function a validé directement sans passer par HelloAsso —
+      // pas de redirectUrl à ouvrir, juste rafraîchir et notifier.
+      if (data.gratuit) {
+        toast('Inscription validée (gratuit) ✅', 'success');
+        loadDeplacements();
+        return;
+      }
+      afficherAvertissementHelloAsso(data.redirectUrl, 'deplacement', data.inscriptionId);
+      return;
+    }
+
+    // Bus déjà complet (places_max atteint par les payés) : on ne doit
+    // plus jamais pouvoir payer une place qui n'existe pas — demande
+    // Remi 27/07/2026, suite au surbook ESTAC Troyes (places_max=83, 84
+    // payés). Bascule automatiquement vers la liste d'attente, gratuite,
+    // au lieu d'ouvrir le paiement HelloAsso. ⚠️ Vérification côté app
+    // uniquement (cf. rejoindreListeAttenteDeplacement) — pas de
+    // garde-fou dans l'Edge Function helloasso-create-checkout (hors
+    // dépôt front), donc pas totalement infaillible en cas d'inscriptions
+    // strictement simultanées à la toute dernière place.
+    if (d.places_max && (d._inscritsPayes || 0) >= d.places_max) {
+      if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+      try {
+        await UL.rejoindreListeAttenteDeplacement(id);
+        toast('Bus complet — tu es inscrit sur liste d\'attente 🕐', 'success');
+        closeModal('modalDepl');
+        loadDeplacements();
+      } catch(e2) {
+        toast(e2.message || 'Impossible de rejoindre la liste d\'attente', 'error');
+      }
+      if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+      return;
+    }
+
+    // Pas encore inscrit : ouvre le modal de sélection (soi seul par
+    // défaut, avec option amis app — invités hors app retirés le
+    // 22/07/2026, demande Remi).
+    _deplIdCourantInscription = id;
+    document.getElementById('idAvecAmis').checked = false;
+    document.getElementById('blocAmisDepl').style.display = 'none';
+    document.getElementById('idRechercheAmis').value = '';
+    _amisDeplDisponibles = [];
+    _amisDeplSelectionnes.clear();
+
+    let quotaHtml = '';
+    const quota = await UL.getMonQuotaDepl(id).catch(() => null);
+    if (quota) quotaHtml = `<div class="info-box warning">⚠️ Quota: il te reste ${quota.restant} place${quota.restant>1?'s':''} sur ${quota.quota}</div>`;
+    document.getElementById('inscritDeplQuotaInfo').innerHTML = quotaHtml;
+    _quotaDeplCourant = quota;
+    _prixDeplCourant = d.prix_total || 0;
+    _supplementVisiteurCourant = d.supplement_visiteur || 0;
+
+    majRecapInscritDepl();
+    _placesRestantesDeplCourant = d.places_max ? Math.max(0, d.places_max - (d._inscritsPayes||0)) : null;
+    showModal('modalInscritDepl');
+  } catch(e) {
+    toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
+}
+
+let _amisDeplDisponibles = [];
+let _amisDeplSelectionnes = new Set();
+let _quotaDeplCourant = null;
+let _prixDeplCourant = 0;
+let _supplementVisiteurCourant = 0;
+let _placesRestantesDeplCourant = null;
+
+async function toggleAmisDepl() {
+  const actif = document.getElementById('idAvecAmis').checked;
+  document.getElementById('blocAmisDepl').style.display = actif ? 'block' : 'none';
+  if (actif && !_amisDeplDisponibles.length) {
+    document.getElementById('listeAmisDepl').innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
+    try {
+      _amisDeplDisponibles = await UL.getMembresPourAmisDepl();
+      renderListeAmisDepl(_amisDeplDisponibles);
+    } catch(e) { document.getElementById('listeAmisDepl').innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur de chargement</div>'; }
+  }
+  majRecapInscritDepl();
+}
+
+function filtrerAmisDepl() {
+  const q = document.getElementById('idRechercheAmis').value.trim().toLowerCase();
+  const filtres = _amisDeplDisponibles.filter(m => `${m.prenom} ${m.nom} ${m.pseudo_telegram}`.toLowerCase().includes(q));
+  renderListeAmisDepl(filtres);
+}
+
+function renderListeAmisDepl(liste) {
+  const el = document.getElementById('listeAmisDepl');
+  if (!liste.length) { el.innerHTML = '<div style="font-size:13px;color:var(--gris);">Aucun ami confirmé pour l\'instant — ajoute des amis depuis Profil.</div>'; return; }
+  el.innerHTML = liste.map(m => `
+    <label style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;">
+      <input type="checkbox" ${_amisDeplSelectionnes.has(m.id)?'checked':''} onchange="toggleAmiDeplSelectionne('${m.id}',this.checked)" style="width:18px;height:18px;accent-color:#1A56DB;flex-shrink:0;">
+      <span style="font-size:14px;">${esc(nomAfficheMembre(m))}</span>
+    </label>`).join('');
+}
+
+function toggleAmiDeplSelectionne(membreId, coche) {
+  if (coche) _amisDeplSelectionnes.add(membreId); else _amisDeplSelectionnes.delete(membreId);
+  majRecapInscritDepl();
+}
+
+// Fonctions "amis hors app" retirées (demande Remi 22/07/2026) — on ne
+// peut plus inscrire quelqu'un qui n'est pas un ami dans l'app
+// (toggleInvitesDepl, ajouterLigneInviteDepl, lireInvitesDepl
+// supprimées, ainsi que le branchement 'invite' dans doInscritDeplMulti
+// ci-dessous).
+
+function majRecapInscritDepl() {
+  const nbAmis = document.getElementById('idAvecAmis')?.checked ? _amisDeplSelectionnes.size : 0;
+  const total = 1 + nbAmis; // 1 = soi-même
+
+  // Exemption de paiement + supplément Visiteur (demande Remi 23/07/2026)
+  // : le récap affiché AVANT paiement doit refléter le même calcul que
+  // l'Edge Function (participants non-exemptés + supplément par
+  // participant visiteur), sinon il annonce un montant qui ne sera
+  // jamais réellement facturé.
+  const moi = UL.getCurrentMembre();
+  const supplement = _supplementVisiteurCourant || 0;
+  let nbExemptes = moi?.deplacements_gratuits ? 1 : 0;
+  let montant = 0;
+  if (!moi?.deplacements_gratuits) montant += _prixDeplCourant + (moi?.statut === 'visiteur' ? supplement : 0);
+  if (document.getElementById('idAvecAmis')?.checked) {
+    _amisDeplSelectionnes.forEach(id => {
+      const ami = _amisDeplDisponibles.find(a => a.id === id);
+      if (ami?.deplacements_gratuits) { nbExemptes++; return; }
+      montant += _prixDeplCourant + (ami?.statut === 'visiteur' ? supplement : 0);
+    });
+  }
+  let html = `👥 ${total} place${total>1?'s':''} — 💶 ${montant.toFixed(2)}€${nbExemptes ? ` <span style="color:var(--vert);font-weight:400;">(${nbExemptes} exempté${nbExemptes>1?'s':''})</span>` : ''}`;
+  if (_quotaDeplCourant && total > _quotaDeplCourant.restant) {
+    html += `<div style="color:var(--rouge);font-size:13px;font-weight:400;margin-top:4px;">⚠️ Dépasse ton quota restant (${_quotaDeplCourant.restant})</div>`;
+  }
+  document.getElementById('inscritDeplRecap').innerHTML = html;
+}
+
+async function doInscritDeplMulti(btn) {
+  const id = _deplIdCourantInscription;
+  const participants = [{ type: 'moi' }];
+  if (document.getElementById('idAvecAmis').checked) {
+    _amisDeplSelectionnes.forEach(membreId => participants.push({ type: 'ami', membreId }));
+  }
+  if (_quotaDeplCourant && participants.length > _quotaDeplCourant.restant) {
+    return toast(`Quota dépassé — il te reste ${_quotaDeplCourant.restant} place(s)`, 'error');
+  }
+  // Sécurité complémentaire (demande Remi 27/07/2026) : le nombre de
+  // places restantes a pu changer entre l'ouverture du modal et la
+  // soumission (soi + amis dépasse ce qu'il restait) — mieux vaut
+  // bloquer ici plutôt que de laisser payer plus de places qu'il n'en
+  // reste. N'empêche pas les inscriptions déjà comptées ailleurs (webhook
+  // HelloAsso, hors dépôt front) de créer un dépassement dans des cas
+  // très simultanés — ce n'est qu'un filet de sécurité côté app.
+  if (_placesRestantesDeplCourant !== null && participants.length > _placesRestantesDeplCourant) {
+    return toast(`Il ne reste que ${_placesRestantesDeplCourant} place(s) sur ce déplacement`, 'error');
+  }
+
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+  try {
+    const data = await UL.demanderInscriptionDeplacementHelloAsso(id, participants);
+    closeModal('modalInscritDepl');
+    closeModal('modalDepl');
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+    if (data.gratuit) {
+      toast('Inscription validée (gratuit) ✅', 'success');
+      loadDeplacements();
+      return;
+    }
+    afficherAvertissementHelloAsso(data.redirectUrl, 'deplacement', data.inscriptionId);
+  } catch(e) {
+    toast(e.message || 'Impossible de s\'inscrire au déplacement', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
+}
+
+// Inscrits du déplacement actuellement affiché dans modalAdminSession,
+// conservés pour permettre de changer de filtre (Tous/Présents/Absents)
+// sans resolliciter le réseau à chaque clic.
+let _inscritsDeplCourant = [];
+let _deplCourantPourListe = null;
+let _filtreInscritsDepl = 'tous';
+
+// Filtres combinables sur la liste des inscrits d'un déplacement — Bureau
+// + Admin + Cellule Déplacement uniquement (demande Remi 24/07/2026) :
+// présence (existant), statut de paiement, section. Plus export Telegram
+// (texte à copier) et export CSV, tous deux appliqués sur la liste
+// FILTRÉE affichée à l'écran, pas sur la liste complète.
+const LABELS_STATUT_PAIEMENT = { en_attente: 'En attente', paye_cash: 'Payé (Cash)', paye_ha: 'Payé (HelloAsso)', refuse: 'Refusé', rembourse: 'Remboursé', liste_attente: "Liste d'attente" };
+let _filtreStatutPaiementDepl = 'tous';
+let _filtreSectionDepl = 'tous';
+let _filtreStatutMembreDepl = 'tous';
+let _filtreBusDepl = 'tous';
+let _rechercheInscritsDepl = '';
+let _rechercheInscritsDeplAvaitFocus = false;
+
+async function voirInscritsDepl(deplId) {
+  try {
+    const { inscrits, deplacement: d } = await UL.getDeplacement(deplId);
+    _inscritsDeplCourant = inscrits;
+    _deplCourantPourListe = { id: deplId, adversaire: d.adversaire, placesMax: d.places_max, inscritsPayes: d._inscritsPayes || 0 };
+    _filtreInscritsDepl = 'tous';
+    _filtreStatutPaiementDepl = 'tous';
+    _filtreSectionDepl = 'tous';
+    _filtreStatutMembreDepl = 'tous';
+    _filtreBusDepl = 'tous';
+    _rechercheInscritsDepl = '';
+    _rechercheInscritsDeplAvaitFocus = false;
+    renderListeInscritsDepl();
+    showModal('modalAdminSession');
+  } catch(e) { toast('Impossible de charger les inscrits du déplacement', 'error'); }
+}
+
+// Raccourci "🕐 Liste d'attente" de l'admin bar (demande Remi 27/07/2026)
+// — même modale/liste que "Inscrits", pré-filtrée sur liste_attente pour
+// aller droit au but plutôt que de filtrer manuellement à chaque fois.
+async function voirListeAttenteDepl(deplId) {
+  await voirInscritsDepl(deplId);
+  _filtreStatutPaiementDepl = 'liste_attente';
+  renderListeInscritsDepl();
+}
+
+function filtrerInscritsDepl(filtre) {
+  _filtreInscritsDepl = filtre;
+  _rechercheInscritsDeplAvaitFocus = false;
+  renderListeInscritsDepl();
+}
+
+function filtrerStatutPaiementInscritsDepl(val) {
+  _filtreStatutPaiementDepl = val;
+  _rechercheInscritsDeplAvaitFocus = false;
+  renderListeInscritsDepl();
+}
+
+function filtrerSectionInscritsDepl(val) {
+  _filtreSectionDepl = val;
+  _rechercheInscritsDeplAvaitFocus = false;
+  renderListeInscritsDepl();
+}
+
+function filtrerStatutMembreInscritsDepl(val) {
+  _filtreStatutMembreDepl = val;
+  _rechercheInscritsDeplAvaitFocus = false;
+  renderListeInscritsDepl();
+}
+
+function filtrerBusInscritsDepl(val) {
+  _filtreBusDepl = val;
+  _rechercheInscritsDeplAvaitFocus = false;
+  renderListeInscritsDepl();
+}
+
+// Recherche par nom/prénom/pseudo (demande Remi 31/07/2026) — le rendu
+// complet ci-dessous recrée le champ à chaque frappe (même mécanisme que
+// les selects), donc on remet nous-mêmes le focus + la position du
+// curseur après coup, sinon la recherche perdrait le focus à chaque
+// lettre tapée.
+function rechercherInscritsDepl(val) {
+  _rechercheInscritsDepl = val;
+  _rechercheInscritsDeplAvaitFocus = true;
+  renderListeInscritsDepl();
+}
+
+// Applique les 3 filtres combinés — réutilisé par le rendu ET par les 2
+// exports, pour qu'ils portent toujours exactement sur ce qui est
+// affiché à l'écran.
+function _inscritsDeplFiltres() {
+  // Filtre présence appliqué uniquement sur les inscriptions payées — un
+  // membre non payé n'a de toute façon jamais pu être scanné présent
+  // (cf. note dans renderDeplCard) ; "Tous" continue d'afficher tout le
+  // monde, paiement en attente compris, pour ne pas perdre la visibilité
+  // d'ensemble.
+  let liste = _inscritsDeplCourant;
+  if (_filtreInscritsDepl === 'presents') liste = liste.filter(i => !!i.present_at);
+  if (_filtreInscritsDepl === 'absents') {
+    const estPaye = i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha';
+    liste = liste.filter(i => estPaye(i) && !i.present_at);
+  }
+  if (_filtreStatutPaiementDepl !== 'tous') liste = liste.filter(i => i.statut_paiement === _filtreStatutPaiementDepl);
+  if (_filtreSectionDepl !== 'tous') {
+    if (_filtreSectionDepl === '__sans_section__') liste = liste.filter(i => i.membre_id && !i.membre?.section?.nom);
+    else liste = liste.filter(i => i.membre?.section?.nom === _filtreSectionDepl);
+  }
+  if (_filtreStatutMembreDepl !== 'tous') liste = liste.filter(i => i.membre_id && i.membre?.statut === _filtreStatutMembreDepl);
+  if (_filtreBusDepl !== 'tous') {
+    if (_filtreBusDepl === '__sans_bus__') {
+      const estPaye = i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha';
+      liste = liste.filter(i => estPaye(i) && !i.bus);
+    } else {
+      liste = liste.filter(i => i.bus === _filtreBusDepl);
+    }
+  }
+  if (_rechercheInscritsDepl.trim()) {
+    const q = _rechercheInscritsDepl.trim().toLowerCase();
+    liste = liste.filter(i => {
+      const texte = i.membre_id
+        ? `${i.membre?.prenom||''} ${i.membre?.nom||''} ${i.membre?.pseudo_telegram||''}`
+        : `${i.invite_prenom||''} ${i.invite_nom||''}`;
+      return texte.toLowerCase().includes(q);
+    });
+  }
+  return liste;
+}
+
+function renderListeInscritsDepl() {
+  const d = _deplCourantPourListe;
+  if (!d) return;
+  // Utilisé pour proposer "🕐 Vers liste d'attente" sur un en_attente —
+  // volontairement PAS automatique (demande Remi 27/07/2026) : cf. note
+  // dans debloquerPaiement, une bascule automatique entrerait en conflit
+  // avec cette même action qui remet sciemment quelqu'un en en_attente.
+  const busComplet = !!d.placesMax && d.inscritsPayes >= d.placesMax;
+
+  const liste = _inscritsDeplFiltres();
+  const filtreBtn = (val, label) => `<button class="btn btn-sm ${_filtreInscritsDepl===val?'btn-primary':'btn-secondary'}" onclick="filtrerInscritsDepl('${val}')">${label}</button>`;
+
+  // Sections présentes parmi TOUS les inscrits (pas seulement le résultat
+  // filtré) pour que le menu section reste stable pendant qu'on filtre.
+  const sectionsPresentes = [...new Set(_inscritsDeplCourant.map(i => i.membre?.section?.nom).filter(Boolean))].sort();
+  const aDesInvitesOuSansSection = _inscritsDeplCourant.some(i => i.membre_id && !i.membre?.section?.nom);
+  // Bus présents parmi tous les inscrits (demande Remi 31/07/2026).
+  const busPresents = [...new Set(_inscritsDeplCourant.map(i => i.bus).filter(Boolean))].sort();
+  const estPayeFn = i => i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha';
+  const aDesPayesSansBus = _inscritsDeplCourant.some(i => estPayeFn(i) && !i.bus);
+
+  document.getElementById('modalAdminSessionContent').innerHTML = `
+    <h3 class="modal-title">Inscrits — ${esc(d.adversaire)}</h3>
+    <div class="form-group" style="margin-bottom:8px;">
+      <input type="text" id="inscritsDeplRecherche" placeholder="🔍 Chercher par nom ou prénom..." value="${esc(_rechercheInscritsDepl)}" oninput="rechercherInscritsDepl(this.value)">
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+      ${filtreBtn('tous', 'Tous')}
+      ${filtreBtn('presents', '✅ Présents')}
+      ${filtreBtn('absents', '⏳ Absents')}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <select style="flex:1;min-width:140px;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;" onchange="filtrerStatutPaiementInscritsDepl(this.value)">
+        <option value="tous" ${_filtreStatutPaiementDepl==='tous'?'selected':''}>Statut : tous</option>
+        ${Object.entries(LABELS_STATUT_PAIEMENT).map(([k,l]) => `<option value="${k}" ${_filtreStatutPaiementDepl===k?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <select style="flex:1;min-width:140px;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;" onchange="filtrerSectionInscritsDepl(this.value)">
+        <option value="tous" ${_filtreSectionDepl==='tous'?'selected':''}>Section : toutes</option>
+        ${sectionsPresentes.map(s => `<option value="${esc(s)}" ${_filtreSectionDepl===s?'selected':''}>${esc(s)}</option>`).join('')}
+        ${aDesInvitesOuSansSection ? `<option value="__sans_section__" ${_filtreSectionDepl==='__sans_section__'?'selected':''}>Sans section</option>` : ''}
+      </select>
+      <select style="flex:1;min-width:140px;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;" onchange="filtrerStatutMembreInscritsDepl(this.value)">
+        <option value="tous" ${_filtreStatutMembreDepl==='tous'?'selected':''}>Membre : tous</option>
+        ${Object.entries(LABELS_STATUT_MEMBRE).map(([k,l]) => `<option value="${k}" ${_filtreStatutMembreDepl===k?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <select style="flex:1;min-width:140px;background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;" onchange="filtrerBusInscritsDepl(this.value)">
+        <option value="tous" ${_filtreBusDepl==='tous'?'selected':''}>Bus : tous</option>
+        ${busPresents.map(b => `<option value="${esc(b)}" ${_filtreBusDepl===b?'selected':''}>Bus ${esc(b)}</option>`).join('')}
+        ${aDesPayesSansBus ? `<option value="__sans_bus__" ${_filtreBusDepl==='__sans_bus__'?'selected':''}>Sans bus</option>` : ''}
+      </select>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;">
+      <button class="btn btn-sm btn-secondary" style="flex:1;" onclick="exporterInscritsDeplTelegram()">📋 Export Telegram</button>
+      <button class="btn btn-sm btn-secondary" style="flex:1;" onclick="exporterInscritsDeplCsv()">📊 Export CSV</button>
+    </div>
+    ${!liste.length ? '<p style="color:var(--gris);font-size:13px;">Aucun inscrit pour ces filtres</p>' : liste.map(i => {
+      // Participant : membre de l'app (pseudo + nom) ou invité hors app
+      // (nom/prénom saisis à l'inscription, jamais de pseudo) — cf.
+      // migration_deplacements_avance.sql.
+      const estInvite = !i.membre_id;
+      const ligneParticipant = estInvite
+        ? `<div style="font-weight:600;">${esc(i.invite_prenom||'')} ${esc(i.invite_nom||'')}</div><div style="color:var(--gris);">👤 Invité hors app</div>`
+        : `<div style="font-weight:600;">@${esc(i.membre?.pseudo_telegram||'?')}</div><div style="color:var(--gris);">${esc(i.membre?.prenom||'')} ${esc(i.membre?.nom||'')}${i.membre?.section?.nom ? ' · '+esc(i.membre.section.nom) : ''}</div>`;
+      // Payeur affiché seulement s'il diffère du participant lui-même —
+      // sinon "Payé par @toi-même" n'apporte rien (demande Remi
+      // 09/07/2026 : savoir qui a payé pour un ami/invité).
+      const payeurDiffere = i.payeur_id && i.payeur_id !== i.membre_id;
+      const ligneNaP = payeurDiffere
+        ? `<div style="font-size:11px;color:var(--bleu-clair);margin-top:2px;">💳 Payé par @${esc(i.payeur?.pseudo_telegram||'?')}</div>`
+        : '';
+      return `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+        <div style="flex:1;">
+          ${ligneParticipant}
+          ${ligneNaP}
+        </div>
+        <span class="badge ${i.statut_paiement==='en_attente'?'badge-orange':i.statut_paiement==='liste_attente'?'badge-orange':i.statut_paiement.includes('paye')?'badge-vert':'badge-gris'}">
+          ${i.statut_paiement==='en_attente'?'⏳':i.statut_paiement==='liste_attente'?"🕐 Liste d'attente":i.statut_paiement==='paye_cash'?'Cash ✅':i.statut_paiement==='paye_ha'?'HA ✅':LABELS_STATUT_PAIEMENT[i.statut_paiement]||i.statut_paiement}
+        </span>
+        ${(i.statut_paiement==='paye_cash'||i.statut_paiement==='paye_ha') ? `
+          <span class="badge ${i.present_at?'badge-vert':'badge-orange'}">${i.present_at?'✅ Présent':'⏳ Absent'}</span>
+          <select style="background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:6px 8px;border-radius:8px;font-size:12px;" onchange="assignerBus('${d.id}','${i.id}',this.value)">
+            <option value="" ${!i.bus?'selected':''}>Bus —</option>
+            <option value="A" ${i.bus==='A'?'selected':''}>Bus A</option>
+            <option value="B" ${i.bus==='B'?'selected':''}>Bus B</option>
+            <option value="C" ${i.bus==='C'?'selected':''}>Bus C</option>
+          </select>` : ''}
+        ${(i.statut_paiement==='en_attente'||i.statut_paiement==='liste_attente') ? `
+          <button class="btn btn-sm btn-success" onclick="validerCash('${d.id}','${i.id}')">Cash</button>
+          <button class="btn btn-sm btn-danger" onclick="annulerInscritAdmin('${d.id}','${i.id}')">Annuler</button>` : ''}
+        ${i.statut_paiement==='en_attente' && busComplet ? `
+          <button class="btn btn-sm btn-secondary" onclick="basculerVersListeAttente('${d.id}','${i.id}')">🕐 Vers liste d'attente</button>` : ''}
+        ${i.statut_paiement==='liste_attente' ? `
+          <button class="btn btn-sm btn-primary" onclick="debloquerPaiement('${d.id}','${i.id}')">🔓 Débloquer le paiement</button>` : ''}
+      </div>`;
+    }).join('')}
+  `;
+
+  // Restaure le focus + la position du curseur sur le champ recherche
+  // après le re-rendu complet déclenché par sa propre frappe (cf.
+  // rechercherInscritsDepl) — jamais fait pour un autre filtre, pour ne
+  // pas rouvrir le clavier mobile sans raison.
+  if (_rechercheInscritsDeplAvaitFocus) {
+    const inputRecherche = document.getElementById('inscritsDeplRecherche');
+    if (inputRecherche) {
+      inputRecherche.focus();
+      const pos = inputRecherche.value.length;
+      inputRecherche.setSelectionRange(pos, pos);
+    }
+  }
+}
+
+// Export Telegram (texte copié dans le presse-papier) de la liste
+// FILTRÉE — contrairement à copierListeBus/getListeBusTelegram (liste
+// fixe des payés, format "liste bus" officielle), celui-ci reflète
+// exactement ce que la cellule voit à l'écran avec ses filtres.
+function exporterInscritsDeplTelegram() {
+  const liste = _inscritsDeplFiltres();
+  if (!liste.length) return toast('Aucun inscrit à exporter avec ces filtres', 'error');
+  const d = _deplCourantPourListe;
+  const lignes = [
+    `👥 *INSCRITS — ${d.adversaire}* (${liste.length})`,
+    ``,
+    ...liste.map((i, n) => {
+      const nom = i.membre_id ? `@${i.membre?.pseudo_telegram || '?'}` : `${i.invite_prenom||''} ${i.invite_nom||''} (invité)`;
+      const statut = LABELS_STATUT_PAIEMENT[i.statut_paiement] || i.statut_paiement;
+      return `${n+1}. ${nom} — ${statut}`;
+    }),
+  ];
+  navigator.clipboard.writeText(lignes.join('\n'))
+    .then(() => toast('Liste copiée !', 'success'))
+    .catch(() => toast('Impossible de copier la liste', 'error'));
+}
+
+// Export CSV de la liste FILTRÉE — même convention que
+// exporterCsvMembresComite (admin.js) : csvEscape, BOM UTF-8, Blob.
+function exporterInscritsDeplCsv() {
+  const liste = _inscritsDeplFiltres();
+  if (!liste.length) return toast('Aucun inscrit à exporter avec ces filtres', 'error');
+  const d = _deplCourantPourListe;
+  const entete = ['Pseudo', 'Prénom', 'Nom', 'Type', 'Section', 'Statut membre', 'Statut paiement', 'Présence'];
+  const lignes = liste.map(i => [
+    i.membre_id ? (i.membre?.pseudo_telegram || '') : '',
+    i.membre_id ? (i.membre?.prenom || '') : (i.invite_prenom || ''),
+    i.membre_id ? (i.membre?.nom || '') : (i.invite_nom || ''),
+    i.membre_id ? 'Membre' : 'Invité',
+    i.membre?.section?.nom || '',
+    i.membre_id ? (LABELS_STATUT_MEMBRE[i.membre?.statut] || i.membre?.statut || '') : '',
+    LABELS_STATUT_PAIEMENT[i.statut_paiement] || i.statut_paiement,
+    i.present_at ? 'Présent' : ((i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha') ? 'Absent' : ''),
+  ]);
+  const csv = '\uFEFF' + [entete, ...lignes].map(l => l.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `inscrits_${(d.adversaire || 'deplacement').replace(/[^a-z0-9]+/gi, '_')}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Export CSV généré (${liste.length}) !`, 'success');
+}
+
+
+async function validerCash(deplId, inscriptionId) {
+  try { await UL.validerPaiementCash(inscriptionId); toast('Paiement cash validé ✅', 'success'); voirInscritsDepl(deplId); }
+  catch(e) { toast('Impossible de valider le paiement cash', 'error'); }
+}
+
+// Débloque le paiement pour une personne en liste d'attente (demande
+// Remi 27/07/2026) — la fait passer en "en_attente" et la prévient par
+// notification push. Elle voit alors le bouton "💳 Payer maintenant" sur
+// sa fiche déplacement dès sa prochaine ouverture de l'app.
+async function debloquerPaiement(deplId, inscriptionId) {
+  if (!confirm('Débloquer le paiement pour cette personne ? Elle recevra une notification et pourra payer sa place.')) return;
+  try {
+    await UL.debloquerPaiementListeAttente(inscriptionId);
+    toast('Paiement débloqué — la personne a été prévenue ✅', 'success');
+    voirInscritsDepl(deplId);
+  } catch(e) { toast(e.message || 'Impossible de débloquer le paiement', 'error'); }
+}
+
+// Bascule manuelle d'un en_attente vers liste_attente (demande Remi
+// 27/07/2026) — pour un paiement resté bloqué alors que le bus est déjà
+// complet. Volontairement manuelle, pas automatique (cf. commentaire
+// dans supabase-client.js).
+async function basculerVersListeAttente(deplId, inscriptionId) {
+  if (!confirm('Basculer cette personne en liste d\'attente ? Son paiement en cours ne sera plus possible tant qu\'une place ne se libère pas.')) return;
+  try {
+    await UL.basculerEnListeAttente(inscriptionId);
+    toast('Basculé en liste d\'attente ✅', 'success');
+    voirInscritsDepl(deplId);
+  } catch(e) { toast(e.message || 'Impossible de basculer cette inscription', 'error'); }
+}
+
+// Affecte un bus à un inscrit payé (demande Remi 30/07/2026, suite à
+// l'ajout d'un 2e bus sur ESTAC Troyes) — affiché ensuite sur son billet
+// (cf. openDepl). Pas de confirmation ni de rechargement complet : le
+// select reflète déjà le nouveau choix, inutile de re-render toute la
+// liste pour un simple changement de valeur.
+async function assignerBus(deplId, inscriptionId, bus) {
+  try {
+    await UL.assignerBus(inscriptionId, bus);
+    const inscrit = _inscritsDeplCourant.find(i => i.id === inscriptionId);
+    if (inscrit) inscrit.bus = bus || null;
+    toast(bus ? `Affecté au bus ${bus} ✅` : 'Bus retiré', 'success');
+  } catch(e) { toast('Impossible d\'affecter le bus', 'error'); }
+}
+
+// Annulation admin d'une inscription en attente de paiement — uniquement
+// si non payée (cf. annulerInscriptionDeplAdmin, supabase-client.js).
+async function annulerInscritAdmin(deplId, inscriptionId) {
+  if (!confirm('Annuler cette inscription ? Le membre devra se réinscrire si besoin.')) return;
+  try {
+    await UL.annulerInscriptionDeplAdmin(inscriptionId);
+    toast('Inscription annulée ✅', 'success');
+    voirInscritsDepl(deplId);
+  } catch(e) { toast(e.message || 'Impossible d\'annuler cette inscription', 'error'); }
+}
+async function copierListeBus(deplId) {
+  try {
+    const liste = await UL.getListeBusTelegram(deplId);
+    await navigator.clipboard.writeText(liste);
+    toast('Liste bus copiée !', 'success');
+  } catch(e) { toast('Impossible de copier la liste bus', 'error'); }
+}
+
+// ────────────────────────────────────────────────────────────
+// Comparateur de rentabilité (Cellule Déplacement + Bureau + Admin) —
+// demande Remi 24/07/2026. Pas lié à un déplacement précis : sert à
+// comparer 2 ou 3 options de bus (coût, capacité, prix payé par le
+// membre) AVANT de créer le déplacement, pour choisir la meilleure.
+// Calcul 100% local (aucun appel serveur) — les 3 blocs d'options
+// restent toujours dans le DOM, seul le 3ᵉ est masqué par défaut, pour
+// pouvoir recalculer sur chaque frappe sans jamais réafficher les champs
+// (ce qui ferait perdre le focus/curseur en pleine saisie).
+// ────────────────────────────────────────────────────────────
+
+function ouvrirRentabiliteDepl() {
+  const optionHTML = (n, visible) => `
+    <div class="card" id="rentaOption${n}Wrap" style="${visible ? '' : 'display:none;'}margin-top:${n>1?'12':'0'}px;">
+      <div class="card-label" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>Option ${n}</span>
+        ${n === 3 ? `<button class="btn btn-sm btn-secondary" onclick="supprimerOptionRentabilite()">✕ Retirer</button>` : ''}
+      </div>
+      <div class="form-group">
+        <label>Nom (ex: Autocar XYZ 50 places)</label>
+        <input type="text" id="rentaNom${n}" value="Option ${n}" oninput="recalculerRentabilite()">
+      </div>
+      <div class="form-group">
+        <label>Coût du bus (€)</label>
+        <input type="number" id="rentaCout${n}" inputmode="decimal" placeholder="ex: 900" oninput="recalculerRentabilite()">
+      </div>
+      <div class="form-group">
+        <label>Capacité max (places)</label>
+        <input type="number" id="rentaCap${n}" inputmode="numeric" placeholder="ex: 50" oninput="recalculerRentabilite()">
+      </div>
+      <div class="form-group">
+        <label>Prix payé par le membre (€)</label>
+        <input type="number" id="rentaPrix${n}" inputmode="decimal" placeholder="ex: 25" oninput="recalculerRentabilite()">
+      </div>
+    </div>`;
+
+  document.getElementById('modalAdminSessionContent').innerHTML = `
+    <h3 class="modal-title">🧮 Comparateur de rentabilité</h3>
+    <div class="card">
+      <div class="form-group" style="margin-bottom:0;">
+        <label>Nombre de participants estimé (pour comparer)</label>
+        <input type="number" id="rentaNbEstime" value="40" inputmode="numeric" oninput="recalculerRentabilite()">
+      </div>
+    </div>
+    ${optionHTML(1, true)}
+    ${optionHTML(2, true)}
+    ${optionHTML(3, false)}
+    <div id="rentaBtnAjouterWrap" style="margin-top:12px;">
+      <button class="btn btn-secondary" onclick="ajouterOptionRentabilite()">+ Ajouter une 3ᵉ option</button>
+    </div>
+    <div id="rentaResultats" style="margin-top:12px;"></div>
+  `;
+  showModal('modalAdminSession');
+  recalculerRentabilite();
+}
+
+function ajouterOptionRentabilite() {
+  document.getElementById('rentaOption3Wrap').style.display = 'block';
+  document.getElementById('rentaBtnAjouterWrap').style.display = 'none';
+  recalculerRentabilite();
+}
+
+function supprimerOptionRentabilite() {
+  document.getElementById('rentaOption3Wrap').style.display = 'none';
+  document.getElementById('rentaBtnAjouterWrap').style.display = 'block';
+  recalculerRentabilite();
+}
+
+function recalculerRentabilite() {
+  const nbEstime = Number(document.getElementById('rentaNbEstime').value) || 0;
+  const option3Visible = document.getElementById('rentaOption3Wrap').style.display !== 'none';
+  const numeros = option3Visible ? [1, 2, 3] : [1, 2];
+
+  const options = numeros.map(n => {
+    const nom = document.getElementById(`rentaNom${n}`).value || `Option ${n}`;
+    const cout = Number(document.getElementById(`rentaCout${n}`).value) || 0;
+    const capacite = Number(document.getElementById(`rentaCap${n}`).value) || 0;
+    const prix = Number(document.getElementById(`rentaPrix${n}`).value) || 0;
+
+    const participantsEffectifs = capacite ? Math.min(nbEstime, capacite) : nbEstime;
+    const placesPerdues = capacite && nbEstime > capacite ? nbEstime - capacite : 0;
+    const seuil = (cout > 0 && prix > 0) ? Math.ceil(cout / prix) : null;
+    const beneficeEstime = (participantsEffectifs * prix) - cout;
+    const beneficeSiComplet = capacite ? (capacite * prix) - cout : null;
+    const coutParPlace = capacite ? cout / capacite : null;
+    const margeParPersonne = coutParPlace !== null ? prix - coutParPlace : null;
+    const tauxRemplissagePourEquilibre = (capacite && seuil) ? seuil / capacite : null;
+
+    return { n, nom, cout, capacite, prix, participantsEffectifs, placesPerdues, seuil, beneficeEstime, beneficeSiComplet, coutParPlace, margeParPersonne, tauxRemplissagePourEquilibre };
+  });
+
+  const complet = options.filter(o => o.cout > 0 && o.capacite > 0 && o.prix > 0);
+  const meilleure = complet.length
+    ? complet.reduce((a, b) => (b.beneficeEstime > a.beneficeEstime ? b : (b.beneficeEstime === a.beneficeEstime && (b.seuil||Infinity) < (a.seuil||Infinity) ? b : a)))
+    : null;
+
+  document.getElementById('rentaResultats').innerHTML = options.map(o => {
+    const estMeilleure = meilleure && o.n === meilleure.n && complet.length > 1;
+    const incomplete = !(o.cout > 0 && o.capacite > 0 && o.prix > 0);
+    return `
+    <div class="card" style="${estMeilleure ? 'border:1px solid var(--vert);' : ''}">
+      <div class="card-label" style="display:flex;justify-content:space-between;">
+        <span>${esc(o.nom)}</span>
+        ${estMeilleure ? '<span class="badge badge-vert">🏆 Meilleure option</span>' : ''}
+      </div>
+      ${incomplete ? `<div class="empty-state" style="padding:8px 0;font-size:12px;">Renseigne coût, capacité et prix pour voir les résultats</div>` : `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="stat-card"><div class="stat-value" style="color:${o.beneficeEstime < 0 ? 'var(--rouge)' : 'var(--vert)'};">${o.beneficeEstime >= 0 ? '+' : ''}${o.beneficeEstime.toFixed(0)}€</div><div class="stat-label">Résultat à ${o.participantsEffectifs} pers.</div></div>
+        <div class="stat-card"><div class="stat-value">${o.seuil ?? '—'}</div><div class="stat-label">Seuil de rentabilité</div></div>
+        <div class="stat-card"><div class="stat-value">${o.beneficeSiComplet !== null ? (o.beneficeSiComplet >= 0 ? '+' : '') + o.beneficeSiComplet.toFixed(0) + '€' : '—'}</div><div class="stat-label">Si bus complet (${o.capacite})</div></div>
+        <div class="stat-card"><div class="stat-value">${o.coutParPlace !== null ? o.coutParPlace.toFixed(1) + '€' : '—'}</div><div class="stat-label">Coût / place au complet</div></div>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--gris);">
+        ${o.margeParPersonne !== null ? `Marge par personne au-delà du seuil : <b style="color:var(--blanc,#fff);">${o.margeParPersonne >= 0 ? '+' : ''}${o.margeParPersonne.toFixed(1)}€</b>` : ''}
+        ${o.tauxRemplissagePourEquilibre !== null ? ` · Remplissage nécessaire pour l'équilibre : <b style="color:var(--blanc,#fff);">${fmtPct(o.tauxRemplissagePourEquilibre)}</b>` : ''}
+      </div>
+      ${o.placesPerdues > 0 ? `<div style="margin-top:6px;font-size:12px;color:var(--orange);">⚠️ ${o.placesPerdues} personne(s) au-delà de la capacité — à mettre en liste d'attente</div>` : ''}
+      `}
+    </div>`;
+  }).join('') + (complet.length > 1 ? `<div style="font-size:11px;color:var(--gris);text-align:center;margin-top:6px;">Comparaison basée sur ${nbEstime} participants estimés</div>` : '');
+}
+
+// Stats détaillées d'un déplacement — bouton "📊 Stats" sur la carte,
+// visible Admin/Bureau/Cellule Déplacement uniquement (même garde que le
+// reste de adminBar, cf. renderDeplCard). Demande Remi 23/07/2026.
+// Réutilise la modal générique modalAdminSession (déjà utilisée pour la
+// liste des inscrits Tifo/Déplacement) et les helpers de rendu
+// genererBarresHTML/fmtPct/fmtEuros écrits pour la page Stats globale
+// (admin.js) — même style visuel, pas de code dupliqué.
+const LABELS_STATUT_MEMBRE = { confirme: 'Confirmé', draft: 'Draft', sympathisant: 'Sympathisant', visiteur: 'Visiteur' };
+
+async function ouvrirStatsDepl(deplId) {
+  try {
+    const s = await UL.getStatsDeplacement(deplId);
+    const repartitionStatut = Object.entries(s.repartitionStatut)
+      .map(([k, v]) => [LABELS_STATUT_MEMBRE[k] || k, v]);
+    const repartitionSection = Object.entries(s.repartitionSection).sort((a, b) => b[1] - a[1]);
+    const modePaiement = [['HelloAsso', s.parModePaiement.paye_ha], ['Cash', s.parModePaiement.paye_cash]];
+
+    document.getElementById('modalAdminSessionContent').innerHTML = `
+      <h3 class="modal-title">📊 Stats — ${esc(s.adversaire)}</h3>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-lbl">Places prises</div><div class="kpi-val">${s.placesPrises}${s.placesMax ? '/' + s.placesMax : ''}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Restantes</div><div class="kpi-val" style="color:var(--open)">${s.placesRestantes ?? '—'}</div></div>
+        <div class="kpi"><div class="kpi-lbl">Remplissage</div><div class="kpi-val">${fmtPct(s.tauxRemplissage)}</div></div>
+      </div>
+      <div class="card">
+        <div class="card-label">📋 Statuts des inscriptions</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;"><span>⏳ En attente de paiement</span><b>${s.enAttente}</b></div>
+          ${s.listeAttente ? `<div style="display:flex;justify-content:space-between;color:var(--orange);"><span>🕐 En liste d'attente</span><b>${s.listeAttente}</b></div>` : ''}
+          ${s.refuses ? `<div style="display:flex;justify-content:space-between;color:var(--rouge);"><span>❌ Refusés</span><b>${s.refuses}</b></div>` : ''}
+          ${s.rembourses ? `<div style="display:flex;justify-content:space-between;color:var(--orange);"><span>↩️ Remboursés</span><b>${s.rembourses}</b></div>` : ''}
+          ${s.invites ? `<div style="display:flex;justify-content:space-between;"><span>👤 Invités hors app</span><b>${s.invites}</b></div>` : ''}
+        </div>
+        <div style="margin-top:10px;">${genererBarresHTML(modePaiement, { couleur: 'var(--vert, #10B981)' })}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">👥 Répartition par statut (inscrits payés)</div>
+        ${genererBarresHTML(repartitionStatut)}
+      </div>
+      <div class="card">
+        <div class="card-label">🛡️ Répartition par section (inscrits payés)</div>
+        ${genererBarresHTML(repartitionSection)}
+      </div>
+      <div class="card">
+        <div class="card-label">💶 Finances</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-card"><div class="stat-value" style="color:var(--open);">${fmtEuros(s.montantCollecte)}</div><div class="stat-label">Collecté</div></div>
+          <div class="stat-card"><div class="stat-value">${fmtEuros(s.prixTotal)}</div><div class="stat-label">Prix / place</div></div>
+        </div>
+        ${s.equilibre ? `
+        <div style="margin-top:10px;font-size:13px;display:flex;flex-direction:column;gap:4px;">
+          <div style="color:var(--gris);">🎯 Seuil d'équilibre : <b style="color:var(--blanc,#fff);">${s.equilibre.seuilPersonnes} personnes</b>${s.equilibre.seuilPrixParPlace ? ` (${s.equilibre.seuilPrixParPlace.toFixed(1)}€/place au complet)` : ''}</div>
+          <div style="color:${s.equilibre.manque > 0 ? 'var(--orange)' : 'var(--vert)'};">${s.equilibre.manque > 0 ? `⚠️ Encore ${s.equilibre.manque} personne${s.equilibre.manque>1?'s':''} pour l'équilibre` : '✅ Équilibre atteint'}</div>
+          <div style="color:${s.equilibre.beneficeActuel < 0 ? 'var(--rouge)' : 'var(--vert)'};">${s.equilibre.beneficeActuel < 0 ? `📉 Perte actuelle : ${Math.abs(s.equilibre.beneficeActuel).toFixed(0)}€` : `📈 Bénéfice actuel : ${s.equilibre.beneficeActuel.toFixed(0)}€`}</div>
+          ${s.equilibre.beneficeSiComplet !== null ? `<div style="color:var(--gris);">🚌 Si le bus est complet : ${s.equilibre.beneficeSiComplet >= 0 ? '📈' : '📉'} ${s.equilibre.beneficeSiComplet.toFixed(0)}€</div>` : ''}
+        </div>` : `<div style="margin-top:10px;font-size:12px;color:var(--gris);">Coût du bus ou prix/place non renseigné — équilibre non calculable</div>`}
+        ${s.distanceKm ? `<div style="margin-top:8px;font-size:12px;color:var(--gris);">🛣️ ${s.distanceKm}km A/R</div>` : ''}
+      </div>
+      ${s.matchPasse ? `
+      <div class="card">
+        <div class="card-label">✅ Présence</div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--open);">${s.presents}/${s.placesPrises}</div><div class="stat-label">Présents (${s.absents} absent${s.absents>1?'s':''} non prévenu${s.absents>1?'s':''})</div></div>
+      </div>` : ''}
+    `;
+    showModal('modalAdminSession');
+  } catch(e) { toast('Impossible de charger les stats de ce déplacement', 'error'); }
+}
+
+// Correspondance stade → ville, pour pré-remplir le champ Ville à partir
+// du stade du match (la table `matchs` n'a pas de colonne ville dédiée).
+// Couvre les stades de Ligue 1 2026-2027 (18 clubs, dont les promus ESTAC
+// Troyes et Le Mans FC) — à étendre si Ultras Lutetia se déplace pour une
+// coupe ou un amical contre un club hors Ligue 1.
+// ⚠️ Corrigé (12/07/2026) — plusieurs clés ne correspondaient pas aux
+// noms de stades réellement stockés dans la table matchs (tirets
+// manquants, noms de sponsor à jour type "Orange Vélodrome" au lieu de
+// "Stade Vélodrome", "Stade Marie-Marvingt" au lieu de "MMArena") : la
+// déduction automatique de ville échouait silencieusement pour Auxerre,
+// Angers, Marseille et Le Mans depuis la mise en place du calendrier
+// 2026-2027. Vérifié contre les 17 valeurs réelles de matchs.stade.
+const STADE_VERS_VILLE = {
+  'Stade Raymond-Kopa': 'Angers',
+  'Stade de l\'Abbé-Deschamps': 'Auxerre',
+  'Stade Francis-Le Blé': 'Brest',
+  'Stade Océane': 'Le Havre',
+  'Stade Marie-Marvingt': 'Le Mans',
+  'Stade Bollaert-Delelis': 'Lens',
+  'Stade Pierre-Mauroy': 'Villeneuve-d\'Ascq',
+  'Stade du Moustoir': 'Lorient',
+  'Groupama Stadium': 'Décines-Charpieu',
+  'Orange Vélodrome': 'Marseille',
+  'Stade Louis-II': 'Monaco',
+  'Allianz Riviera': 'Nice',
+  'Parc des Princes': 'Paris',
+  'Roazhon Park': 'Rennes',
+  'Stade de la Meinau': 'Strasbourg',
+  'Stadium de Toulouse': 'Toulouse',
+  'Stade de l\'Aube': 'Troyes',
+};
+
+function deduireVilleDepuisStade(stade) {
+  if (!stade) return '';
+  return STADE_VERS_VILLE[stade] || '';
+}
+
+// Ouvre le modal de création de déplacement et charge la liste des
+// matchs à l'extérieur à venir (seuls éligibles : Ultras Lutetia se
+// déplace pour soutenir Paris FC, jamais pour un match à domicile).
+// Le formulaire démarre toujours en mode "match du calendrier" — c'est
+// le cas le plus fréquent — avec bascule possible vers "Autre événement"
+// (cf. onChangeSourceDepl) pour les déplacements hors calendrier officiel
+// (amicaux, Coupe, etc. pas encore dans la table matchs).
+async function ouvrirCreerDepl() {
+  document.getElementById('dSource').value = 'match';
+  document.getElementById('dMatchId').innerHTML = '<option value="">— Sélectionner un match —</option>';
+  document.getElementById('dMatchId').value = '';
+  document.getElementById('dMatchVide').style.display = 'none';
+  ['dAdv','dStade','dVille'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('dDate').value = '';
+  document.getElementById('dRdv').value = '';
+  document.getElementById('dRdvAutre').value = '';
+  document.getElementById('dRdvAutre').style.display = 'none';
+  document.getElementById('dTelegram').value = '';
+  ['dHeure','dPlaces','dLimite','dNotes','dDistance','dCoutBus','dPrixBus'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('dSupplementVisiteur').value = '10';
+  document.getElementById('dPrixPlace').value = 10;
+  document.getElementById('dEquilibreInfo').style.display = 'none';
+  ['dQuota','dOuvConfirme','dOuvDraft','dOuvSympa'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('dNotifier').checked = true;
+  onChangeSourceDepl();
+
+  try {
+    const matchs = await UL.getMatchs();
+    const today = new Date().toISOString().split('T')[0];
+    const matchsExterieurFuturs = (matchs || [])
+      .filter(m => m.type === 'exterieur' && m.date && m.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const sel = document.getElementById('dMatchId');
+    if (!matchsExterieurFuturs.length) {
+      document.getElementById('dMatchVide').style.display = 'block';
+    } else {
+      sel.innerHTML = '<option value="">— Sélectionner un match —</option>' +
+        matchsExterieurFuturs.map(m => {
+          const dateAff = formatDateCourte ? (formatDateCourte(m.date) || m.date) : m.date;
+          return `<option value="${m.id}">${esc(m.equipe_domicile || '?')} — ${dateAff}</option>`;
+        }).join('');
+    }
+  } catch(e) { toast('Erreur chargement des matchs', 'error'); }
+
+  showModal('modalCreerDepl');
+}
+
+// Bascule entre mode "match du calendrier" (bloc sélecteur visible, champs
+// pré-remplis attendus) et "autre événement" (saisie 100% manuelle, comme
+// avant l'introduction de ce sélecteur).
+function onChangeSourceDepl() {
+  const source = document.getElementById('dSource').value;
+  document.getElementById('dBlocMatch').style.display = source === 'match' ? 'block' : 'none';
+  if (source === 'autre') {
+    document.getElementById('dMatchId').value = '';
+  }
+}
+
+// Affiche le champ libre uniquement quand "Autre" est choisi comme point
+// de RDV — Charléty et Porte de Versailles n'ont pas besoin de précision.
+function onChangeRdvDepl() {
+  const rdv = document.getElementById('dRdv').value;
+  const autreInput = document.getElementById('dRdvAutre');
+  autreInput.style.display = rdv === 'autre' ? 'block' : 'none';
+  if (rdv !== 'autre') autreInput.value = '';
+}
+
+// Pré-remplit adversaire/date/stade/ville à partir du match sélectionné.
+// Les champs restent modifiables ensuite (cf. décision produit) — utile
+// si le stade ou la date affichée au calendrier n'est pas encore à jour.
+// equipe_domicile = l'adversaire, puisque seuls les matchs extérieur sont
+// proposés ici (Paris FC est toujours equipe_exterieur dans ce cas).
+// La ville est déduite du stade via STADE_VERS_VILLE (la table matchs n'a
+// pas de colonne ville) — reste vide et modifiable si le stade n'est pas
+// reconnu (amical, stade neutre, etc.).
+async function onChangeMatchDepl() {
+  const matchId = document.getElementById('dMatchId').value;
+  if (!matchId) return;
+  try {
+    const matchs = await UL.getMatchs();
+    const match = (matchs || []).find(m => m.id === matchId);
+    if (!match) return;
+    document.getElementById('dAdv').value = match.equipe_domicile || '';
+    document.getElementById('dDate').value = match.date || '';
+    document.getElementById('dStade').value = match.stade || '';
+    document.getElementById('dVille').value = deduireVilleDepuisStade(match.stade);
+  } catch(e) { toast('Erreur chargement du match', 'error'); }
+}
+
+// Indicateur d'équilibre (12/07/2026, demande Remi) — recalculé en
+// direct (oninput) sur les formulaires création/modification. Seuil =
+// coût du devis bus / places max (prix par place nécessaire pour
+// rentrer dans les frais du bus). Comparé à prix_bus (pas prix_total :
+// prix_place — l'entrée du match — ne sert pas à couvrir le coût du
+// bus, cf. décomposition demandée par Remi). N'affiche rien tant que
+// coût bus ET places max ne sont pas tous les deux renseignés.
+function calculerEquilibreDepl(prefixe) {
+  const p = prefixe === 'modif' ? 'dm' : 'd';
+  const coutBus = parseFloat(document.getElementById(`${p}CoutBus`).value) || 0;
+  const places = parseInt(document.getElementById(`${p}Places`).value) || 0;
+  const prixBus = parseFloat(document.getElementById(`${p}PrixBus`).value) || 0;
+  const box = document.getElementById(`${p}EquilibreInfo`);
+  if (!coutBus || !places) { box.style.display = 'none'; return; }
+  const seuil = coutBus / places;
+  const beneficePlein = (prixBus - seuil) * places;
+  const auDessus = prixBus >= seuil;
+  box.style.display = 'block';
+  box.className = `info-box ${auDessus ? '' : 'warning'}`;
+  box.style.fontSize = '12px';
+  box.innerHTML = `🎯 Seuil d'équilibre : <strong>${seuil.toFixed(1)}€/place</strong> (bus complet, ${places} places)<br>` +
+    (auDessus
+      ? `✅ Prix bus actuel au-dessus du seuil — bénéf. plein bus : <strong>${beneficePlein.toFixed(0)}€</strong>`
+      : `⚠️ Prix bus actuel EN DESSOUS du seuil — perte plein bus : <strong>${beneficePlein.toFixed(0)}€</strong>`);
+}
+
+async function doCreerDepl(btn) {
+  const source = document.getElementById('dSource').value;
+  const matchId = document.getElementById('dMatchId').value;
+  const rdvChoix = document.getElementById('dRdv').value;
+  const pointRdv = rdvChoix === 'autre' ? (document.getElementById('dRdvAutre').value.trim() || null) : (rdvChoix || null);
+  // Prix décomposé (12/07/2026, demande Remi) : prix_total reste la
+  // colonne utilisée partout ailleurs (paiement HelloAsso, affichage
+  // membre) — jamais saisi directement, toujours recalculé comme
+  // prix_bus + prix_place pour rester rigoureusement cohérent. prix_bus/
+  // prix_place ne servent qu'à la décomposition et aux stats équilibre.
+  const prixBus = parseFloat(document.getElementById('dPrixBus').value) || 0;
+  const prixPlace = parseFloat(document.getElementById('dPrixPlace').value) || 0;
+  const data = {
+    adversaire: document.getElementById('dAdv').value,
+    date_match: document.getElementById('dDate').value,
+    stade: document.getElementById('dStade').value || null,
+    ville: document.getElementById('dVille').value || null,
+    point_rdv: pointRdv,
+    lien_telegram: document.getElementById('dTelegram').value.trim() || null,
+    heure_depart: document.getElementById('dHeure').value || null,
+    distance_km: parseFloat(document.getElementById('dDistance').value) || null,
+    cout_bus: parseFloat(document.getElementById('dCoutBus').value) || null,
+    prix_bus: prixBus || null,
+    prix_place: prixPlace || null,
+    prix_total: (prixBus + prixPlace) || null,
+    places_max: parseInt(document.getElementById('dPlaces').value) || null,
+    date_limite_inscription: document.getElementById('dLimite').value || null,
+    supplement_visiteur: parseFloat(document.getElementById('dSupplementVisiteur').value) || 0,
+    notes: document.getElementById('dNotes').value || null,
+    match_id: (source === 'match' && matchId) ? matchId : null,
+    quota_par_membre: parseInt(document.getElementById('dQuota').value) || null,
+    ouverture_confirme: datetimeLocalVersUTC(document.getElementById('dOuvConfirme').value),
+    ouverture_draft: datetimeLocalVersUTC(document.getElementById('dOuvDraft').value),
+    ouverture_sympathisant: datetimeLocalVersUTC(document.getElementById('dOuvSympa').value),
+    ouverture_visiteur: datetimeLocalVersUTC(document.getElementById('dOuvVisiteur').value),
+    // Brouillon (10/07/2026) : caché des membres tant que non coché,
+    // utile pour tester un vrai paiement HelloAsso avant publication.
+    visible_membres: !document.getElementById('dBrouillon').checked,
+  };
+  if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
+  const notifier = document.getElementById('dNotifier')?.checked;
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+  try {
+    const depl = await UL.createDeplacement(data);
+    toast(data.visible_membres ? 'Déplacement créé ✅' : 'Déplacement créé en brouillon 🔒 ✅', 'success');
+    closeModal('modalCreerDepl');
+    document.getElementById('dBrouillon').checked = false;
+    loadDeplacements();
+    // Notification "nouveau contenu" — ouverte à tous les membres actifs,
+    // sans restriction de statut (cf. cible:'tous', cohérent avec
+    // getDeplacements qui n'applique aucun filtre de droits côté lecture
+    // pour un déplacement visible). Jamais envoyée pour un brouillon,
+    // même si la case "Notifier" est restée cochée.
+    if (notifier && data.visible_membres) {
+      UL.envoyerNotificationPushGroupe({
+        cible: 'tous',
+        titre: '🚌 Nouveau déplacement',
+        corps: `${data.adversaire} — inscriptions ouvertes`,
+        url: '/ultras-lutetia/',
+      });
+    }
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
+}
+
+// Ouvre le modal de modification, pré-rempli avec les valeurs actuelles du
+// déplacement. Suit le même pattern à deux modals séparés que les sessions
+// tifo (modalCreerSession / modalModifierSession) plutôt qu'un seul modal
+// réutilisé, pour rester cohérent avec le reste du projet.
+async function ouvrirModifierDepl(deplId) {
+  try {
+    const { deplacement: d } = await UL.getDeplacement(deplId);
+    document.getElementById('dmId').value = d.id;
+    document.getElementById('dmSource').value = d.match_id ? 'match' : 'autre';
+    document.getElementById('dmAdv').value = d.adversaire || '';
+    document.getElementById('dmDate').value = d.date_match || '';
+    document.getElementById('dmStade').value = d.stade || '';
+    document.getElementById('dmVille').value = d.ville || '';
+    document.getElementById('dmTelegram').value = d.lien_telegram || '';
+    document.getElementById('dmHeure').value = d.heure_depart || '';
+    document.getElementById('dmDistance').value = d.distance_km ?? '';
+    document.getElementById('dmCoutBus').value = d.cout_bus ?? '';
+    // Repli (12/07/2026) : pour un déplacement créé avant l'ajout de la
+    // décomposition prix_bus/prix_place, ces deux champs sont vides en
+    // base — on déduit prix_bus de prix_total - prix_place plutôt que de
+    // laisser le champ à 0, pour ne pas perdre silencieusement le prix
+    // déjà fixé au moment de la première sauvegarde après migration.
+    const prixPlaceActuel = d.prix_place ?? 10;
+    document.getElementById('dmPrixPlace').value = prixPlaceActuel;
+    document.getElementById('dmPrixBus').value = d.prix_bus ?? (d.prix_total != null ? Math.max(0, d.prix_total - prixPlaceActuel) : '');
+    document.getElementById('dmPlaces').value = d.places_max || '';
+    document.getElementById('dmLimite').value = d.date_limite_inscription || '';
+    document.getElementById('dmSupplementVisiteur').value = d.supplement_visiteur ?? 10;
+    document.getElementById('dmNotes').value = d.notes || '';
+    document.getElementById('dmStatut').value = d.statut || 'ouvert';
+    document.getElementById('dmQuota').value = d.quota_par_membre ?? '';
+    document.getElementById('dmBrouillon').checked = d.visible_membres === false;
+    calculerEquilibreDepl('modif');
+    // datetime-local attend "YYYY-MM-DDTHH:mm" — les timestamptz renvoyés
+    // par Supabase incluent secondes/fuseau (ex. "2026-07-15T14:30:00+00:00"),
+    // on tronque à 16 caractères pour que l'input les accepte.
+    // datetime-local attend "YYYY-MM-DDTHH:mm" en heure LOCALE — avant,
+    // un simple .slice(0,16) sur la valeur UTC stockée réaffichait
+    // l'heure UTC brute, décalée de 1h/2h par rapport à l'heure de Paris
+    // saisie à l'origine (même bug que datetimeLocalVersUTC ci-dessus,
+    // corrigé le 22/07/2026 — cf. utcVersDatetimeLocal).
+    document.getElementById('dmOuvConfirme').value = utcVersDatetimeLocal(d.ouverture_confirme);
+    document.getElementById('dmOuvDraft').value = utcVersDatetimeLocal(d.ouverture_draft);
+    document.getElementById('dmOuvSympa').value = utcVersDatetimeLocal(d.ouverture_sympathisant);
+    document.getElementById('dmOuvVisiteur').value = utcVersDatetimeLocal(d.ouverture_visiteur);
+
+    // Point de RDV : si la valeur actuelle correspond à une des options
+    // prédéfinies, on la sélectionne ; sinon on bascule sur "Autre" avec
+    // le champ libre pré-rempli (cas d'un RDV saisi avant l'introduction
+    // de ce sélecteur, ou un point de RDV non standard).
+    const rdvConnu = ['Stade Charléty', 'Porte de Versailles'].includes(d.point_rdv);
+    document.getElementById('dmRdv').value = rdvConnu ? d.point_rdv : (d.point_rdv ? 'autre' : '');
+    document.getElementById('dmRdvAutre').value = (!rdvConnu && d.point_rdv) ? d.point_rdv : '';
+    document.getElementById('dmRdvAutre').style.display = (!rdvConnu && d.point_rdv) ? 'block' : 'none';
+
+    onChangeSourceDeplModif();
+
+    // Charge la liste des matchs extérieur (mêmes critères que la création)
+    // — inclut aussi le match déjà lié même s'il est passé, pour ne pas le
+    // faire disparaître du sélecteur lors d'une modification tardive.
+    const matchs = await UL.getMatchs();
+    const today = new Date().toISOString().split('T')[0];
+    const matchsExterieur = (matchs || [])
+      .filter(m => m.type === 'exterieur' && (m.id === d.match_id || (m.date && m.date >= today)))
+      .sort((a, b) => (a.date||'').localeCompare(b.date||''));
+
+    const sel = document.getElementById('dmMatchId');
+    if (!matchsExterieur.length) {
+      document.getElementById('dmMatchVide').style.display = 'block';
+      sel.innerHTML = '<option value="">— Sélectionner un match —</option>';
+    } else {
+      document.getElementById('dmMatchVide').style.display = 'none';
+      sel.innerHTML = '<option value="">— Sélectionner un match —</option>' +
+        matchsExterieur.map(m => {
+          const dateAff = formatDateCourte ? (formatDateCourte(m.date) || m.date) : m.date;
+          return `<option value="${m.id}">${esc(m.equipe_domicile || '?')} — ${dateAff}</option>`;
+        }).join('');
+    }
+    sel.value = d.match_id || '';
+
+    showModal('modalModifierDepl');
+  } catch(e) { toast('Erreur chargement du déplacement', 'error'); }
+}
+
+function onChangeSourceDeplModif() {
+  const source = document.getElementById('dmSource').value;
+  document.getElementById('dmBlocMatch').style.display = source === 'match' ? 'block' : 'none';
+  if (source === 'autre') {
+    document.getElementById('dmMatchId').value = '';
+  }
+}
+
+function onChangeRdvDeplModif() {
+  const rdv = document.getElementById('dmRdv').value;
+  const autreInput = document.getElementById('dmRdvAutre');
+  autreInput.style.display = rdv === 'autre' ? 'block' : 'none';
+  if (rdv !== 'autre') autreInput.value = '';
+}
+
+async function onChangeMatchDeplModif() {
+  const matchId = document.getElementById('dmMatchId').value;
+  if (!matchId) return;
+  try {
+    const matchs = await UL.getMatchs();
+    const match = (matchs || []).find(m => m.id === matchId);
+    if (!match) return;
+    document.getElementById('dmAdv').value = match.equipe_domicile || '';
+    document.getElementById('dmDate').value = match.date || '';
+    document.getElementById('dmStade').value = match.stade || '';
+    document.getElementById('dmVille').value = deduireVilleDepuisStade(match.stade);
+  } catch(e) { toast('Erreur chargement du match', 'error'); }
+}
+
+async function doModifierDepl(btn) {
+  const id = document.getElementById('dmId').value;
+  const source = document.getElementById('dmSource').value;
+  const matchId = document.getElementById('dmMatchId').value;
+  const rdvChoix = document.getElementById('dmRdv').value;
+  const pointRdv = rdvChoix === 'autre' ? (document.getElementById('dmRdvAutre').value.trim() || null) : (rdvChoix || null);
+  const data = {
+    adversaire: document.getElementById('dmAdv').value,
+    date_match: document.getElementById('dmDate').value,
+    stade: document.getElementById('dmStade').value || null,
+    ville: document.getElementById('dmVille').value || null,
+    point_rdv: pointRdv,
+    lien_telegram: document.getElementById('dmTelegram').value.trim() || null,
+    heure_depart: document.getElementById('dmHeure').value || null,
+    distance_km: parseFloat(document.getElementById('dmDistance').value) || null,
+    cout_bus: parseFloat(document.getElementById('dmCoutBus').value) || null,
+    prix_bus: parseFloat(document.getElementById('dmPrixBus').value) || null,
+    prix_place: parseFloat(document.getElementById('dmPrixPlace').value) || null,
+    prix_total: ((parseFloat(document.getElementById('dmPrixBus').value) || 0) + (parseFloat(document.getElementById('dmPrixPlace').value) || 0)) || null,
+    places_max: parseInt(document.getElementById('dmPlaces').value) || null,
+    date_limite_inscription: document.getElementById('dmLimite').value || null,
+    supplement_visiteur: parseFloat(document.getElementById('dmSupplementVisiteur').value) || 0,
+    notes: document.getElementById('dmNotes').value || null,
+    statut: document.getElementById('dmStatut').value,
+    match_id: (source === 'match' && matchId) ? matchId : null,
+    quota_par_membre: parseInt(document.getElementById('dmQuota').value) || null,
+    ouverture_confirme: datetimeLocalVersUTC(document.getElementById('dmOuvConfirme').value),
+    ouverture_draft: datetimeLocalVersUTC(document.getElementById('dmOuvDraft').value),
+    ouverture_sympathisant: datetimeLocalVersUTC(document.getElementById('dmOuvSympa').value),
+    ouverture_visiteur: datetimeLocalVersUTC(document.getElementById('dmOuvVisiteur').value),
+    visible_membres: !document.getElementById('dmBrouillon').checked,
+  };
+  if (!data.adversaire || !data.date_match) return toast('Adversaire et date requis', 'error');
+  const texteOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+  try {
+    await UL.updateDeplacement(id, data);
+    toast('Déplacement modifié ✅', 'success');
+    closeModal('modalModifierDepl');
+    loadDeplacements();
+  } catch(e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
+  }
+}

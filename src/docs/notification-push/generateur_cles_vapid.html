@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Générateur de clés VAPID — Ultras Lutetia</title>
+<style>
+  :root {
+    --navy: #0D1B3E;
+    --navy-mid: #162247;
+    --bleu: #1A56DB;
+    --bleu-mid: #3B82F6;
+    --bleu-clair: #93C5FD;
+    --blanc: #FFFFFF;
+    --gris: #94A3B8;
+    --vert: #10B981;
+    --vert-bg: rgba(16,185,129,.15);
+    --rouge: #EF4444;
+    --rouge-bg: rgba(239,68,68,.12);
+    --surface-2: #1F2937;
+    --surface-4: #4B5563;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--navy);
+    color: var(--blanc);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .wrap { width: 100%; max-width: 560px; }
+  h1 {
+    font-size: 22px;
+    letter-spacing: .03em;
+    margin-bottom: 4px;
+  }
+  .sous-titre { color: var(--gris); font-size: 14px; margin-bottom: 28px; }
+  .bloc-confiance {
+    background: var(--vert-bg);
+    border: 1px solid rgba(16,185,129,.3);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 28px;
+  }
+  .carte {
+    background: var(--surface-2);
+    border: 1px solid var(--surface-4);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .carte-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--bleu-clair);
+    margin-bottom: 10px;
+  }
+  .valeur {
+    background: var(--navy-mid);
+    border: 1px solid var(--surface-4);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    word-break: break-all;
+    margin-bottom: 10px;
+    min-height: 20px;
+  }
+  .placeholder { color: var(--gris); }
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    padding: 10px 16px;
+  }
+  .btn-copier {
+    background: var(--surface-4);
+    color: var(--blanc);
+  }
+  .btn-copier:hover { background: var(--bleu-mid); }
+  .btn-generer {
+    background: var(--bleu);
+    color: var(--blanc);
+    width: 100%;
+    padding: 14px;
+    font-size: 15px;
+    margin-bottom: 20px;
+  }
+  .btn-generer:hover { background: var(--bleu-mid); }
+  .avertissement {
+    background: var(--rouge-bg);
+    border: 1px solid rgba(239,68,68,.3);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    margin-top: 20px;
+    display: none;
+  }
+  .avertissement.visible { display: block; }
+  code { background: var(--navy-mid); padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔑 Générateur de clés VAPID</h1>
+  <div class="sous-titre">Ultras Lutetia — notifications push</div>
+
+  <div class="bloc-confiance">
+    🔒 <strong>Tout se passe dans ce navigateur, sur cet appareil.</strong> Cette page ne contient aucune connexion internet, aucun script externe — ouvre-la même hors-ligne si tu veux t'en assurer. Les clés ne sont jamais envoyées nulle part ; elles ne sont affichées qu'à l'écran, pour que tu les copies toi-même.
+  </div>
+
+  <button class="btn-generer" onclick="genererClesVapid()">Générer une paire de clés</button>
+
+  <div class="carte">
+    <div class="carte-label">Clé publique</div>
+    <div class="valeur" id="cleP"><span class="placeholder">— pas encore générée —</span></div>
+    <button class="btn-copier" onclick="copier('cleP')">Copier</button>
+  </div>
+
+  <div class="carte">
+    <div class="carte-label">Clé privée</div>
+    <div class="valeur" id="cleS"><span class="placeholder">— pas encore générée —</span></div>
+    <button class="btn-copier" onclick="copier('cleS')">Copier</button>
+  </div>
+
+  <div class="avertissement" id="avertissement">
+    ⚠️ <strong>Copie les deux clés tout de suite</strong> dans un endroit sûr (gestionnaire de mots de passe, ou un fichier texte temporaire). Si tu recharges ou fermes cette page sans les avoir copiées, elles sont perdues définitivement — il faudra en générer une nouvelle paire (pas grave en soi, mais à refaire depuis le début dans le guide).
+    <br><br>
+    Ensuite : la <strong>clé publique</strong> va dans <code>config.js</code> (champ <code>VAPID_PUBLIC_KEY</code>), la <strong>clé privée</strong> va dans les secrets Supabase de l'Edge Function (<code>VAPID_PRIVATE_KEY</code>) — jamais dans un fichier visible publiquement.
+  </div>
+</div>
+
+<script>
+// Génère une paire de clés EC P-256, le format exact attendu par le
+// protocole VAPID (Web Push) — exactement l'algorithme utilisé par le
+// paquet npm "web-push", juste exécuté ici directement via l'API
+// WebCrypto native du navigateur, sans aucune dépendance ni connexion
+// réseau. Vérifié pour produire des clés de longueur identique (87
+// caractères pour la clé publique, 43 pour la privée).
+async function genererClesVapid() {
+  const keyPair = await crypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify']
+  );
+
+  const publicKeyRaw = await crypto.subtle.exportKey('raw', keyPair.publicKey);
+  const privateKeyJwk = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
+
+  function toBase64Url(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  const cleP = toBase64Url(publicKeyRaw);
+  // Le champ "d" du JWK est déjà encodé en base64url par WebCrypto — c'est
+  // exactement le format attendu par VAPID pour la clé privée.
+  const cleS = privateKeyJwk.d;
+
+  document.getElementById('cleP').textContent = cleP;
+  document.getElementById('cleS').textContent = cleS;
+  document.getElementById('avertissement').classList.add('visible');
+}
+
+function copier(id) {
+  const texte = document.getElementById(id).textContent;
+  if (!texte || texte.includes('pas encore générée')) return;
+  navigator.clipboard.writeText(texte).then(() => {
+    const btn = document.getElementById(id).nextElementSibling;
+    const texteOriginal = btn.textContent;
+    btn.textContent = '✅ Copié';
+    setTimeout(() => { btn.textContent = texteOriginal; }, 1500);
+  });
+}
+
+// Avertit avant de fermer/recharger la page si des clés ont été générées
+// mais que l'avertissement de copie est toujours visible — rappel de
+// sécurité pour éviter de perdre la clé privée par un rechargement
+// accidentel juste après génération.
+window.addEventListener('beforeunload', (e) => {
+  if (document.getElementById('avertissement').classList.contains('visible')) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+# MÉMO — Bascule HelloAsso sandbox → production
+
+*Créé le 24/06/2026. À relire intégralement avant le vrai lancement
+des paiements HelloAsso (Déplacements, puis futurs modules).*
+
+⚠️ **Correctif du 24/06/2026** : ce mémo supposait initialement que
+le code des Edge Functions n'existait pas encore et serait écrit à
+ce moment-là. En réalité, `helloasso-create-checkout` et
+`helloasso-webhook` étaient **déjà déployées depuis le 21/06/2026**
+(travail d'une session précédente, non visible dans les fichiers
+fournis cette session). Le code réel est conservé en référence dans
+`supabase_reel/functions/` ci-joint — c'est lui qui tourne en
+production sandbox, pas une version alternative écrite cette session.
+Ce mémo reste valable : la bascule sandbox→prod ne change que les
+secrets, jamais le code, qu'il s'agisse de l'ancien ou du nouveau.
+
+---
+
+## Principe : un seul geste, jamais de code à toucher
+
+Le code (`helloasso-create-checkout/index.ts`,
+`helloasso-webhook/index.ts`) lit **uniquement** les secrets Supabase
+via `Deno.env.get(...)`, jamais de valeur en dur (les TODO[ACCÈS] en
+commentaire dans le code sont résolus par ces secrets, pas par une
+modification du fichier). Passer de sandbox à prod = remplacer les
+valeurs de 4 secrets, **rien d'autre**. Pas de redéploiement de code
+nécessaire (les Edge Functions lisent les secrets à chaque exécution,
+pas au déploiement).
+
+## Étapes de bascule, dans l'ordre
+
+### 1. Vérifier la conformité L561-5 du compte de PRODUCTION
+
+Avant tout, sur le vrai compte HelloAsso de l'association (pas le
+sandbox) : back-office → vérifier que l'association est "vérifiée"
+(conformité L561-5). Sinon le tout premier appel `checkout-intents`
+renverra une erreur 409. Si non vérifiée : suivre la procédure sur
+`https://admin.helloasso.com/{slug}/verification`.
+
+### 2. Générer une clé API sur le compte de PRODUCTION
+
+Sur `https://admin.helloasso.com` (PAS `-sandbox`) → association
+réelle Ultras Lutetia → **Mon Compte → Intégrations et API** →
+"Générer ma clé API". Récupérer immédiatement `clientId` et
+`clientSecret` (affichés une fois, comme en sandbox).
+
+Noter aussi le **vrai organizationSlug** de production (visible dans
+l'URL du back-office, ex. `admin.helloasso.com/{slug-prod}/...` —
+**différent** du slug sandbox `ultra-lutetia`).
+
+### 3. Mettre à jour les 4 secrets Supabase
+
+Dashboard Supabase → projet `afgriuvrtdkklluvtswg` → **Edge
+Functions → Secrets** → éditer chacun :
+
+| Secret | Valeur sandbox (actuelle) | Valeur prod (à mettre) |
+|---|---|---|
+| `HELLOASSO_CLIENT_ID` | clé sandbox | clé prod générée à l'étape 2 |
+| `HELLOASSO_CLIENT_SECRET` | clé sandbox | clé prod générée à l'étape 2 |
+| `HELLOASSO_ORG_SLUG` | `ultra-lutetia` | slug prod réel (étape 2) |
+| `HELLOASSO_API_BASE` | `https://api.helloasso-sandbox.com` | `https://api.helloasso.com` |
+
+⚠️ Les 4 doivent être changés **ensemble**, jamais 1 ou 2 seulement —
+un mélange clé sandbox + URL prod (ou inversement) échouera à
+l'authentification (401) sans ambiguïté, donc le risque réel est
+plutôt "ça ne marche pas du tout" que "ça marche à moitié" — mais
+autant les changer d'un coup pour éviter l'aller-retour.
+
+### 4. Vider le cache de token (table `helloasso_tokens`)
+
+Le token sandbox en cache (table `helloasso_tokens`, ligne id=1)
+n'est PAS valide sur l'API de prod. Avant le premier appel réel,
+vider la ligne pour forcer une nouvelle authentification avec les
+nouveaux secrets :
+
+```sql
+delete from helloasso_tokens where id = 1;
+```
+
+(Sinon le code essaiera d'abord un `refresh_token` sandbox contre
+l'API prod, qui échouera — il y a un fallback automatique vers
+`client_credentials` dans le code, donc ce n'est pas bloquant, mais
+ça évite un aller-retour d'erreur inutile au premier appel.)
+
+### 5. Configurer l'URL du webhook sur le compte de PRODUCTION
+
+Back-office HelloAsso **prod** → Mon Compte → Intégrations et API →
+champ URL de notification :
+
+```
+https://afgriuvrtdkklluvtswg.supabase.co/functions/v1/helloasso-webhook
+```
+
+(Même URL qu'en sandbox — c'est la même Edge Function Supabase qui
+sert les deux environnements, seule l'IP source distingue sandbox de
+prod côté webhook, déjà gérée par le code : les deux IP, prod ET
+sandbox, sont acceptées en permanence dans
+`HELLOASSO_IPS_AUTORISEES`, donc rien à changer là non plus.)
+
+### 6. Test de bout en bout AVANT d'annoncer le lancement aux membres
+
+Un petit déplacement réel à faible montant, paiement par un membre du
+bureau avec une vraie carte, vérifier :
+- Le checkout redirige bien vers `helloasso.com` (pas
+  `helloasso-sandbox.com`)
+- Le webhook arrive, `statut_paiement` passe à `paye_ha`
+- Le QR code se génère
+- L'argent apparaît bien dans **Suivi des paiements** du vrai compte
+
+### 7. Garder le sandbox actif
+
+Pas besoin de supprimer la clé API sandbox après la bascule — elle
+reste utile pour tester un futur module (Matos, Cartage) avant de le
+basculer lui aussi en prod, indépendamment de Déplacements.
+
+---
+
+## Ce qui NE bouge jamais entre sandbox et prod
+
+- Le code des 2 fichiers (`helloasso-create-checkout/index.ts`,
+  `helloasso-webhook/index.ts`) — copie de référence dans
+  `supabase_reel/functions/`
+- La table `helloasso_tokens` (même table, juste son contenu est vidé/
+  régénéré, cf. étape 4)
+- La contrainte `inscriptions_deplacement_statut_paiement_check`
+- Les colonnes `valide_par` / `valide_at` (ajoutées le 24/06/2026 —
+  `valide_at` est déjà utilisée par le webhook existant pour horodater
+  une confirmation automatique ; `valide_par` reste réservée à la
+  validation manuelle humaine, `validerPaiementCash`/
+  `validerPaiementHelloAsso`, jamais remplie par le webhook)
+- La liste `HELLOASSO_IPS_AUTORISEES` dans `helloasso-webhook` (les
+  deux IP, sandbox et prod, sont toujours acceptées simultanément)
