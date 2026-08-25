@@ -2,6 +2,7 @@
 
 let allProduits = [], allSticks = [];
 let currentFiltresMatos = 'tous', currentFiltresSticks = 'tous';
+let currentFiltreMatosSection = '';
 
 async function loadBoutique() {
   // Note (05/07/2026) : les actions d'admin (Ajouter un article/stick,
@@ -32,17 +33,42 @@ function switchBoutiqueTab(tab) {
 async function loadMatos() {
   try {
     allProduits = await UL.getProduits();
-    renderMatos(allProduits);
+    await remplirFiltreMatosSection();
+    appliquerFiltresMatos();
     const commandes = await UL.getMesCommandes();
     renderMesCommandes(commandes);
   } catch(e) { toast('Erreur chargement matos', 'error'); }
+}
+
+// Même principe que remplirFiltreSticksSection ci-dessous (demande Remi
+// 25/08/2026 — uniformiser les deux catalogues).
+async function remplirFiltreMatosSection() {
+  try {
+    const sections = await UL.getSections();
+    const sel = document.getElementById('filtreMatosSection');
+    const valeurActuelle = sel.value;
+    sel.innerHTML = '<option value="">Toutes sections</option>' +
+      sections.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
+    sel.value = valeurActuelle;
+  } catch(e) {}
 }
 
 function filtrerMatos(cat) {
   document.querySelectorAll('#sectionMatos .filter-btn').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
   currentFiltresMatos = cat;
-  const filtered = cat === 'tous' ? allProduits : allProduits.filter(p => p.categorie === cat);
+  appliquerFiltresMatos();
+}
+
+function filtrerMatosSection(sectionId) {
+  currentFiltreMatosSection = sectionId;
+  appliquerFiltresMatos();
+}
+
+function appliquerFiltresMatos() {
+  let filtered = allProduits;
+  if (currentFiltresMatos !== 'tous') filtered = filtered.filter(p => p.categorie === currentFiltresMatos);
+  if (currentFiltreMatosSection) filtered = filtered.filter(p => p.section_id === currentFiltreMatosSection);
   renderMatos(filtered);
 }
 
@@ -120,8 +146,8 @@ async function openCommander(produitId) {
     const taillesHtml = taillesPourType(p.type_tailles) ? `
       <div class="form-group">
         <label>Taille</label>
-        <select id="cmdTaille">
-          ${optionsTaillesHtml(p.type_tailles)}
+        <select id="cmdTaille" onchange="onChangeTailleCommande()">
+          ${p.mode !== 'precommande' ? optionsTaillesAvecStockHtml(p.type_tailles, p._stockRestantParTaille) : optionsTaillesHtml(p.type_tailles)}
         </select>
       </div>` : '';
 
@@ -174,11 +200,29 @@ function changerQuantiteCommande(delta) {
   const input = document.getElementById('cmdQuantite');
   const affichage = document.getElementById('cmdQuantiteAffichage');
   let max = 99;
-  if (p.mode !== 'precommande' && (p._stockRestant ?? p.stock) > 0) max = Math.min(max, p._stockRestant ?? p.stock);
+  if (p.mode !== 'precommande') {
+    // Si l'article a des tailles avec stock connu par taille, la borne
+    // suit la taille actuellement sélectionnée, pas le total de l'article
+    // (demande Remi 25/08/2026) — sinon on garde l'agrégat comme avant.
+    const tailleSelect = document.getElementById('cmdTaille');
+    const taille = tailleSelect ? tailleSelect.value : null;
+    const restant = (taille && p._stockRestantParTaille)
+      ? (p._stockRestantParTaille[taille] ?? 0)
+      : (p._stockRestant ?? p.stock);
+    if (restant > 0) max = Math.min(max, restant);
+  }
   if (p.quota_par_membre) max = Math.min(max, p.quota_par_membre);
   const nouvelle = Math.max(1, Math.min(max, (parseInt(input.value) || 1) + delta));
   input.value = nouvelle;
   affichage.textContent = nouvelle;
+}
+
+// Appelé au changement de taille dans modalCommander — repart de 1 puis
+// reclampe sur le stock restant de la nouvelle taille sélectionnée.
+function onChangeTailleCommande() {
+  document.getElementById('cmdQuantite').value = '1';
+  document.getElementById('cmdQuantiteAffichage').textContent = '1';
+  changerQuantiteCommande(0);
 }
 
 // Note : selectTaille() a été retirée le 05/07/2026 — le sélecteur de
@@ -421,14 +465,40 @@ async function doReceptionnerCommande(id) {
   } catch(e) { toast('Impossible de marquer cette commande reçue', 'error'); }
 }
 
-async function modifierStock(id, nom, stockActuel) {
-  const nouveau = prompt(`Stock actuel: ${stockActuel}
-Nouveau stock pour "${nom}" :`, stockActuel);
-  if (nouveau === null) return; // Annulé par l'utilisateur — pas d'erreur à afficher
-  if (isNaN(parseInt(nouveau))) return toast('Stock invalide — saisis un nombre', 'error');
+// Modif rapide de stock depuis la page admin (📦 Stock). Pour un article
+// sans tailles, un simple prompt() comme avant. Pour un article à
+// tailles (stock_tailles), ouvre modalStockTailles avec un input par
+// taille (demande Remi 25/08/2026).
+async function modifierStock(id) {
+  const p = allProduitsAdmin.find(pr => pr.id === id);
+  if (!p) return toast('Article introuvable', 'error');
+  if (!taillesPourType(p.type_tailles)) {
+    const nouveau = prompt(`Stock actuel: ${p.stock}
+Nouveau stock pour "${p.nom}" :`, p.stock);
+    if (nouveau === null) return; // Annulé par l'utilisateur — pas d'erreur à afficher
+    if (isNaN(parseInt(nouveau))) return toast('Stock invalide — saisis un nombre', 'error');
+    try {
+      await UL.updateProduit(id, { stock: parseInt(nouveau) });
+      toast('Stock mis à jour ✅', 'success');
+      loadAdminBoutique();
+    } catch(e) { toast(e.message || 'Une erreur est survenue', 'error'); }
+    return;
+  }
+  document.getElementById('stockTaillesId').value = id;
+  document.getElementById('stockTaillesTitre').textContent = `Stock — ${p.nom}`;
+  document.getElementById('stockTaillesInputs').innerHTML = genererInputsStockTailles(p.type_tailles, p.stock_tailles || {});
+  showModal('modalStockTailles');
+}
+
+async function doModifierStockTailles() {
+  const id = document.getElementById('stockTaillesId').value;
+  const p = allProduitsAdmin.find(pr => pr.id === id);
+  if (!p) return;
+  const info = lireStockTailles(p.type_tailles);
   try {
-    await UL.updateProduit(id, { stock: parseInt(nouveau) });
+    await UL.updateProduit(id, { stock: info.total, stock_tailles: info.stock_tailles });
     toast('Stock mis à jour ✅', 'success');
+    closeModal('modalStockTailles');
     loadAdminBoutique();
   } catch(e) { toast(e.message || 'Une erreur est survenue', 'error'); }
 }
@@ -500,7 +570,12 @@ function renderSticks(sticks) {
         statutBadge = `<span class="badge badge-rouge" style="font-size:10px;margin-top:6px;display:inline-block;">Précommande terminée</span>`;
       }
     }
-    const peutCommander = (s.stock > 0 || s.mode === 'precommande') && s.prix > 0 && precommandeOuverte;
+    // Stock réellement disponible (demande Remi 25/08/2026, même
+    // correctif que Matos) — cf. _attacherStockRestantSticks
+    // (supabase-client.js) : s.stock reste le stock configuré par
+    // l'admin, s._stockRestant en déduit les distributions déjà en cours
+    // (tous statuts sauf refusé/annulé).
+    const peutCommander = ((s._stockRestant ?? s.stock) > 0 || s.mode === 'precommande') && s.prix > 0 && precommandeOuverte;
     return `
     <div class="card" style="padding:10px;">
       <div style="width:100%;height:150px;border-radius:8px;overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
@@ -509,7 +584,7 @@ function renderSticks(sticks) {
       <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(s.nom)}</div>
       <div style="font-size:12px;color:var(--gris);margin-top:2px;">
         ${s.prix ? `${s.prix}€ · ` : 'Gratuit · '}
-        ${s.mode === 'precommande' ? 'Précommande' : 'Stock: ' + s.stock}
+        ${s.mode === 'precommande' ? 'Précommande' : 'Stock: ' + (s._stockRestant ?? s.stock)}
         ${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}
       </div>
       ${s.section ? `<span class="badge badge-bleu" style="font-size:10px;margin-top:6px;display:inline-block;">Section ${esc(s.section.nom)}</span>` : ''}
@@ -547,7 +622,7 @@ async function ouvrirCommanderStick(stickId) {
         ${s.visuel_url ? `<img src="${s.visuel_url}" style="width:70px;height:70px;object-fit:cover;border-radius:10px;">` : `<div style="font-size:42px;">🎟️</div>`}
         <div>
           <div style="font-size:24px;font-family:'Bebas Neue',sans-serif;color:var(--bleu-clair);">${s.prix}€</div>
-          <div style="font-size:12px;color:var(--gris);">${s.mode==='precommande' ? 'Précommande' : 'Stock: ' + s.stock}${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}</div>
+          <div style="font-size:12px;color:var(--gris);">${s.mode==='precommande' ? 'Précommande' : 'Stock: ' + (s._stockRestant ?? s.stock)}${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}</div>
         </div>
       </div>
       ${quotaHtml}
@@ -574,7 +649,10 @@ function changerQuantiteStick(delta) {
   const input = document.getElementById('stickQuantite');
   const affichage = document.getElementById('stickQuantiteAffichage');
   let max = 99;
-  if (s.mode !== 'precommande' && s.stock > 0) max = Math.min(max, s.stock);
+  // Stock réellement disponible (demande Remi 25/08/2026, même correctif
+  // que Matos) — cf. _attacherStockRestantSticks (supabase-client.js).
+  const restant = s._stockRestant ?? s.stock;
+  if (s.mode !== 'precommande' && restant > 0) max = Math.min(max, restant);
   if (s.quota_par_membre) max = Math.min(max, s.quota_par_membre);
   const nouvelle = Math.max(1, Math.min(max, (parseInt(input.value) || 1) + delta));
   input.value = nouvelle;
@@ -1126,7 +1204,7 @@ function renderMatosAdmin(produits) {
         <div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;">
           ${p.mode !== 'precommande' ? `<button class="btn btn-sm btn-success" onclick="ouvrirCashMatos('${p.id}','${esc(p.nom)}','${p.type_tailles || 'aucune'}')">💵 Cash</button>` : ''}
           <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierProduit('${p.id}')">✏️ Modifier</button>
-          <button class="btn btn-sm btn-secondary" onclick="modifierStock('${p.id}','${esc(p.nom)}',${p.stock})">📦 Stock</button>
+          <button class="btn btn-sm btn-secondary" onclick="modifierStock('${p.id}')">📦 Stock</button>
           <button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${p.id}','matos')">🖼️ Photo</button>
           <button class="btn btn-sm btn-danger" onclick="doArchiverProduit('${p.id}')">Archiver</button>
         </div>
@@ -1140,7 +1218,14 @@ function renderSticksAdmin(sticks) {
   if (!el) return;
   if (!sticks.length) { el.innerHTML = '<div class="empty-state"><div>🎟️</div>Aucun stick</div>'; return; }
   el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">` +
-  sticks.map(s => `
+  sticks.map(s => {
+    // Même correctif que Matos (demande Remi 25/08/2026) — cf.
+    // _attacherStockRestantSticks (supabase-client.js). "Stock" reste le
+    // chiffre configuré, le restant réellement disponible est précisé à
+    // côté quand il diffère.
+    const stockDetail = s.mode !== 'precommande' && s._stockRestant !== undefined && s._stockRestant !== s.stock
+      ? ` (${s._stockRestant} restant${s._stockRestant>1?'s':''})` : '';
+    return `
     <div class="card" style="padding:10px;">
       <div style="width:100%;height:150px;border-radius:8px;overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
         ${s.visuel_url ? `<img src="${s.visuel_url}" style="width:100%;height:100%;object-fit:cover;">` : `<span style="font-size:48px;">🎟️</span>`}
@@ -1148,7 +1233,7 @@ function renderSticksAdmin(sticks) {
       <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;">${esc(s.nom)}</div>
       <div style="font-size:12px;color:var(--gris);margin-top:2px;">
         ${s.prix ? `${s.prix}€ · ` : 'Gratuit · '}
-        ${s.mode === 'precommande' ? 'Précommande' + formatPlagePrecommande(s) : 'Stock: ' + s.stock}
+        ${s.mode === 'precommande' ? 'Précommande' + formatPlagePrecommande(s) : 'Stock: ' + s.stock + stockDetail}
         ${s.lot && s.lot > 1 ? ` · Lot de ${s.lot}` : ''}
       </div>
       <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">
@@ -1160,7 +1245,8 @@ function renderSticksAdmin(sticks) {
         <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierStick('${s.id}')">✏️ Modifier</button>
         <button class="btn btn-sm btn-secondary" onclick="uploadPhotoExistant('${s.id}','stick')">🖼️ Photo</button>
       </div>
-    </div>`).join('') + `</div>`;
+    </div>`;
+  }).join('') + `</div>`;
 }
 
 // ── Cash Matos (nouveau, 05/07/2026 — même principe que Cash Stick) ──
@@ -1623,6 +1709,75 @@ function labelTypeTailles(type) {
   return type === 'pantalon' ? 'Tailles pantalon' : type === 'standard' ? 'Tailles S-XXL' : '';
 }
 
+// ── Stock par taille (25/08/2026, demande Remi) ─────────────────
+// Un article avec type_tailles != 'aucune' peut désormais avoir un stock
+// saisi taille par taille (colonne produits.stock_tailles, JSON
+// {taille: quantité}) plutôt qu'un seul stock global. La colonne stock
+// reste la somme de toutes les tailles, maintenue par l'app à chaque
+// création/modification — aucun autre affichage existant n'a besoin
+// d'être touché puisqu'il continue de lire un total cohérent.
+
+// Génère un input number par taille dans le formulaire Créer/Modifier un
+// article (modalCreerProduit) et le modal admin de modif rapide de stock
+// (modalStockTailles) — mêmes ids dans les deux cas (pStockTaille_<taille>),
+// les deux modals ne sont jamais ouverts en même temps.
+function genererInputsStockTailles(type, valeurs) {
+  const tailles = taillesPourType(type);
+  if (!tailles) return '';
+  return tailles.map(t => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="width:46px;font-size:13px;color:var(--gris);">${t}</span>
+      <input type="number" id="pStockTaille_${t}" placeholder="0" min="0"
+        value="${valeurs && valeurs[t] != null ? valeurs[t] : ''}" style="flex:1;">
+    </div>`).join('');
+}
+
+// Relit les inputs générés par genererInputsStockTailles et renvoie à la
+// fois le détail par taille (à stocker dans stock_tailles) et le total
+// (à stocker dans stock, pour rester compatible avec tout le code qui
+// lit encore ce champ comme un agrégat).
+function lireStockTailles(type) {
+  const tailles = taillesPourType(type);
+  if (!tailles) return null;
+  const stockTailles = {};
+  let total = 0;
+  tailles.forEach(t => {
+    const v = parseInt(document.getElementById(`pStockTaille_${t}`)?.value) || 0;
+    stockTailles[t] = v;
+    total += v;
+  });
+  return { stock_tailles: stockTailles, total };
+}
+
+// Bascule entre "Stock disponible" (input unique) et "Stock par taille"
+// (un input par taille) selon le type de tailles choisi — appelé au
+// changement de #pTypeTailles et à l'ouverture du modal en édition.
+function toggleStockTaillesMatos(valeurs) {
+  const type = document.getElementById('pTypeTailles').value;
+  const avecTailles = !!taillesPourType(type);
+  document.getElementById('pStockUniqueGroup').style.display = avecTailles ? 'none' : '';
+  document.getElementById('pStockTaillesGroup').style.display = avecTailles ? '' : 'none';
+  if (avecTailles) {
+    document.getElementById('pStockTaillesInputs').innerHTML = genererInputsStockTailles(type, valeurs);
+  }
+}
+
+// Variante de optionsTaillesHtml qui désactive les tailles épuisées et
+// présélectionne la première taille encore disponible — utilisée côté
+// membre (openCommander) quand le stock par taille est connu. Reste sans
+// effet (comportement identique à optionsTaillesHtml) si stockParTaille
+// est absent, ex: Cash Matos où l'admin garde la main libre.
+function optionsTaillesAvecStockHtml(type, stockParTaille) {
+  const tailles = taillesPourType(type);
+  if (!tailles) return '';
+  if (!stockParTaille) return optionsTaillesHtml(type);
+  const defaut = tailles.find(t => (stockParTaille[t] ?? 0) > 0) || tailles[Math.floor((tailles.length - 1) / 2)];
+  return tailles.map(t => {
+    const epuise = (stockParTaille[t] ?? 0) === 0;
+    return `<option value="${t}" ${t === defaut ? 'selected' : ''} ${epuise ? 'disabled' : ''}>${t}${epuise ? ' — épuisé' : ''}</option>`;
+  }).join('');
+}
+
 function previewPhoto(input, type) {
   const file = input.files[0];
   if (!file) return;
@@ -1707,15 +1862,21 @@ async function doCreerProduit() {
       photoUrl = await UL.uploadPhotoMatos(photoFile, nom);
     }
 
+    const typeTailles = document.getElementById('pTypeTailles').value;
+    const infoTailles = lireStockTailles(typeTailles);
+
     const produit = await UL.createProduit({
       nom,
       description: document.getElementById('pDesc').value || null,
       categorie: document.getElementById('pCat').value,
       prix,
-      stock: parseInt(document.getElementById('pStock').value) || 0,
+      // Stock par taille (25/08/2026) : stock reste le total (somme des
+      // tailles), stock_tailles porte le détail — null si pas de tailles.
+      stock: infoTailles ? infoTailles.total : (parseInt(document.getElementById('pStock').value) || 0),
+      stock_tailles: infoTailles ? infoTailles.stock_tailles : null,
       quota_par_membre: parseInt(document.getElementById('pQuota').value) || null,
-      type_tailles: document.getElementById('pTypeTailles').value,
-      avec_tailles: document.getElementById('pTypeTailles').value !== 'aucune',
+      type_tailles: typeTailles,
+      avec_tailles: typeTailles !== 'aucune',
       niveau_acces: acces,
       section_id: sectionId,
       mode: document.getElementById('pMode').value,
@@ -1759,6 +1920,7 @@ async function doCreerProduit() {
     }
     document.getElementById('pAcces').value = 'tous';
     document.getElementById('pTypeTailles').value = 'aucune';
+    toggleStockTaillesMatos();
     document.getElementById('sectionSelectGroup').style.display = 'none';
     document.getElementById('pBrouillon').checked = false;
     loadAdminBoutique();
@@ -1797,6 +1959,7 @@ async function ouvrirModifierProduit(produitId) {
   document.getElementById('pStock').value = p.stock ?? '';
   document.getElementById('pQuota').value = p.quota_par_membre ?? '';
   document.getElementById('pTypeTailles').value = p.type_tailles || (p.avec_tailles ? 'standard' : 'aucune');
+  toggleStockTaillesMatos(p.stock_tailles);
   document.getElementById('pAcces').value = p.niveau_acces || 'tous';
   document.getElementById('pMode').value = p.mode || 'stock';
   document.getElementById('pPrecommandeDebut').value = isoVersDateLocal(p.precommande_debut);
@@ -1840,15 +2003,18 @@ async function doModifierProduit() {
     // sinon on conserve photo_url existante (ne pas envoyer ce champ dans
     // l'update pour ne pas l'écraser avec null).
     const photoFile = document.getElementById('pPhoto').files[0];
+    const typeTailles = document.getElementById('pTypeTailles').value;
+    const infoTailles = lireStockTailles(typeTailles);
     const updates = {
       nom,
       description: document.getElementById('pDesc').value || null,
       categorie: document.getElementById('pCat').value,
       prix,
-      stock: parseInt(document.getElementById('pStock').value) || 0,
+      stock: infoTailles ? infoTailles.total : (parseInt(document.getElementById('pStock').value) || 0),
+      stock_tailles: infoTailles ? infoTailles.stock_tailles : null,
       quota_par_membre: parseInt(document.getElementById('pQuota').value) || null,
-      type_tailles: document.getElementById('pTypeTailles').value,
-      avec_tailles: document.getElementById('pTypeTailles').value !== 'aucune',
+      type_tailles: typeTailles,
+      avec_tailles: typeTailles !== 'aucune',
       niveau_acces: acces,
       section_id: sectionId,
       mode: document.getElementById('pMode').value,
