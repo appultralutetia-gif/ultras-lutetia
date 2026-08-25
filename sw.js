@@ -1,10 +1,50 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v78
+// ULTRAS LUTETIA — Service Worker v80
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
-// v78 (10/07/2026) : CACHE_NAME bumpé (v77 → v78) — Gérer le cartage →
+// v80 (25/08/2026) : CACHE_NAME bumpé (v144 → v145) — Correctif stock
+// Sticks (demande Remi) : même correctif que Matos (31/07/2026) —
+// sticks_catalogue.stock n'était décrémenté qu'au passage en statut
+// 'distribue' (remise physique), jamais à la commande, donc un stick
+// restait commandable en HelloAsso même déjà épuisé par des
+// distributions en attente. Nouvelle fonction
+// _attacherStockRestantSticks (supabase-client.js, même principe que
+// _attacherStockRestant pour Matos) : calcule à la volée le stock
+// restant = stock configuré − quantité déjà distribuée (tous statuts
+// sauf refuse/annulee), attachée sur getSticks()/getStickById(). Utilisé
+// côté membre (renderSticks, ouvrirCommanderStick, changerQuantiteStick)
+// et côté admin (renderSticksAdmin, badge "restant" comme Matos). Pas de
+// vérif ajoutée côté distribuerStickAdmin (cash admin) ni
+// demanderStickHelloAsso — même choix que pour Matos, cohérent avec
+// l'existant (cash admin bypass volontaire, HelloAsso reste un angle
+// mort connu côté Edge Function, hors dépôt front).
+
+// v79 (25/08/2026) : CACHE_NAME bumpé (v143 → v144) — 3 chantiers Boutique
+// (demande Remi) :
+// 1. Matos : filtre "Section" ajouté (comme Sticks) — remplirFiltreMatosSection
+//    + filtrerMatosSection + appliquerFiltresMatos (combine catégorie et
+//    section) (boutique.js, index.html).
+// 2. Stick : label "Catégorie" renommé en "Niveau d'accès" dans la modale
+//    de création/modif — uniformise avec Matos (le champ stCat était déjà
+//    tous/draft_confirme/confirme, seul le libellé était trompeur)
+//    (index.html).
+// 3. Matos : stock par taille (S/M/L/XL/XXL ou pantalon 38-52) — nouvelle
+//    colonne produits.stock_tailles (jsonb, migration appliquée en base).
+//    stock reste le total (somme des tailles), maintenu par l'app à
+//    chaque création/modif. _attacherStockRestant calcule désormais aussi
+//    _stockRestantParTaille (supabase-client.js) ; passerCommande vérifie
+//    le stock de la taille demandée en plus du total. Formulaire
+//    Créer/Modifier article : bloc d'inputs par taille (pStockTaillesGroup)
+//    remplace le stock unique quand un type de tailles est choisi.
+//    Modal dédié modalStockTailles pour la modif rapide de stock (bouton
+//    📦 Stock) sur un article à tailles — reste un simple prompt() sinon.
+//    Côté membre (openCommander), le select de taille désactive les
+//    tailles épuisées et la quantité max suit la taille sélectionnée.
+//    ⚠️ Aucun article existant n'utilisait encore les tailles en base au
+//    moment de cette migration — pas de données à retraiter.
+
 // Suivi des paiements : 2 nouveaux filtres (demande Remi) — "❌ Cartage
 // non payé" et "❌ Charte non signée" — pour isoler chaque cause
 // séparément (le filtre "Incomplets" existant mélange les deux, cartage
@@ -977,7 +1017,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v143';
+const CACHE_NAME = 'ul-v145';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
