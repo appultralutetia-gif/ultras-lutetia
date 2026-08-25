@@ -453,10 +453,15 @@
     <!-- ─ MATOS ─ -->
     <div id="sectionMatos">
       <!-- Filtres catégorie -->
-      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;scrollbar-width:none;">
+      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px;scrollbar-width:none;">
         <button class="filter-btn active" onclick="filtrerMatos('tous')">Tous</button>
         <button class="filter-btn" onclick="filtrerMatos('textile')">Textile</button>
         <button class="filter-btn" onclick="filtrerMatos('accessoire')">Accessoire</button>
+      </div>
+      <div style="margin-bottom:12px;">
+        <select id="filtreMatosSection" onchange="filtrerMatosSection(this.value)" style="background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:8px 12px;border-radius:9px;font-size:13px;">
+          <option value="">Toutes sections</option>
+        </select>
       </div>
       <!-- Bouton scan retrait (Cellule Matos + Bureau + Admin uniquement) -->
       <div id="btnScanRetraitMatos" style="display:none;margin-bottom:12px;">
@@ -1545,15 +1550,19 @@
       </select>
     </div>
     <div class="form-group"><label>Prix (€)</label><input type="number" id="pPrix" placeholder="25"></div>
-    <div class="form-group"><label>Stock disponible</label><input type="number" id="pStock" placeholder="0"></div>
+    <div class="form-group" id="pStockUniqueGroup"><label>Stock disponible</label><input type="number" id="pStock" placeholder="0"></div>
     <div class="form-group"><label>Quota par membre (optionnel — vide = pas de limite)</label><input type="number" id="pQuota" placeholder="ex: 2" min="1"></div>
     <div class="form-group">
       <label>Tailles disponibles</label>
-      <select id="pTypeTailles">
+      <select id="pTypeTailles" onchange="toggleStockTaillesMatos()">
         <option value="aucune">Taille unique (pas de choix de taille)</option>
         <option value="standard">Vêtement (S/M/L/XL/XXL)</option>
         <option value="pantalon">Pantalon (38 à 52)</option>
       </select>
+    </div>
+    <div class="form-group" id="pStockTaillesGroup" style="display:none;">
+      <label>Stock par taille</label>
+      <div id="pStockTaillesInputs"></div>
     </div>
     <div class="form-group">
       <label>Niveau d'accès</label>
@@ -1616,6 +1625,22 @@
   </div>
 </div>
 
+<!-- Modal Stock par taille (25/08/2026) — modif rapide du bouton 📦 Stock
+     quand l'article a des tailles ; sinon un simple prompt() suffit
+     (cf. modifierStock, boutique.js). -->
+<div class="modal-overlay" id="modalStockTailles" style="display:none;" onclick="closeModalOutside(event,'modalStockTailles')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title" id="stockTaillesTitre">Stock par taille</h3>
+    <input type="hidden" id="stockTaillesId">
+    <div class="form-group">
+      <div id="stockTaillesInputs"></div>
+    </div>
+    <button class="btn btn-primary" onclick="doModifierStockTailles()">💾 Enregistrer</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalStockTailles')">Annuler</button>
+  </div>
+</div>
+
 <!-- Modal Créer Stick (Admin/Cellule Sticks) -->
 <div class="modal-overlay" id="modalCreerStick" style="display:none;" onclick="closeModalOutside(event,'modalCreerStick')">
   <div class="modal" onclick="event.stopPropagation()">
@@ -1632,7 +1657,7 @@
       <input type="file" id="stPhoto" accept="image/png,image/jpeg" onchange="previewPhoto(this,'stick')"
         style="background:var(--surface-2);border:1.5px dashed var(--surface-4);border-radius:9px;padding:10px;color:var(--gris);width:100%;cursor:pointer;">
     </div>
-    <div class="form-group"><label>Catégorie</label>
+    <div class="form-group"><label>Niveau d'accès</label>
       <select id="stCat">
         <option value="tous">Tous les membres</option>
         <option value="draft_confirme">Draft + Confirmés</option>
