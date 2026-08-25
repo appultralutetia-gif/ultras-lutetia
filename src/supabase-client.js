@@ -2073,20 +2073,35 @@ async function _attacherStockRestant(produits) {
   const idsEnStock = produits.filter(p => p.mode !== 'precommande').map(p => p.id);
   if (!idsEnStock.length) return produits;
   const { data: items, error } = await sb.from('commande_items')
-    .select('produit_id, quantite, commande:commandes!inner(statut)')
+    .select('produit_id, taille, quantite, commande:commandes!inner(statut)')
     .in('produit_id', idsEnStock);
   if (error) {
     console.error('[UL] _attacherStockRestant — erreur:', error.message);
     return produits;
   }
   const venduParProduit = {};
+  // Vendu par (produit, taille) — permet, pour les articles avec tailles
+  // (stock_tailles), de ne pas bloquer une taille juste parce qu'une
+  // autre taille du même article est épuisée (demande Remi 25/08/2026).
+  const venduParTaille = {};
   for (const it of (items || [])) {
     if (it.commande?.statut === 'refuse' || it.commande?.statut === 'annulee') continue;
     venduParProduit[it.produit_id] = (venduParProduit[it.produit_id] || 0) + (it.quantite || 0);
+    if (it.taille) {
+      const cle = `${it.produit_id}|${it.taille}`;
+      venduParTaille[cle] = (venduParTaille[cle] || 0) + (it.quantite || 0);
+    }
   }
   for (const p of produits) {
     if (p.mode !== 'precommande') {
       p._stockRestant = Math.max(0, (p.stock || 0) - (venduParProduit[p.id] || 0));
+      if (p.stock_tailles && typeof p.stock_tailles === 'object') {
+        p._stockRestantParTaille = {};
+        for (const taille of Object.keys(p.stock_tailles)) {
+          const vendu = venduParTaille[`${p.id}|${taille}`] || 0;
+          p._stockRestantParTaille[taille] = Math.max(0, (p.stock_tailles[taille] || 0) - vendu);
+        }
+      }
     }
   }
   return produits;
@@ -2180,6 +2195,11 @@ async function passerCommande(produitId, taille, quantite = 1) {
   // (quelqu'un d'autre a pris la dernière unité entre-temps).
   if ((produit._stockRestant ?? produit.stock ?? 0) < quantite) {
     throw new Error('Stock insuffisant — il ne reste plus assez d\'unités disponibles.');
+  }
+  // Vérif complémentaire par taille (25/08/2026) — un article peut avoir
+  // du stock au global mais plus rien sur la taille demandée.
+  if (taille && produit._stockRestantParTaille && (produit._stockRestantParTaille[taille] ?? 0) < quantite) {
+    throw new Error(`Stock insuffisant pour la taille ${taille} — il ne reste plus assez d'unités disponibles.`);
   }
   if (produit.quota_par_membre) {
     // Corrigé (22/07/2026, cas Brahim Bennais/Tour de Cou) : le quota
@@ -2348,6 +2368,36 @@ async function marquerCommandePreparee(commandeId) {
 // BOUTIQUE — STICKS
 // ============================================================
 
+// Même principe que _attacherStockRestant (Matos, 31/07/2026) appliqué
+// aux Sticks (demande Remi 25/08/2026) : jusqu'ici sticks_catalogue.stock
+// n'était décrémenté qu'au passage en statut 'distribue' (remise
+// physique), jamais à la commande — un stick pouvait donc rester
+// commandable en HelloAsso alors qu'il était déjà épuisé par des
+// distributions en attente. Calculé à la volée (comme pour Matos) sur
+// tous les statuts sauf refuse/annulee.
+async function _attacherStockRestantSticks(sticks) {
+  const idsEnStock = sticks.filter(s => s.mode !== 'precommande').map(s => s.id);
+  if (!idsEnStock.length) return sticks;
+  const { data: distribs, error } = await sb.from('sticks_distribution')
+    .select('stick_id, quantite, statut')
+    .in('stick_id', idsEnStock);
+  if (error) {
+    console.error('[UL] _attacherStockRestantSticks — erreur:', error.message);
+    return sticks;
+  }
+  const venduParStick = {};
+  for (const d of (distribs || [])) {
+    if (d.statut === 'refuse' || d.statut === 'annulee') continue;
+    venduParStick[d.stick_id] = (venduParStick[d.stick_id] || 0) + (d.quantite || 0);
+  }
+  for (const s of sticks) {
+    if (s.mode !== 'precommande') {
+      s._stockRestant = Math.max(0, (s.stock || 0) - (venduParStick[s.id] || 0));
+    }
+  }
+  return sticks;
+}
+
 async function getSticks() {
   const membre = currentMembre;
   if (!membre) return [];
@@ -2360,7 +2410,7 @@ async function getSticks() {
     .eq('statut', 'disponible')
     .order('nom');
   if (error) throw error;
-  return (data || []).filter(s => {
+  const sticksVisibles = (data || []).filter(s => {
     // Même règle que Matos ci-dessus (demande Remi 22/07/2026) : une
     // précommande terminée disparaît du catalogue membre, seul
     // l'historique admin y donne encore accès.
@@ -2378,6 +2428,7 @@ async function getSticks() {
     }
     return false;
   });
+  return _attacherStockRestantSticks(sticksVisibles);
 }
 
 // Sticks dont la précommande est terminée — réservé à l'admin, pour
@@ -2399,6 +2450,7 @@ async function getStickById(id) {
     .select('*, section:sections(id, nom)')
     .eq('id', id).single();
   if (error) throw error;
+  await _attacherStockRestantSticks([data]);
   return data;
 }
 
