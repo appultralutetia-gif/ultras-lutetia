@@ -1,9 +1,20 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v80
+// ULTRAS LUTETIA — Service Worker v81
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v81 (25/08/2026) : CACHE_NAME bumpé (v145 → v146) — recherche par nom/
+// prénom/pseudo (demande Remi) ajoutée sur "Commandes en cours" (Matos)
+// et "Distributions en cours" (Sticks) de la page Gestion Boutique,
+// même principe que la recherche Inscrits Déplacement (31/07/2026) :
+// combinée en ET avec le filtre article déjà existant. Contrairement à
+// Déplacements, pas besoin de restaurer le focus après chaque frappe —
+// le champ de recherche vit dans le HTML statique, seule la liste
+// (#adminToutesCommandes / #adminToutesDistribs) est régénérée à chaque
+// filtre, le champ lui-même n'est jamais détruit. Fichiers modifiés :
+// boutique.js, index.html.
+
 // v80 (25/08/2026) : CACHE_NAME bumpé (v144 → v145) — Correctif stock
 // Sticks (demande Remi) : même correctif que Matos (31/07/2026) —
 // sticks_catalogue.stock n'était décrémenté qu'au passage en statut
@@ -1017,7 +1028,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v145';
+const CACHE_NAME = 'ul-v146';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
