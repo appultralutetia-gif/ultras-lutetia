@@ -755,10 +755,16 @@ async function loadHistoriqueMatos() {
         .filter(c => c.statut !== 'annulee' && c.statut !== 'refuse');
       const nonRemis = commandesArticle.filter(c => c.statut !== 'distribue');
       const remis = commandesArticle.length - nonRemis.length;
+      // Un article archivé manuellement (statut='archive', mode stock)
+      // n'a pas de precommande_fin — libellé adapté (demande Remi
+      // 26/08/2026).
+      const dateLabel = p.precommande_fin
+        ? `Précommande terminée le ${new Date(p.precommande_fin).toLocaleDateString('fr-FR')}`
+        : 'Archivé';
       return `
       <div class="card" style="margin-bottom:8px;opacity:.85;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(p.nom)}</div>
-        <div style="font-size:12px;color:var(--gris);">${p.prix}€ · Précommande terminée le ${new Date(p.precommande_fin).toLocaleDateString('fr-FR')}</div>
+        <div style="font-size:12px;color:var(--gris);">${p.prix}€ · ${dateLabel}</div>
         <div style="font-size:12px;margin-top:8px;">✅ ${remis} remis${nonRemis.length ? ` · ⏳ ${nonRemis.length} encore à remettre` : ''}</div>
         ${nonRemis.length ? `
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;">
