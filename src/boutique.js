@@ -923,6 +923,12 @@ function filtrerDistribsAdminSansEvent(mode) {
 // ═══════════════════════════════════════════════════════════════
 
 let filtreTypeGestion = 'tous', filtreStatutGestion = 'en_cours', vueGestionCommandes = 'membre';
+// Recherche par nom/prénom/pseudo (demande Remi 26/08/2026, même
+// principe que Commandes en cours) — combinée en ET avec les filtres
+// type/statut ci-dessus. S'applique aussi en vue "Par article" (filtre
+// les lignes avant regroupement) même si son intérêt principal est la
+// vue "Par membre".
+let rechercheGestion = '';
 
 const STATUT_LABEL_GESTION = {
   en_attente: '⏳ Attente paiement', prepare: '📦 Préparé', disponible: '✅ Disponible', precommande_validee: '📋 Précommande validée',
@@ -977,7 +983,16 @@ function getRowsGestionFiltrees() {
   if (filtreTypeGestion === 'matos' || filtreTypeGestion === 'stick') rows = rows.filter(r => r.type === filtreTypeGestion);
   else if (filtreTypeGestion === 'precommande') rows = rows.filter(r => r.mode === 'precommande');
   if (filtreStatutGestion === 'en_cours') rows = rows.filter(r => STATUTS_EN_COURS.includes(r.statut));
+  if (rechercheGestion.trim()) {
+    const q = rechercheGestion.trim().toLowerCase();
+    rows = rows.filter(r => `${r.membre?.prenom||''} ${r.membre?.nom||''} ${r.membre?.pseudo_telegram||''}`.toLowerCase().includes(q));
+  }
   return rows;
+}
+
+function rechercherGestion(val) {
+  rechercheGestion = val;
+  renderGestionCommandes();
 }
 
 function grouperParMembre(rows) {
