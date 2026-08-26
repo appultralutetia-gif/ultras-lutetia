@@ -468,6 +468,25 @@ async function confirmerPresencesDeplacement(inscriptionIds, force = false) {
   return { success: true, nb: inscriptionIds.length };
 }
 
+// Toutes les inscriptions PAYÉES et pas encore marquées présentes d'un
+// membre donné, tous déplacements confondus (demande Remi 25/08/2026 —
+// nouveau flux de scan : on scanne désormais le membre concerné
+// lui-même, plus le payeur du groupe, donc plus besoin de présélectionner
+// un déplacement avant de scanner — cf. afficherActionsDeplacement,
+// scan.js). Un membre a normalement 0 ou 1 résultat en pratique ; le
+// scan gère malgré tout le cas de plusieurs déplacements payés en
+// attente de présence en même temps (rare mais possible si deux
+// déplacements se chevauchent).
+async function getInscriptionsAPointerParMembre(membreId) {
+  const { data, error } = await sb.from('inscriptions_deplacement')
+    .select('*, deplacement:deplacements(id, adversaire, date_match)')
+    .eq('membre_id', membreId)
+    .in('statut_paiement', ['paye_cash', 'paye_ha'])
+    .is('present_at', null);
+  if (error) throw error;
+  return (data || []).filter(i => i.deplacement);
+}
+
 async function regenererQrCodeMembre(membreId) {
   const token = genererTokenQrMembre();
   const { data, error } = await sb.from('membres')
@@ -2145,15 +2164,31 @@ async function getProduits() {
 // pour l'onglet "Historique" (demande Remi 22/07/2026). Contrairement à
 // getProduits(), aucun filtre de droits/visibilité : c'est un historique
 // de référence, pas un catalogue d'achat.
+// Étendu 26/08/2026 (demande Remi, cas "Écharpe Laine"/"Lunette Paris FC"
+// invisibles nulle part) : couvre aussi les articles archivés
+// MANUELLEMENT (statut='archive', bouton "Archiver" sur un article en
+// mode stock — doArchiverProduit) — un mécanisme distinct et plus ancien
+// que l'archivage automatique par précommande_fin, qui n'était jusqu'ici
+// regardé par aucun onglet une fois l'article retiré de getProduits()
+// (qui filtre .eq('statut','disponible')). Deux requêtes séparées et
+// dédoublonnage plutôt qu'un .or() PostgREST imbriqué, plus robuste.
 async function getProduitsHistoriqueMatos() {
-  const { data, error } = await sb.from('produits')
-    .select('*, section:sections(id, nom)')
-    .eq('mode', 'precommande')
-    .not('precommande_fin', 'is', null)
-    .lt('precommande_fin', new Date().toISOString())
-    .order('precommande_fin', { ascending: false });
-  if (error) throw error;
-  return data || [];
+  const nowIso = new Date().toISOString();
+  const [{ data: precommandesTerminees, error: e1 }, { data: archivesManuels, error: e2 }] = await Promise.all([
+    sb.from('produits').select('*, section:sections(id, nom)')
+      .eq('mode', 'precommande').not('precommande_fin', 'is', null).lt('precommande_fin', nowIso),
+    sb.from('produits').select('*, section:sections(id, nom)').eq('statut', 'archive'),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  const vus = new Set();
+  const tout = [...(precommandesTerminees || []), ...(archivesManuels || [])].filter(p => {
+    if (vus.has(p.id)) return false;
+    vus.add(p.id);
+    return true;
+  });
+  tout.sort((a, b) => new Date(b.precommande_fin || b.created_at) - new Date(a.precommande_fin || a.created_at));
+  return tout;
 }
 
 async function getProduitById(id) {
@@ -2896,6 +2931,7 @@ window.UL = {
   getParticipationBatch,
   adminResetPassword, updateMembreMdp, supprimerMembre,
   getOrCreateQrCodeMembre, getMembreParQrCode, confirmerPresencesDeplacement, regenererQrCodeMembre,
+  getInscriptionsAPointerParMembre,
   getSections,
   getCalendar, addMatch, updateMatch, getMatchs, deleteMatch,
   getClassementLigue1, syncClassementLigue1Manuel,
