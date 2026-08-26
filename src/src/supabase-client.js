@@ -468,6 +468,25 @@ async function confirmerPresencesDeplacement(inscriptionIds, force = false) {
   return { success: true, nb: inscriptionIds.length };
 }
 
+// Toutes les inscriptions PAYÉES et pas encore marquées présentes d'un
+// membre donné, tous déplacements confondus (demande Remi 25/08/2026 —
+// nouveau flux de scan : on scanne désormais le membre concerné
+// lui-même, plus le payeur du groupe, donc plus besoin de présélectionner
+// un déplacement avant de scanner — cf. afficherActionsDeplacement,
+// scan.js). Un membre a normalement 0 ou 1 résultat en pratique ; le
+// scan gère malgré tout le cas de plusieurs déplacements payés en
+// attente de présence en même temps (rare mais possible si deux
+// déplacements se chevauchent).
+async function getInscriptionsAPointerParMembre(membreId) {
+  const { data, error } = await sb.from('inscriptions_deplacement')
+    .select('*, deplacement:deplacements(id, adversaire, date_match)')
+    .eq('membre_id', membreId)
+    .in('statut_paiement', ['paye_cash', 'paye_ha'])
+    .is('present_at', null);
+  if (error) throw error;
+  return (data || []).filter(i => i.deplacement);
+}
+
 async function regenererQrCodeMembre(membreId) {
   const token = genererTokenQrMembre();
   const { data, error } = await sb.from('membres')
@@ -2896,6 +2915,7 @@ window.UL = {
   getParticipationBatch,
   adminResetPassword, updateMembreMdp, supprimerMembre,
   getOrCreateQrCodeMembre, getMembreParQrCode, confirmerPresencesDeplacement, regenererQrCodeMembre,
+  getInscriptionsAPointerParMembre,
   getSections,
   getCalendar, addMatch, updateMatch, getMatchs, deleteMatch,
   getClassementLigue1, syncClassementLigue1Manuel,
