@@ -1,9 +1,36 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v81
+// ULTRAS LUTETIA — Service Worker v82
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v82 (25/08/2026) : CACHE_NAME bumpé (v146 → v147) — 3 chantiers
+// (demande Remi) :
+// 1. Matos : le catalogue membre affiche désormais le chiffre réel de
+// stock restant ("Stock: X"), comme Sticks — remplace le badge vague
+// "Stock limité" qui ne donnait aucun nombre. Fichier modifié :
+// boutique.js.
+// 2. Refonte du scan Déplacement (scan.js) : jusqu'ici le scan
+// nécessitait de présélectionner un déplacement AVANT de scanner, puis
+// scannait le PAYEUR d'un groupe et affichait une case à cocher par
+// personne payée pour choisir qui est présent. Un scan = désormais la
+// présence du membre scanné lui-même (son propre QR de Profil), pour
+// SES déplacements payés en attente de présence, retrouvés directement
+// à partir du scan (getInscriptionsAPointerParMembre, nouvelle fonction
+// supabase-client.js) : un seul résultat → confirmé immédiatement, sans
+// aucune interaction ; plusieurs (rare, déplacements qui se
+// chevauchent) → un bouton par déplacement à choisir, toujours sans
+// case à cocher. ⚠️ Un invité hors app (jamais de compte, donc jamais de
+// QR à scanner) ne peut plus être pointé par ce flux — nouveau bouton de
+// secours "✅ Marquer présent" dans la liste "Voir inscrits"
+// (marquerPresentManuel, deplacements.js) pour ce cas et en dépannage
+// général (caméra en panne, QR illisible). Au passage : retrait du QR
+// affiché sur "Mon billet" déplacement (inscriptions_deplacement.qr_code)
+// — code mort, jamais utilisé par aucun flux de scan (qui ne résout que
+// via qr_code_membre, le QR fixe du Profil), source de confusion sur
+// quel code présenter. Fichiers modifiés : scan.js, deplacements.js,
+// supabase-client.js.
+
 // v81 (25/08/2026) : CACHE_NAME bumpé (v145 → v146) — recherche par nom/
 // prénom/pseudo (demande Remi) ajoutée sur "Commandes en cours" (Matos)
 // et "Distributions en cours" (Sticks) de la page Gestion Boutique,
@@ -1028,7 +1055,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v146';
+const CACHE_NAME = 'ul-v147';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
