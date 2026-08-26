@@ -180,10 +180,8 @@ async function openCommander(produitId) {
       </div>
       <div class="form-group">
         <label>Mode de paiement</label>
-        <select id="cmdMode" style="background:#1F2937;border:1.5px solid #4B5563;color:white;padding:11px 14px;border-radius:9px;width:100%;font-size:15px;">
-          <option value="helloasso">💳 HelloAsso (en ligne)</option>
-          ${p.mode !== 'precommande' ? `<option value="cash">💵 Cash (en présentiel)</option>` : ''}
-        </select>
+        <div style="background:#1F2937;border:1.5px solid #4B5563;color:white;padding:11px 14px;border-radius:9px;width:100%;font-size:15px;">💳 HelloAsso (en ligne)</div>
+        <input type="hidden" id="cmdMode" value="helloasso">
       </div>
       ${p.mode === 'precommande' ? `<div class="info-box" style="font-size:12px;">📋 Article en précommande — paiement HelloAsso uniquement. Il sera disponible au retrait une fois reçu par la cellule Matos.</div>` : ''}
       <button class="btn btn-primary" onclick="doCommander('${p.id}',${!!taillesPourType(p.type_tailles)})">Valider la commande</button>
