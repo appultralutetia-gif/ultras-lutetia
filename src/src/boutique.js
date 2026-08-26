@@ -100,9 +100,14 @@ function renderMatos(produits) {
       // stock configuré par l'admin, p._stockRestant en déduit les
       // commandes déjà passées (tous statuts sauf refusé/annulé).
       const restant = p._stockRestant ?? p.stock;
-      stockBadge = restant <= 3 && restant > 0
-        ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
-        : restant === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
+      // Chiffre affiché directement (demande Remi 25/08/2026, même
+      // principe que Sticks) plutôt qu'un badge vague "Stock limité" —
+      // pour un article à tailles, c'est le total toutes tailles
+      // confondues (le détail par taille apparaît dans le sélecteur au
+      // moment de commander, cf. optionsTaillesAvecStockHtml).
+      stockBadge = restant === 0
+        ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>`
+        : `<span class="badge ${restant<=3?'badge-orange':'badge-bleu'}" style="font-size:10px;">Stock: ${restant}</span>`;
     }
     const sectionBadge = p.section
       ? `<span class="badge badge-bleu" style="font-size:10px;">Section ${p.section.nom}</span>` : '';
@@ -769,6 +774,13 @@ let currentFiltreCommandesAdmin = 'en_cours', currentFiltreDistribsAdmin = 'en_c
 // Filtre additionnel par article (demande Remi 22/07/2026) — combiné en
 // ET avec le filtre en_cours/toutes ci-dessus, pas en remplacement.
 let filtreProduitCommandesAdmin = '', filtreStickDistribsAdmin = '';
+// Recherche par nom/prénom/pseudo (demande Remi 25/08/2026, même
+// principe que la recherche Inscrits Déplacement) — combinée en ET avec
+// les filtres ci-dessus. Contrairement à Déplacements, ces deux champs
+// vivent dans le HTML statique (pas régénérés à chaque rendu, seul
+// #adminToutesCommandes/#adminToutesDistribs l'est), donc pas besoin de
+// restaurer le focus après coup.
+let rechercheCommandesAdmin = '', rechercheDistribsAdmin = '';
 
 function appliquerFiltresCommandesAdmin() {
   let filtered = currentFiltreCommandesAdmin === 'en_cours'
@@ -777,10 +789,18 @@ function appliquerFiltresCommandesAdmin() {
   if (filtreProduitCommandesAdmin) {
     filtered = filtered.filter(c => (c.commande_items || []).some(i => i.produit_id === filtreProduitCommandesAdmin));
   }
+  if (rechercheCommandesAdmin.trim()) {
+    const q = rechercheCommandesAdmin.trim().toLowerCase();
+    filtered = filtered.filter(c => `${c.membre?.prenom||''} ${c.membre?.nom||''} ${c.membre?.pseudo_telegram||''}`.toLowerCase().includes(q));
+  }
   renderToutesCommandes(filtered);
 }
 function filtrerProduitCommandesAdmin() {
   filtreProduitCommandesAdmin = document.getElementById('filtreProduitCommandesAdmin').value;
+  appliquerFiltresCommandesAdmin();
+}
+function rechercherCommandesAdmin(val) {
+  rechercheCommandesAdmin = val;
   appliquerFiltresCommandesAdmin();
 }
 
@@ -791,10 +811,18 @@ function appliquerFiltresDistribsAdmin() {
   if (filtreStickDistribsAdmin) {
     filtered = filtered.filter(d => d.stick_id === filtreStickDistribsAdmin);
   }
+  if (rechercheDistribsAdmin.trim()) {
+    const q = rechercheDistribsAdmin.trim().toLowerCase();
+    filtered = filtered.filter(d => `${d.membre?.prenom||''} ${d.membre?.nom||''} ${d.membre?.pseudo_telegram||''}`.toLowerCase().includes(q));
+  }
   renderToutesDistribs(filtered);
 }
 function filtrerStickDistribsAdmin() {
   filtreStickDistribsAdmin = document.getElementById('filtreStickDistribsAdmin').value;
+  appliquerFiltresDistribsAdmin();
+}
+function rechercherDistribsAdmin(val) {
+  rechercheDistribsAdmin = val;
   appliquerFiltresDistribsAdmin();
 }
 
