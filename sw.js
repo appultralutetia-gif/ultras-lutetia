@@ -1,9 +1,25 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v82
+// ULTRAS LUTETIA — Service Worker v84
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v84 (26/08/2026) : CACHE_NAME bumpé (v148 → v149) — recherche par nom/
+// prénom/pseudo (demande Remi) ajoutée sur l'onglet "Gestion" (Matos +
+// Sticks réunis), même principe que "Commandes en cours" (25/08/2026) :
+// combinée en ET avec les filtres type/statut déjà existants, s'applique
+// aussi bien en vue "Par membre" qu'"Par article" (filtre les lignes
+// avant regroupement). Fichiers modifiés : boutique.js, index.html.
+
+// v83 (26/08/2026) : CACHE_NAME bumpé (v147 → v148) — retrait du choix
+// "💵 Cash (en présentiel)" dans la modale de commande Matos côté membre
+// (demande Remi) : ne reste plus que HelloAsso, affiché en simple ligne
+// (#cmdMode redevenu un input hidden fixé à 'helloasso') plutôt qu'un
+// menu déroulant à un seul choix. Le cash reste possible côté admin (💵
+// Cash Matos, ouvrirCashMatos — vente en présentiel enregistrée par la
+// cellule) — seul le choix laissé au membre lui-même dans "Commander"
+// disparaît. Fichier modifié : boutique.js.
+
 // v82 (25/08/2026) : CACHE_NAME bumpé (v146 → v147) — 3 chantiers
 // (demande Remi) :
 // 1. Matos : le catalogue membre affiche désormais le chiffre réel de
@@ -1055,7 +1071,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v147';
+const CACHE_NAME = 'ul-v149';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
