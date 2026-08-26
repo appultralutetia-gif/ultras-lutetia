@@ -1,9 +1,37 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v86
+// ULTRAS LUTETIA — Service Worker v88
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v88 (26/08/2026) : CACHE_NAME bumpé (v152 → v153) — même règle
+// d'exemption conditionnelle qu'Amarzit (v87) étendue à Maxine Fournier
+// (demande Remi) : exemptée uniquement si Kentin Fournier ET Laura
+// Corsois participent tous les deux à la même inscription groupée
+// qu'elle. membres.deplacements_gratuits mis à true pour Maxine
+// (Kentin et Laura n'ont pas ce flag). EXEMPTION_CONDITIONNELLE mise à
+// jour aux deux mêmes endroits que pour Amarzit : Edge Function
+// helloasso-create-checkout (déployée directement, v34) et le récap
+// avant paiement (majRecapInscritDepl, deplacements.js). Fichier front
+// modifié : deplacements.js.
+
+// v87 (26/08/2026) : CACHE_NAME bumpé (v151 → v152) — règle famille
+// Amarzit revue (demande Remi) : l'exemption de Myriam Amarzit
+// (membres.deplacements_gratuits=true) n'est plus inconditionnelle,
+// elle ne s'applique désormais que si Stéphane ET Ange Amarzit
+// participent TOUS LES DEUX à la même inscription groupée qu'elle —
+// sinon elle paie sa place normalement (ex: Stéphane + Myriam sans
+// Ange → Stéphane paie 2 places, aucune exemption). Stéphane et Ange
+// n'ont eux-mêmes jamais eu ce flag, rien ne change les concernant.
+// Corrigé aux 2 endroits qui appliquaient la règle : l'Edge Function
+// helloasso-create-checkout (déployée directement, v33 — source de
+// vérité pour le montant réellement facturé, accès direct via Supabase
+// MCP cette fois, l'angle mort mentionné dans les sessions précédentes
+// est levé) ET le récap affiché côté app avant paiement
+// (majRecapInscritDepl, deplacements.js), pour ne jamais annoncer un
+// montant qui ne serait pas celui réellement facturé. Fichier front
+// modifié : deplacements.js.
+
 // v86 (26/08/2026) : CACHE_NAME bumpé (v150 → v151) — vrai bug trouvé
 // derrière "l'Écharpe Laine et les Lunette Paris FC ne sont visibles
 // nulle part" (demande Remi, suite au correctif v85 de l'onglet
@@ -1102,7 +1130,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v151';
+const CACHE_NAME = 'ul-v153';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
