@@ -392,8 +392,7 @@ async function openDepl(deplId) {
     } else {
       html += `<div class="info-box success">✅ Paiement confirmé — ton billet est prêt</div>
         ${monInscrit.bus ? `<div style="text-align:center;font-size:15px;font-weight:600;margin:10px 0;">🚌 Bus ${esc(monInscrit.bus)}</div>` : ''}
-        <div class="qr-container" id="qrDepl"></div>
-        <p style="text-align:center;font-size:12px;color:var(--gris);">Code: ${monInscrit.qr_code||''}</p>
+        <p style="text-align:center;font-size:12px;color:var(--gris);margin-top:8px;">📱 Présente le QR code de ton Profil au bus pour signaler ta présence.</p>
         ${d.lien_telegram ? `<a href="${esc(d.lien_telegram)}" target="_blank"><button class="btn btn-secondary" style="margin-top:10px;">💬 Groupe Telegram du déplacement</button></a>` : ''}`;
     }
 
@@ -417,9 +416,6 @@ async function openDepl(deplId) {
 
     if (d.notes) html += `<div style="margin-top:12px;font-size:13px;color:var(--gris);">📝 ${d.notes}</div>`;
     document.getElementById('modalDeplContent').innerHTML = html;
-    if (estPaye && monInscrit?.qr_code) {
-      document.getElementById('qrDepl').innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(monInscrit.qr_code)}" width="160" height="160">`;
-    }
     showModal('modalDepl');
   } catch(e) { toast('Erreur chargement déplacement', 'error'); }
 }
@@ -858,6 +854,7 @@ function renderListeInscritsDepl() {
         </span>
         ${(i.statut_paiement==='paye_cash'||i.statut_paiement==='paye_ha') ? `
           <span class="badge ${i.present_at?'badge-vert':'badge-orange'}">${i.present_at?'✅ Présent':'⏳ Absent'}</span>
+          ${!i.present_at ? `<button class="btn btn-sm btn-secondary" onclick="marquerPresentManuel('${i.id}')">✅ Marquer présent</button>` : ''}
           <select style="background:var(--surface-2);border:1.5px solid var(--surface-4);color:var(--gris);padding:6px 8px;border-radius:8px;font-size:12px;" onchange="assignerBus('${d.id}','${i.id}',this.value)">
             <option value="" ${!i.bus?'selected':''}>Bus —</option>
             <option value="A" ${i.bus==='A'?'selected':''}>Bus A</option>
@@ -985,6 +982,22 @@ async function assignerBus(deplId, inscriptionId, bus) {
     if (inscrit) inscrit.bus = bus || null;
     toast(bus ? `Affecté au bus ${bus} ✅` : 'Bus retiré', 'success');
   } catch(e) { toast('Impossible d\'affecter le bus', 'error'); }
+}
+
+// Marquage manuel de présence (demande Remi 25/08/2026) — nécessaire en
+// filet de sécurité depuis le passage du scan à "1 scan = 1 personne"
+// (scan.js) : un invité hors app n'a jamais de compte, donc jamais de QR
+// de Profil à scanner, il ne peut plus être pointé que depuis ici.
+// Fonctionne aussi pour un membre de l'app en dépannage (caméra en
+// panne, QR illisible…).
+async function marquerPresentManuel(inscriptionId) {
+  try {
+    await UL.confirmerPresencesDeplacement([inscriptionId]);
+    const inscrit = _inscritsDeplCourant.find(i => i.id === inscriptionId);
+    if (inscrit) inscrit.present_at = new Date().toISOString();
+    toast('Présence confirmée ✅', 'success');
+    renderListeInscritsDepl();
+  } catch(e) { toast(e.message || 'Impossible de confirmer la présence', 'error'); }
 }
 
 // Annulation admin d'une inscription en attente de paiement — uniquement
