@@ -578,6 +578,24 @@ function toggleAmiDeplSelectionne(membreId, coche) {
 // supprimées, ainsi que le branchement 'invite' dans doInscritDeplMulti
 // ci-dessous).
 
+// ⚠️ RÈGLE FAMILLE AMARZIT (26/08/2026, demande Remi — remplace
+// l'exemption inconditionnelle du 23/07/2026) : Myriam Amarzit n'est
+// exemptée que si Stéphane ET Ange Amarzit participent tous les deux à
+// la même inscription groupée qu'elle — même logique que
+// EXEMPTION_CONDITIONNELLE côté Edge Function helloasso-create-checkout
+// (source de vérité pour le montant réellement facturé). Ce miroir
+// front-end ne sert qu'à afficher un récap juste AVANT paiement — si les
+// deux divergent un jour, c'est toujours l'Edge Function qui fait foi.
+const EXEMPTION_CONDITIONNELLE_DEPL = {
+  '1399ffe2-0f40-40c2-bfd4-33d07e2a1097': ['3f570836-b269-4859-a419-0b56636c5b01', '32b17c78-58c5-404b-a247-5774bdfeb03e'], // Myriam Amarzit : requiert Stéphane + Ange Amarzit
+  '0a69ba62-1661-4af9-9db1-8f26c36c4413': ['48924f05-a586-40b1-a2c3-123932717914', '67c30269-ce72-4123-aff4-1867195b914b'], // Maxine Fournier : requiert Kentin Fournier + Laura Corsois
+};
+function estExempteDepl(membre, idsGroupe) {
+  if (!membre?.deplacements_gratuits) return false;
+  const requis = EXEMPTION_CONDITIONNELLE_DEPL[membre.id];
+  return requis ? requis.every(id => idsGroupe.has(id)) : true;
+}
+
 function majRecapInscritDepl() {
   const nbAmis = document.getElementById('idAvecAmis')?.checked ? _amisDeplSelectionnes.size : 0;
   const total = 1 + nbAmis; // 1 = soi-même
@@ -589,13 +607,21 @@ function majRecapInscritDepl() {
   // jamais réellement facturé.
   const moi = UL.getCurrentMembre();
   const supplement = _supplementVisiteurCourant || 0;
-  let nbExemptes = moi?.deplacements_gratuits ? 1 : 0;
+
+  // Le groupe complet doit être connu AVANT de juger qui est exempté —
+  // la règle Amarzit a besoin de voir tout le monde à la fois.
+  const idsGroupe = new Set(moi?.id ? [moi.id] : []);
+  if (document.getElementById('idAvecAmis')?.checked) {
+    _amisDeplSelectionnes.forEach(id => idsGroupe.add(id));
+  }
+
+  let nbExemptes = estExempteDepl(moi, idsGroupe) ? 1 : 0;
   let montant = 0;
-  if (!moi?.deplacements_gratuits) montant += _prixDeplCourant + (moi?.statut === 'visiteur' ? supplement : 0);
+  if (!estExempteDepl(moi, idsGroupe)) montant += _prixDeplCourant + (moi?.statut === 'visiteur' ? supplement : 0);
   if (document.getElementById('idAvecAmis')?.checked) {
     _amisDeplSelectionnes.forEach(id => {
       const ami = _amisDeplDisponibles.find(a => a.id === id);
-      if (ami?.deplacements_gratuits) { nbExemptes++; return; }
+      if (estExempteDepl(ami, idsGroupe)) { nbExemptes++; return; }
       montant += _prixDeplCourant + (ami?.statut === 'visiteur' ? supplement : 0);
     });
   }
