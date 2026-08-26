@@ -11,15 +11,12 @@
 
 let scanHtml5QrInstance = null;
 let scanContexteActuel = null; // 'deplacement' | 'matos' | 'stick'
-let scanDeplacementChoisi = null; // id du déplacement sélectionné (contexte deplacement uniquement)
 
 async function ouvrirScanMembre(contexte) {
   scanContexteActuel = contexte;
-  scanDeplacementChoisi = null;
 
   let html = `
     <h3 class="modal-title">${libelleContexteScan(contexte)}</h3>
-    <div id="scanSelecteurContexte"></div>
     <div id="scanCameraContainer" style="margin:14px 0;border-radius:12px;overflow:hidden;"></div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
       <input type="text" id="scanCodeManuel" placeholder="Ou saisir le code manuellement" style="flex:1;">
@@ -30,14 +27,7 @@ async function ouvrirScanMembre(contexte) {
   `;
   document.getElementById('modalScanContent').innerHTML = html;
   showModal('modalScan');
-
-  if (contexte === 'deplacement') {
-    await chargerSelecteurDeplacement();
-  } else {
-    // Matos/Stick n'ont pas besoin de désambiguïser une ressource avant
-    // de scanner — on démarre la caméra directement.
-    demarrerCameraScan();
-  }
+  demarrerCameraScan();
 }
 
 function libelleContexteScan(contexte) {
@@ -45,34 +35,6 @@ function libelleContexteScan(contexte) {
   if (contexte === 'matos') return '📷 Scanner retrait — Matos';
   if (contexte === 'stick') return '📷 Scanner remise — Sticks';
   return '📷 Scanner';
-}
-
-// Liste déroulante des déplacements à venir, pré-sélectionnée si un seul
-// existe (cas le plus fréquent en pratique — cf. plan §5.1). Le menu reste
-// affiché et modifiable même dans ce cas, pour éviter toute ambiguïté si
-// deux déplacements se chevauchent un jour.
-async function chargerSelecteurDeplacement() {
-  const conteneur = document.getElementById('scanSelecteurContexte');
-  conteneur.innerHTML = '<div style="font-size:13px;color:var(--gris);">Chargement des déplacements…</div>';
-  try {
-    const depls = await UL.getDeplacements(true);
-    if (!depls.length) {
-      conteneur.innerHTML = '<div class="info-box">Aucun déplacement à venir</div>';
-      return;
-    }
-    scanDeplacementChoisi = depls[0].id;
-    conteneur.innerHTML = `
-      <div class="form-group">
-        <label>Déplacement concerné</label>
-        <select id="scanSelectDepl" onchange="scanDeplacementChoisi=this.value">
-          ${depls.map(d => `<option value="${d.id}">${esc(d.adversaire || '?')} — ${d.date_match || ''}</option>`).join('')}
-        </select>
-      </div>
-    `;
-    demarrerCameraScan();
-  } catch (e) {
-    conteneur.innerHTML = '<div class="info-box error">Erreur chargement déplacements</div>';
-  }
 }
 
 function demarrerCameraScan() {
@@ -147,85 +109,65 @@ async function traiterCodeMembre(code) {
 // scanner la personne suivante sans avoir à fermer/rouvrir la modale —
 // cf. plan §5.1, fluidifier l'usage devant un bus avec une file de gens.
 function relancerCameraSiPossible() {
-  if (scanContexteActuel === 'deplacement' && !scanDeplacementChoisi) return;
   setTimeout(demarrerCameraScan, 600);
 }
 
 // ─── Contexte Déplacement ───────────────────────────────────
-// Refonte 09/07/2026 (demande Remi, multi-personnes) : on scanne
-// désormais le QR du PAYEUR, pas celui de chaque participant — un seul
-// scan peut couvrir plusieurs places (soi + amis + invités payés
-// ensemble). L'admin coche qui est physiquement présent parmi les
-// personnes que ce payeur a réglées, puis confirme en un seul geste.
-let _inscriptionsScanCourant = [];
-
-async function afficherActionsDeplacement(payeur) {
+// Refonte 25/08/2026 (demande Remi) : on scanne désormais le membre
+// PRÉSENT lui-même (son propre QR de Profil), pas le payeur d'un groupe
+// — un scan = une présence, plus de sélection manuelle par case à
+// cocher. Comme il n'y a plus de déplacement présélectionné en amont
+// (cf. ouvrirScanMembre), le/les déplacement(s) concernés sont
+// retrouvés à partir du membre scanné : s'il n'a qu'un seul déplacement
+// payé en attente de présence, la présence est confirmée immédiatement ;
+// s'il en a plusieurs (rare, deux déplacements qui se chevauchent), on
+// demande lequel avant de confirmer.
+// ⚠️ Un invité hors app (jamais de compte, donc jamais de QR à scanner)
+// ne peut plus être pointé par ce flux — cf. marquerPresentManuel
+// (deplacements.js), nouveau bouton de secours dans "Voir inscrits"
+// pour ce cas précis.
+async function afficherActionsDeplacement(membre) {
   const resultatEl = document.getElementById('scanResultat');
-  if (!scanDeplacementChoisi) {
-    resultatEl.innerHTML = '<div class="info-box error">Aucun déplacement sélectionné</div>';
-    return;
-  }
-  const nomPayeur = `${payeur.prenom || ''} ${payeur.nom || ''}`.trim();
-  resultatEl.innerHTML = `<div style="font-size:13px;color:var(--gris);">Recherche des places payées par ${esc(nomPayeur)}…</div>`;
+  const nomComplet = `${membre.prenom || ''} ${membre.nom || ''}`.trim();
+  resultatEl.innerHTML = `<div style="font-size:13px;color:var(--gris);">Recherche des déplacements de ${esc(nomComplet)}…</div>`;
 
   try {
-    const { inscrits } = await UL.getDeplacement(scanDeplacementChoisi);
-    const mesInscriptions = (inscrits || []).filter(i => i.payeur_id === payeur.id);
+    const candidats = await UL.getInscriptionsAPointerParMembre(membre.id);
 
-    if (!mesInscriptions.length) {
-      resultatEl.innerHTML = `<div class="info-box error">❌ ${esc(nomPayeur)} n'a inscrit personne à ce déplacement</div>`;
+    if (!candidats.length) {
+      resultatEl.innerHTML = `<div class="info-box">Aucun déplacement payé en attente de présence pour ${esc(nomComplet)}</div>`;
       relancerCameraSiPossible();
       return;
     }
 
-    _inscriptionsScanCourant = mesInscriptions;
+    if (candidats.length === 1) {
+      resultatEl.innerHTML = `<div style="font-size:13px;color:var(--gris);">Confirmation pour ${esc(nomComplet)} — ${esc(candidats[0].deplacement.adversaire || '?')}…</div>`;
+      await doConfirmerPresenceUnique(candidats[0].id, nomComplet);
+      return;
+    }
 
     resultatEl.innerHTML = `
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Payé par ${esc(nomPayeur)} — coche les personnes présentes :</div>
-      ${mesInscriptions.map(i => {
-        const nomParticipant = i.membre_id
-          ? (`${i.membre?.prenom||''} ${i.membre?.nom||''}`.trim() || `@${i.membre?.pseudo_telegram||'?'}`)
-          : `${i.invite_prenom||''} ${i.invite_nom||''} (hors app)`.trim();
-        const estPaye = i.statut_paiement === 'paye_cash' || i.statut_paiement === 'paye_ha';
-        const dejaPresent = !!i.present_at;
-        return `
-          <label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
-            <input type="checkbox" class="scan-depl-check" value="${i.id}" ${dejaPresent?'checked disabled':''} style="width:20px;height:20px;flex-shrink:0;">
-            <span style="flex:1;font-size:14px;">${esc(nomParticipant)}</span>
-            ${dejaPresent
-              ? '<span class="badge badge-vert" style="flex-shrink:0;">✅ Présent</span>'
-              : estPaye
-                ? '<span class="badge badge-vert" style="flex-shrink:0;">✅ Payé</span>'
-                : `<span class="badge badge-orange" style="flex-shrink:0;">⚠️ ${esc(i.statut_paiement)}</span>`}
-          </label>`;
-      }).join('')}
-      <button class="btn btn-success" style="width:100%;margin-top:12px;" onclick="doConfirmerPresence(false)">✅ Confirmer présence des personnes cochées</button>
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${esc(nomComplet)} — plusieurs déplacements en attente, sélectionne celui concerné :</div>
+      ${candidats.map(c => `
+        <button class="btn btn-sm btn-success" style="width:100%;margin-bottom:6px;" onclick="doConfirmerPresenceUnique('${c.id}','${esc(nomComplet)}')">
+          ✅ ${esc(c.deplacement.adversaire || '?')}${c.deplacement.date_match ? ' — ' + new Date(c.deplacement.date_match).toLocaleDateString('fr-FR') : ''}
+        </button>`).join('')}
     `;
   } catch (e) {
-    resultatEl.innerHTML = '<div class="info-box error">Erreur vérification déplacement</div>';
+    resultatEl.innerHTML = '<div class="info-box error">Erreur recherche déplacements</div>';
     relancerCameraSiPossible();
   }
 }
 
-// force=true reproposé automatiquement (confirm()) si des places cochées
-// ne sont pas encore payées — évite de multiplier les boutons "Valider
-// quand même" ligne par ligne pour un cas qui reste rare en pratique.
-async function doConfirmerPresence(force) {
-  const ids = [...document.querySelectorAll('.scan-depl-check:checked:not(:disabled)')].map(el => el.value);
-  if (!ids.length) return toast('Coche au moins une personne présente', 'error');
+async function doConfirmerPresenceUnique(inscriptionId, nomComplet) {
   try {
-    const res = await UL.confirmerPresencesDeplacement(ids, force);
-    toast(`Présence confirmée ✅ (${res.nb})`, 'success');
-    document.getElementById('scanResultat').innerHTML = '<div class="info-box success">✅ Présence confirmée</div>';
+    await UL.confirmerPresencesDeplacement([inscriptionId]);
+    toast(`Présence confirmée ✅ — ${nomComplet}`, 'success');
+    document.getElementById('scanResultat').innerHTML = `<div class="info-box success">✅ Présence confirmée — ${esc(nomComplet)}</div>`;
     relancerCameraSiPossible();
   } catch (e) {
-    if (e.code === 'PAIEMENT_NON_CONFIRME' && !force) {
-      if (confirm(`${e.message} — valider quand même la présence pour les personnes cochées ?`)) {
-        return doConfirmerPresence(true);
-      }
-      return;
-    }
     toast(e.message || 'Impossible de confirmer la présence', 'error');
+    relancerCameraSiPossible();
   }
 }
 
@@ -362,6 +304,5 @@ function closeModalScan(event) {
   if (event && event.target !== document.getElementById('modalScan')) return;
   arreterCameraScan();
   scanContexteActuel = null;
-  scanDeplacementChoisi = null;
   closeModal('modalScan');
 }
