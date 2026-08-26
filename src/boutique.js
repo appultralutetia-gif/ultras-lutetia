@@ -733,17 +733,39 @@ function switchAdminSticksSubTab(tab) {
 
 let _historiqueMatosCharge = false, _historiqueSticksCharge = false;
 
+// Enrichi 26/08/2026 (demande Remi) — jusqu'ici cet onglet n'affichait
+// que le nom/prix/date de l'article archivé, sans dire si des commandes
+// restaient encore à remettre : ça donnait l'impression trompeuse que
+// ces commandes avaient disparu, alors qu'elles restent visibles ailleurs
+// (onglet Gestion pour l'admin, "Mes commandes" pour le membre) — cf.
+// getProduits()/getProduitsHistoriqueMatos, aucune n'est jamais perdue.
+// Croise avec allCommandesAdmin (déjà chargé par loadAdminBoutique,
+// aucun appel réseau supplémentaire ici) pour afficher qui n'a toujours
+// pas récupéré son article, comme le fait "Voir inscrits" pour un
+// déplacement passé.
 async function loadHistoriqueMatos() {
   const el = document.getElementById('historiqueMatosListe');
   el.innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
     const produits = await UL.getProduitsHistoriqueMatos();
     if (!produits.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune précommande terminée pour l\'instant</p>'; return; }
-    el.innerHTML = produits.map(p => `
+    el.innerHTML = produits.map(p => {
+      const commandesArticle = allCommandesAdmin
+        .flatMap(c => (c.commande_items || []).filter(i => i.produit_id === p.id).map(() => c))
+        .filter(c => c.statut !== 'annulee' && c.statut !== 'refuse');
+      const nonRemis = commandesArticle.filter(c => c.statut !== 'distribue');
+      const remis = commandesArticle.length - nonRemis.length;
+      return `
       <div class="card" style="margin-bottom:8px;opacity:.85;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(p.nom)}</div>
         <div style="font-size:12px;color:var(--gris);">${p.prix}€ · Précommande terminée le ${new Date(p.precommande_fin).toLocaleDateString('fr-FR')}</div>
-      </div>`).join('');
+        <div style="font-size:12px;margin-top:8px;">✅ ${remis} remis${nonRemis.length ? ` · ⏳ ${nonRemis.length} encore à remettre` : ''}</div>
+        ${nonRemis.length ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;">
+          ${nonRemis.map(c => `<div style="padding:3px 0;">@${esc(c.membre?.pseudo_telegram||'?')} — ${STATUT_LABEL_GESTION[c.statut]||c.statut}</div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    }).join('');
   } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
 }
 
@@ -753,11 +775,22 @@ async function loadHistoriqueSticks() {
   try {
     const sticks = await UL.getSticksHistorique();
     if (!sticks.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune précommande terminée pour l\'instant</p>'; return; }
-    el.innerHTML = sticks.map(s => `
+    el.innerHTML = sticks.map(s => {
+      const distribsArticle = allDistribsAdmin
+        .filter(d => d.stick_id === s.id && d.statut !== 'annulee' && d.statut !== 'refuse');
+      const nonRemis = distribsArticle.filter(d => d.statut !== 'distribue');
+      const remis = distribsArticle.length - nonRemis.length;
+      return `
       <div class="card" style="margin-bottom:8px;opacity:.85;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(s.nom)}</div>
         <div style="font-size:12px;color:var(--gris);">${s.prix}€ · Précommande terminée le ${new Date(s.precommande_fin).toLocaleDateString('fr-FR')}</div>
-      </div>`).join('');
+        <div style="font-size:12px;margin-top:8px;">✅ ${remis} remis${nonRemis.length ? ` · ⏳ ${nonRemis.length} encore à remettre` : ''}</div>
+        ${nonRemis.length ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;">
+          ${nonRemis.map(d => `<div style="padding:3px 0;">@${esc(d.membre?.pseudo_telegram||'?')} — ${STATUT_LABEL_GESTION[d.statut]||d.statut}</div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    }).join('');
   } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
 }
 
