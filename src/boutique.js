@@ -100,9 +100,14 @@ function renderMatos(produits) {
       // stock configuré par l'admin, p._stockRestant en déduit les
       // commandes déjà passées (tous statuts sauf refusé/annulé).
       const restant = p._stockRestant ?? p.stock;
-      stockBadge = restant <= 3 && restant > 0
-        ? `<span class="badge badge-orange" style="font-size:10px;">Stock limité</span>`
-        : restant === 0 ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>` : '';
+      // Chiffre affiché directement (demande Remi 25/08/2026, même
+      // principe que Sticks) plutôt qu'un badge vague "Stock limité" —
+      // pour un article à tailles, c'est le total toutes tailles
+      // confondues (le détail par taille apparaît dans le sélecteur au
+      // moment de commander, cf. optionsTaillesAvecStockHtml).
+      stockBadge = restant === 0
+        ? `<span class="badge badge-rouge" style="font-size:10px;">Épuisé</span>`
+        : `<span class="badge ${restant<=3?'badge-orange':'badge-bleu'}" style="font-size:10px;">Stock: ${restant}</span>`;
     }
     const sectionBadge = p.section
       ? `<span class="badge badge-bleu" style="font-size:10px;">Section ${p.section.nom}</span>` : '';
