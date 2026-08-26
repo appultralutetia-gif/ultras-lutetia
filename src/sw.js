@@ -1,9 +1,26 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v85
+// ULTRAS LUTETIA — Service Worker v86
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v86 (26/08/2026) : CACHE_NAME bumpé (v150 → v151) — vrai bug trouvé
+// derrière "l'Écharpe Laine et les Lunette Paris FC ne sont visibles
+// nulle part" (demande Remi, suite au correctif v85 de l'onglet
+// Historique) : un article Matos peut être archivé de DEUX façons
+// distinctes — automatiquement quand precommande_fin est dépassée (déjà
+// couvert), ou MANUELLEMENT via le bouton "Archiver" sur un article en
+// mode stock (statut passe à 'archive', doArchiverProduit). Ce 2e cas
+// n'était regardé par rien : getProduits() l'exclut du catalogue
+// (.eq('statut','disponible')), et getProduitsHistoriqueMatos() ne
+// cherchait que mode='precommande' — un article archivé manuellement
+// disparaissait donc réellement de partout, y compris de l'onglet
+// Historique. getProduitsHistoriqueMatos() couvre désormais aussi
+// statut='archive' (2 requêtes + dédoublonnage, plus robuste qu'un
+// .or() PostgREST imbriqué). 4 commandes 'prepare' (payées, jamais
+// remises) retrouvées sur ces 3 articles au moment du correctif.
+// Fichiers modifiés : supabase-client.js, boutique.js.
+
 // v85 (26/08/2026) : CACHE_NAME bumpé (v149 → v150) — onglet "🗄️
 // Historique" (Matos et Sticks) enrichi (demande Remi, suite à "on ne
 // voit plus les articles archivés non remis nulle part") : jusqu'ici
@@ -1085,7 +1102,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v150';
+const CACHE_NAME = 'ul-v151';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
