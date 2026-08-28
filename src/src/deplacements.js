@@ -453,25 +453,18 @@ async function doInscritDepl(id, btn) {
       return;
     }
 
-    if (monInscrit) {
-      // Sécurité complémentaire (demande Remi 27/07/2026) : le bouton est
-      // déjà masqué côté carte/détail quand le bus est complet, mais on
-      // revérifie ici au cas où l'affichage était périmé (une autre
-      // place prise entre l'ouverture de la page et le clic).
+    // Une inscription déjà PAYÉE ne devrait normalement plus afficher de
+    // bouton menant ici (filet de sécurité uniquement) — rien à changer,
+    // on relance directement le paiement solo comme avant.
+    if (dejaPaye) {
       if (d.places_max && (d._inscritsPayes || 0) >= d.places_max) {
         toast('Bus complet — impossible de relancer le paiement pour le moment.', 'error');
         return;
       }
-      // Relance de paiement pour une inscription déjà existante — appel
-      // strictement inchangé par rapport à avant (cf. relancerPaiementDeplacement),
-      // aucune dépendance à l'évolution de l'Edge Function pour ce cas.
       if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
       const data = await UL.relancerPaiementDeplacement(id);
       closeModal('modalDepl');
       if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
-      // Cas gratuit (demande Remi 23/07/2026, membres.deplacements_gratuits)
-      // : l'Edge Function a validé directement sans passer par HelloAsso —
-      // pas de redirectUrl à ouvrir, juste rafraîchir et notifier.
       if (data.gratuit) {
         toast('Inscription validée (gratuit) ✅', 'success');
         loadDeplacements();
@@ -485,11 +478,13 @@ async function doInscritDepl(id, btn) {
     // plus jamais pouvoir payer une place qui n'existe pas — demande
     // Remi 27/07/2026, suite au surbook ESTAC Troyes (places_max=83, 84
     // payés). Bascule automatiquement vers la liste d'attente, gratuite,
-    // au lieu d'ouvrir le paiement HelloAsso. ⚠️ Vérification côté app
-    // uniquement (cf. rejoindreListeAttenteDeplacement) — pas de
-    // garde-fou dans l'Edge Function helloasso-create-checkout (hors
-    // dépôt front), donc pas totalement infaillible en cas d'inscriptions
-    // strictement simultanées à la toute dernière place.
+    // au lieu d'ouvrir le paiement HelloAsso. S'applique maintenant aussi
+    // bien à une toute première inscription qu'à la relance d'une
+    // inscription restée non payée (fusion des deux cas, cf. plus bas).
+    // ⚠️ Vérification côté app uniquement (cf. rejoindreListeAttenteDeplacement)
+    // — pas de garde-fou dans l'Edge Function helloasso-create-checkout
+    // (hors dépôt front), donc pas totalement infaillible en cas
+    // d'inscriptions strictement simultanées à la toute dernière place.
     if (d.places_max && (d._inscritsPayes || 0) >= d.places_max) {
       if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
       try {
@@ -504,9 +499,20 @@ async function doInscritDepl(id, btn) {
       return;
     }
 
-    // Pas encore inscrit : ouvre le modal de sélection (soi seul par
-    // défaut, avec option amis app — invités hors app retirés le
-    // 22/07/2026, demande Remi).
+    // Pas encore payé (jamais inscrit, OU inscription en_attente/refuse
+    // pas encore finalisée) : ouvre le modal de sélection (soi seul par
+    // défaut, avec option amis app).
+    // ⚠️ CORRECTIF 28/08/2026 (demande Remi, cas Laura Corsois — "on ne
+    // peut plus ajouter d'amis une fois qu'on a déjà une inscription en
+    // attente") : avant, une inscription non payée existante déclenchait
+    // systématiquement une relance SOLO directe (UL.relancerPaiementDeplacement,
+    // sans jamais repasser par ce modal), empêchant définitivement
+    // d'ajouter des amis après un premier essai solo raté ou abandonné.
+    // On propose désormais ce même modal dans les deux cas — sans risque
+    // de doublon : l'Edge Function (helloasso-create-checkout) réutilise
+    // déjà la ligne existante pour "moi" si elle n'est pas encore payée
+    // (cf. dejaExistants dans traiterDeplacement), exactement comme elle
+    // le fait pour un ami déjà inscrit mais pas encore payé.
     _deplIdCourantInscription = id;
     document.getElementById('idAvecAmis').checked = false;
     document.getElementById('blocAmisDepl').style.display = 'none';
@@ -578,6 +584,24 @@ function toggleAmiDeplSelectionne(membreId, coche) {
 // supprimées, ainsi que le branchement 'invite' dans doInscritDeplMulti
 // ci-dessous).
 
+// ⚠️ RÈGLE FAMILLE AMARZIT (26/08/2026, demande Remi — remplace
+// l'exemption inconditionnelle du 23/07/2026) : Myriam Amarzit n'est
+// exemptée que si Stéphane ET Ange Amarzit participent tous les deux à
+// la même inscription groupée qu'elle — même logique que
+// EXEMPTION_CONDITIONNELLE côté Edge Function helloasso-create-checkout
+// (source de vérité pour le montant réellement facturé). Ce miroir
+// front-end ne sert qu'à afficher un récap juste AVANT paiement — si les
+// deux divergent un jour, c'est toujours l'Edge Function qui fait foi.
+const EXEMPTION_CONDITIONNELLE_DEPL = {
+  '1399ffe2-0f40-40c2-bfd4-33d07e2a1097': ['3f570836-b269-4859-a419-0b56636c5b01', '32b17c78-58c5-404b-a247-5774bdfeb03e'], // Myriam Amarzit : requiert Stéphane + Ange Amarzit
+  '0a69ba62-1661-4af9-9db1-8f26c36c4413': ['48924f05-a586-40b1-a2c3-123932717914', '67c30269-ce72-4123-aff4-1867195b914b'], // Maxine Fournier : requiert Kentin Fournier + Laura Corsois
+};
+function estExempteDepl(membre, idsGroupe) {
+  if (!membre?.deplacements_gratuits) return false;
+  const requis = EXEMPTION_CONDITIONNELLE_DEPL[membre.id];
+  return requis ? requis.every(id => idsGroupe.has(id)) : true;
+}
+
 function majRecapInscritDepl() {
   const nbAmis = document.getElementById('idAvecAmis')?.checked ? _amisDeplSelectionnes.size : 0;
   const total = 1 + nbAmis; // 1 = soi-même
@@ -589,13 +613,21 @@ function majRecapInscritDepl() {
   // jamais réellement facturé.
   const moi = UL.getCurrentMembre();
   const supplement = _supplementVisiteurCourant || 0;
-  let nbExemptes = moi?.deplacements_gratuits ? 1 : 0;
+
+  // Le groupe complet doit être connu AVANT de juger qui est exempté —
+  // la règle Amarzit a besoin de voir tout le monde à la fois.
+  const idsGroupe = new Set(moi?.id ? [moi.id] : []);
+  if (document.getElementById('idAvecAmis')?.checked) {
+    _amisDeplSelectionnes.forEach(id => idsGroupe.add(id));
+  }
+
+  let nbExemptes = estExempteDepl(moi, idsGroupe) ? 1 : 0;
   let montant = 0;
-  if (!moi?.deplacements_gratuits) montant += _prixDeplCourant + (moi?.statut === 'visiteur' ? supplement : 0);
+  if (!estExempteDepl(moi, idsGroupe)) montant += _prixDeplCourant + (moi?.statut === 'visiteur' ? supplement : 0);
   if (document.getElementById('idAvecAmis')?.checked) {
     _amisDeplSelectionnes.forEach(id => {
       const ami = _amisDeplDisponibles.find(a => a.id === id);
-      if (ami?.deplacements_gratuits) { nbExemptes++; return; }
+      if (estExempteDepl(ami, idsGroupe)) { nbExemptes++; return; }
       montant += _prixDeplCourant + (ami?.statut === 'visiteur' ? supplement : 0);
     });
   }
