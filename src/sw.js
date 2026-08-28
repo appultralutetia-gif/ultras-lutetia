@@ -1,9 +1,23 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v88
+// ULTRAS LUTETIA — Service Worker v89
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v89 (28/08/2026) : CACHE_NAME bumpé (v153 → v154) — correctif
+// "impossible d'ajouter des amis" (demande Remi, cas Laura Corsois) :
+// dès qu'une inscription existait déjà pour soi sur un déplacement —
+// même non payée (en_attente/refuse), même abandonnée en cours de
+// route — cliquer "M'inscrire"/"Réessayer le paiement" relançait
+// systématiquement un paiement SOLO, sans jamais reproposer le modal
+// "avec des amis". Ce n'était pas nécessaire : l'Edge Function
+// (helloasso-create-checkout) réutilise déjà la ligne existante pour
+// "moi" quand elle n'est pas encore payée, exactement comme pour un
+// ami — aucun risque de doublon en repassant par le modal. Ne
+// s'applique qu'aux inscriptions NON payées (une inscription déjà
+// payée continue de relancer directement, filet de sécurité inchangé).
+// Fichier modifié : deplacements.js.
+
 // v88 (26/08/2026) : CACHE_NAME bumpé (v152 → v153) — même règle
 // d'exemption conditionnelle qu'Amarzit (v87) étendue à Maxine Fournier
 // (demande Remi) : exemptée uniquement si Kentin Fournier ET Laura
@@ -1130,7 +1144,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v153';
+const CACHE_NAME = 'ul-v154';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
