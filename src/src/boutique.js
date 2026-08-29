@@ -180,10 +180,8 @@ async function openCommander(produitId) {
       </div>
       <div class="form-group">
         <label>Mode de paiement</label>
-        <select id="cmdMode" style="background:#1F2937;border:1.5px solid #4B5563;color:white;padding:11px 14px;border-radius:9px;width:100%;font-size:15px;">
-          <option value="helloasso">💳 HelloAsso (en ligne)</option>
-          ${p.mode !== 'precommande' ? `<option value="cash">💵 Cash (en présentiel)</option>` : ''}
-        </select>
+        <div style="background:#1F2937;border:1.5px solid #4B5563;color:white;padding:11px 14px;border-radius:9px;width:100%;font-size:15px;">💳 HelloAsso (en ligne)</div>
+        <input type="hidden" id="cmdMode" value="helloasso">
       </div>
       ${p.mode === 'precommande' ? `<div class="info-box" style="font-size:12px;">📋 Article en précommande — paiement HelloAsso uniquement. Il sera disponible au retrait une fois reçu par la cellule Matos.</div>` : ''}
       <button class="btn btn-primary" onclick="doCommander('${p.id}',${!!taillesPourType(p.type_tailles)})">Valider la commande</button>
@@ -735,17 +733,45 @@ function switchAdminSticksSubTab(tab) {
 
 let _historiqueMatosCharge = false, _historiqueSticksCharge = false;
 
+// Enrichi 26/08/2026 (demande Remi) — jusqu'ici cet onglet n'affichait
+// que le nom/prix/date de l'article archivé, sans dire si des commandes
+// restaient encore à remettre : ça donnait l'impression trompeuse que
+// ces commandes avaient disparu, alors qu'elles restent visibles ailleurs
+// (onglet Gestion pour l'admin, "Mes commandes" pour le membre) — cf.
+// getProduits()/getProduitsHistoriqueMatos, aucune n'est jamais perdue.
+// Croise avec allCommandesAdmin (déjà chargé par loadAdminBoutique,
+// aucun appel réseau supplémentaire ici) pour afficher qui n'a toujours
+// pas récupéré son article, comme le fait "Voir inscrits" pour un
+// déplacement passé.
 async function loadHistoriqueMatos() {
   const el = document.getElementById('historiqueMatosListe');
   el.innerHTML = '<div class="empty-state"><div>⏳</div>Chargement…</div>';
   try {
     const produits = await UL.getProduitsHistoriqueMatos();
     if (!produits.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune précommande terminée pour l\'instant</p>'; return; }
-    el.innerHTML = produits.map(p => `
+    el.innerHTML = produits.map(p => {
+      const commandesArticle = allCommandesAdmin
+        .flatMap(c => (c.commande_items || []).filter(i => i.produit_id === p.id).map(() => c))
+        .filter(c => c.statut !== 'annulee' && c.statut !== 'refuse');
+      const nonRemis = commandesArticle.filter(c => c.statut !== 'distribue');
+      const remis = commandesArticle.length - nonRemis.length;
+      // Un article archivé manuellement (statut='archive', mode stock)
+      // n'a pas de precommande_fin — libellé adapté (demande Remi
+      // 26/08/2026).
+      const dateLabel = p.precommande_fin
+        ? `Précommande terminée le ${new Date(p.precommande_fin).toLocaleDateString('fr-FR')}`
+        : 'Archivé';
+      return `
       <div class="card" style="margin-bottom:8px;opacity:.85;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(p.nom)}</div>
-        <div style="font-size:12px;color:var(--gris);">${p.prix}€ · Précommande terminée le ${new Date(p.precommande_fin).toLocaleDateString('fr-FR')}</div>
-      </div>`).join('');
+        <div style="font-size:12px;color:var(--gris);">${p.prix}€ · ${dateLabel}</div>
+        <div style="font-size:12px;margin-top:8px;">✅ ${remis} remis${nonRemis.length ? ` · ⏳ ${nonRemis.length} encore à remettre` : ''}</div>
+        ${nonRemis.length ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;">
+          ${nonRemis.map(c => `<div style="padding:3px 0;">@${esc(c.membre?.pseudo_telegram||'?')} — ${STATUT_LABEL_GESTION[c.statut]||c.statut}</div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    }).join('');
   } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
 }
 
@@ -755,11 +781,22 @@ async function loadHistoriqueSticks() {
   try {
     const sticks = await UL.getSticksHistorique();
     if (!sticks.length) { el.innerHTML = '<p style="color:var(--gris);font-size:13px;">Aucune précommande terminée pour l\'instant</p>'; return; }
-    el.innerHTML = sticks.map(s => `
+    el.innerHTML = sticks.map(s => {
+      const distribsArticle = allDistribsAdmin
+        .filter(d => d.stick_id === s.id && d.statut !== 'annulee' && d.statut !== 'refuse');
+      const nonRemis = distribsArticle.filter(d => d.statut !== 'distribue');
+      const remis = distribsArticle.length - nonRemis.length;
+      return `
       <div class="card" style="margin-bottom:8px;opacity:.85;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;">${esc(s.nom)}</div>
         <div style="font-size:12px;color:var(--gris);">${s.prix}€ · Précommande terminée le ${new Date(s.precommande_fin).toLocaleDateString('fr-FR')}</div>
-      </div>`).join('');
+        <div style="font-size:12px;margin-top:8px;">✅ ${remis} remis${nonRemis.length ? ` · ⏳ ${nonRemis.length} encore à remettre` : ''}</div>
+        ${nonRemis.length ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;">
+          ${nonRemis.map(d => `<div style="padding:3px 0;">@${esc(d.membre?.pseudo_telegram||'?')} — ${STATUT_LABEL_GESTION[d.statut]||d.statut}</div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    }).join('');
   } catch(e) { el.innerHTML = '<div class="empty-state"><div>⚠️</div>Erreur chargement</div>'; }
 }
 
@@ -858,29 +895,61 @@ async function loadAdminBoutique() {
       sel.value = valeurActuelle;
     }
 
+    // ⚠️ Chargé AVANT les menus de filtre par article (demande Remi
+    // 28/08/2026, cas "Pack Déplacement" invisible) — les filtres ont
+    // besoin de connaître les commandes pour y inclure les articles
+    // archivés qui en ont encore, cf. plus bas.
+    allCommandesAdmin = await UL.getAllCommandes();
+    filtrerCommandesAdminSansEvent(currentFiltreCommandesAdmin);
+    allDistribsAdmin = await UL.getAllDistributions();
+    filtrerDistribsAdminSansEvent(currentFiltreDistribsAdmin);
+
     // Menus déroulants de filtre par article (demande Remi 22/07/2026) —
     // construits à partir du catalogue complet (pas seulement des
     // articles ayant déjà des commandes), pour rester utilisables même
     // si un article n'a encore aucune commande sous le filtre courant.
+    // ⚠️ CORRECTIF 28/08/2026 (demande Remi, cas "Pack Déplacement"
+    // absent du menu) : allProduitsAdmin/allSticksAdmin (getProduits/
+    // getSticks) excluent volontairement les articles archivés — mais un
+    // article archivé peut encore avoir des commandes en cours à filtrer
+    // (cf. correctif Historique du 26/08/2026, même cause). On complète
+    // donc la liste avec les articles archivés trouvés dans les
+    // commandes déjà chargées (nom embarqué via commande_items.produit,
+    // aucun appel réseau supplémentaire).
     const selProduit = document.getElementById('filtreProduitCommandesAdmin');
     if (selProduit) {
       const valeurActuelle = selProduit.value;
+      const idsConnus = new Set(allProduitsAdmin.map(p => p.id));
+      const archivesAvecCommandes = new Map();
+      allCommandesAdmin.forEach(c => (c.commande_items || []).forEach(i => {
+        if (i.produit_id && !idsConnus.has(i.produit_id) && !archivesAvecCommandes.has(i.produit_id)) {
+          archivesAvecCommandes.set(i.produit_id, i.produit?.nom || '?');
+        }
+      }));
+      const optionsArchivees = [...archivesAvecCommandes.entries()]
+        .map(([id, nom]) => `<option value="${id}">🗄️ ${esc(nom)}</option>`).join('');
       selProduit.innerHTML = '<option value="">Tous les articles</option>' +
-        allProduitsAdmin.map(p => `<option value="${p.id}">${esc(p.nom)}</option>`).join('');
+        allProduitsAdmin.map(p => `<option value="${p.id}">${esc(p.nom)}</option>`).join('') +
+        optionsArchivees;
       selProduit.value = valeurActuelle;
     }
     const selStick = document.getElementById('filtreStickDistribsAdmin');
     if (selStick) {
       const valeurActuelle = selStick.value;
+      const idsConnusStick = new Set(allSticksAdmin.map(s => s.id));
+      const archivesAvecDistribs = new Map();
+      allDistribsAdmin.forEach(d => {
+        if (d.stick_id && !idsConnusStick.has(d.stick_id) && !archivesAvecDistribs.has(d.stick_id)) {
+          archivesAvecDistribs.set(d.stick_id, d.stick?.nom || '?');
+        }
+      });
+      const optionsArchiveesStick = [...archivesAvecDistribs.entries()]
+        .map(([id, nom]) => `<option value="${id}">🗄️ ${esc(nom)}</option>`).join('');
       selStick.innerHTML = '<option value="">Tous les sticks</option>' +
-        allSticksAdmin.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
+        allSticksAdmin.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('') +
+        optionsArchiveesStick;
       selStick.value = valeurActuelle;
     }
-
-    allCommandesAdmin = await UL.getAllCommandes();
-    filtrerCommandesAdminSansEvent(currentFiltreCommandesAdmin);
-    allDistribsAdmin = await UL.getAllDistributions();
-    filtrerDistribsAdminSansEvent(currentFiltreDistribsAdmin);
 
     // Badges de compteur sur les onglets "Commandes/Distributions en cours"
     // — repère visuel rapide (sans avoir à ouvrir l'onglet) du nombre
@@ -925,6 +994,12 @@ function filtrerDistribsAdminSansEvent(mode) {
 // ═══════════════════════════════════════════════════════════════
 
 let filtreTypeGestion = 'tous', filtreStatutGestion = 'en_cours', vueGestionCommandes = 'membre';
+// Recherche par nom/prénom/pseudo (demande Remi 26/08/2026, même
+// principe que Commandes en cours) — combinée en ET avec les filtres
+// type/statut ci-dessus. S'applique aussi en vue "Par article" (filtre
+// les lignes avant regroupement) même si son intérêt principal est la
+// vue "Par membre".
+let rechercheGestion = '';
 
 const STATUT_LABEL_GESTION = {
   en_attente: '⏳ Attente paiement', prepare: '📦 Préparé', disponible: '✅ Disponible', precommande_validee: '📋 Précommande validée',
@@ -979,7 +1054,16 @@ function getRowsGestionFiltrees() {
   if (filtreTypeGestion === 'matos' || filtreTypeGestion === 'stick') rows = rows.filter(r => r.type === filtreTypeGestion);
   else if (filtreTypeGestion === 'precommande') rows = rows.filter(r => r.mode === 'precommande');
   if (filtreStatutGestion === 'en_cours') rows = rows.filter(r => STATUTS_EN_COURS.includes(r.statut));
+  if (rechercheGestion.trim()) {
+    const q = rechercheGestion.trim().toLowerCase();
+    rows = rows.filter(r => `${r.membre?.prenom||''} ${r.membre?.nom||''} ${r.membre?.pseudo_telegram||''}`.toLowerCase().includes(q));
+  }
   return rows;
+}
+
+function rechercherGestion(val) {
+  rechercheGestion = val;
+  renderGestionCommandes();
 }
 
 function grouperParMembre(rows) {
