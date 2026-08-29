@@ -1441,6 +1441,26 @@
 </div>
 
 <!-- Modal Admin — Modifier membre -->
+<!-- Modal blocage avec motif (demande Remi 29/08/2026) — partagé entre
+     Gérer les membres et Comité de passage, cf. ouvrirModalBloquerMembre
+     (admin.js). -->
+<div class="modal-overlay" id="modalBloquerMembre" style="display:none;" onclick="closeModalOutside(event,'modalBloquerMembre')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="modal-title">⛔ Bloquer ce membre</h3>
+    <div class="form-group">
+      <label>Motif</label>
+      <select id="blocageMotif"></select>
+    </div>
+    <div class="form-group">
+      <label>Commentaire (obligatoire si "Autres")</label>
+      <textarea id="blocageCommentaire" rows="3" placeholder="Détail, contexte..."></textarea>
+    </div>
+    <button class="btn btn-danger" onclick="doConfirmerBlocageMembre()">⛔ Bloquer</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="closeModal('modalBloquerMembre')">Annuler</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modalEditMembre" style="display:none;" onclick="closeModalOutside(event,'modalEditMembre')">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
