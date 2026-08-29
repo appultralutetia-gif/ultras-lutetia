@@ -1,9 +1,21 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v90
+// ULTRAS LUTETIA — Service Worker v91
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v91 (29/08/2026) : CACHE_NAME bumpé (v155 → v156) — motif de blocage
+// (demande Remi) : bloquer un membre (Gérer les membres ET Comité de
+// passage) ouvre désormais un modal demandant un motif obligatoire
+// (Non respect de la charte / Non inscrits sur l'application / Revente
+// de billet / Autres — commentaire obligatoire pour "Autres", libre
+// sinon) — nouvelles colonnes membres.bloque_motif/bloque_commentaire/
+// bloque_par/bloque_at. Un bandeau ⛔ affiche qui a bloqué, quand et
+// pourquoi sur les deux pages, tant que le membre reste bloqué (rien ne
+// s'affiche pour les blocages antérieurs à cette fonctionnalité, qui
+// n'ont pas ces métadonnées). Le déblocage reste direct, sans motif à
+// donner. Fichiers modifiés : admin.js, supabase-client.js, index.html.
+
 // v90 (28/08/2026) : CACHE_NAME bumpé (v153 → v154 déjà pris, → v155) —
 // 2 bugs trouvés derrière "je n'ai pas tous les articles dans la liste
 // et je ne vois pas toutes mes commandes en cours" (demande Remi, cas
@@ -1163,7 +1175,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v155';
+const CACHE_NAME = 'ul-v156';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
