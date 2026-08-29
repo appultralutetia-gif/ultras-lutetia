@@ -2338,11 +2338,18 @@ async function getMesCommandes() {
   return data || [];
 }
 
+// ⚠️ CORRECTIF 28/08/2026 (demande Remi, cas "Pack Déplacement" de mai
+// invisible partout côté admin) : limite de 300 dépassée (348+ commandes
+// au total au moment du correctif) — au-delà, les plus anciennes étaient
+// silencieusement absentes de TOUTES les vues admin (Commandes en cours,
+// Gestion), quel que soit le filtre utilisé, puisqu'elles n'étaient
+// jamais chargées du tout. Portée à 2000, large marge au-delà du volume
+// actuel d'une saison.
 async function getAllCommandes() {
   const { data, error } = await sb.from('commandes')
     .select('*, membre:membres!commandes_membre_id_fkey(nom, prenom, pseudo_telegram), commande_items(*, produit:produits(nom, mode))')
     .order('created_at', { ascending: false })
-    .limit(300);
+    .limit(2000);
   if (error) throw error;
   return data || [];
 }
@@ -2561,11 +2568,13 @@ async function confirmerDistributionStick(distribId) {
   return validerPaiementStick(distribId);
 }
 
+// Même correctif que getAllCommandes (28/08/2026) — limite portée à
+// 1000, large marge au-delà du volume actuel d'une saison.
 async function getAllDistributions() {
   const { data, error } = await sb.from('sticks_distribution')
     .select('*, stick:sticks_catalogue(nom, categorie, prix, mode, lot), membre:membres!sticks_distribution_membre_id_fkey(nom, prenom, pseudo_telegram)')
     .order('created_at', { ascending: false })
-    .limit(100);
+    .limit(1000);
   if (error) throw error;
   return data || [];
 }
