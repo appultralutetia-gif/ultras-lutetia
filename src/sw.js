@@ -1,9 +1,40 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v89
+// ULTRAS LUTETIA — Service Worker v91
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v91 (29/08/2026) : CACHE_NAME bumpé (v155 → v156) — motif de blocage
+// (demande Remi) : bloquer un membre (Gérer les membres ET Comité de
+// passage) ouvre désormais un modal demandant un motif obligatoire
+// (Non respect de la charte / Non inscrits sur l'application / Revente
+// de billet / Autres — commentaire obligatoire pour "Autres", libre
+// sinon) — nouvelles colonnes membres.bloque_motif/bloque_commentaire/
+// bloque_par/bloque_at. Un bandeau ⛔ affiche qui a bloqué, quand et
+// pourquoi sur les deux pages, tant que le membre reste bloqué (rien ne
+// s'affiche pour les blocages antérieurs à cette fonctionnalité, qui
+// n'ont pas ces métadonnées). Le déblocage reste direct, sans motif à
+// donner. Fichiers modifiés : admin.js, supabase-client.js, index.html.
+
+// v90 (28/08/2026) : CACHE_NAME bumpé (v153 → v154 déjà pris, → v155) —
+// 2 bugs trouvés derrière "je n'ai pas tous les articles dans la liste
+// et je ne vois pas toutes mes commandes en cours" (demande Remi, cas
+// Pack Déplacement de mai) :
+// 1. getAllCommandes()/getAllDistributions() (supabase-client.js)
+// plafonnaient à 300/100 lignes — la base ayant dépassé ce volume
+// (348+ commandes), les commandes les plus anciennes n'étaient plus
+// chargées DU TOUT côté admin, invisibles dans absolument toutes les
+// vues (Commandes en cours, Gestion) quel que soit le filtre utilisé.
+// Portées à 2000/1000.
+// 2. Les menus de filtre par article ("Tous les articles"/"Tous les
+// sticks") ne listaient que le catalogue actif (allProduitsAdmin/
+// allSticksAdmin), qui exclut volontairement les articles archivés —
+// un article archivé avec des commandes en cours n'était donc pas
+// sélectionnable dans ces menus (même cause que le correctif Historique
+// du 26/08/2026). Complétés avec les articles archivés trouvés dans les
+// commandes déjà chargées (préfixe 🗄️), sans appel réseau
+// supplémentaire. Fichiers modifiés : boutique.js, supabase-client.js.
+
 // v89 (28/08/2026) : CACHE_NAME bumpé (v153 → v154) — correctif
 // "impossible d'ajouter des amis" (demande Remi, cas Laura Corsois) :
 // dès qu'une inscription existait déjà pour soi sur un déplacement —
@@ -1144,7 +1175,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v154';
+const CACHE_NAME = 'ul-v156';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
