@@ -101,6 +101,7 @@ function renderMembres(membres) {
           })()}
           ${Array.isArray(m.roles_app) && m.roles_app.length ? `<div style="font-size:10px;color:#818CF8;margin-top:2px;">🔑 ${m.roles_app.map(r=>r.replace('_',' ')).join(' · ')}</div>` : ''}
           <div style="font-size:10px;color:var(--gris);margin-top:2px;">🕐 ${formaterDerniereConnexion(_dernieresConnexionsParMembre[m.id])}</div>
+          ${bandeauBlocage(m)}
         </div>
         <span style="font-size:12px;color:var(--bleu-clair);">${esc(m.section?.nom||'Ultras Lutetia')}</span>
       </div>
@@ -311,9 +312,21 @@ async function doSauvegarderMembre(btn) {
     if (btn) { btn.disabled = false; btn.textContent = texteOriginal; }
   }
 }
-async function toggleMembre(id, actif) {
-  try { await UL.toggleBlocageMembre(id, actif); toast(actif?'Compte réactivé':'Compte bloqué', 'success'); loadMembres(); }
-  catch(e) { toast('Impossible de modifier le statut du membre', 'error'); }
+// Blocage avec motif (demande Remi 29/08/2026) : le déblocage reste
+// direct (pas de raison à donner), le blocage ouvre désormais un modal
+// pour choisir un motif + un commentaire libre — cf.
+// ouvrirModalBloquerMembre/doConfirmerBlocageMembre plus bas.
+function toggleMembre(id, actif) {
+  if (actif) { doDebloquerMembre(id, 'membres'); return; }
+  ouvrirModalBloquerMembre(id, 'membres');
+}
+
+async function doDebloquerMembre(id, contexte) {
+  try {
+    await UL.toggleBlocageMembre(id, true);
+    toast('Compte réactivé', 'success');
+    if (contexte === 'comite') loadMembresComite(); else loadMembres();
+  } catch(e) { toast('Impossible de modifier le statut du membre', 'error'); }
 }
 
 // ─── STATS ────────────────────────────────────────────────────
@@ -1527,6 +1540,7 @@ function renderMembreComiteCard(m) {
       <span>🚌 ${m._participation?.deplPaye ?? 0} payé${(m._participation?.deplPaye ?? 0) === 1 ? '' : 's'} · ${m._participation?.deplNonPaye ?? 0} non payé${(m._participation?.deplNonPaye ?? 0) === 1 ? '' : 's'}</span>
       <span>🕐 ${formaterDerniereConnexion(_dernieresConnexionsParMembre[m.id])}</span>
     </div>
+    ${bandeauBlocage(m)}
     ${categorie ? `
     <div style="display:flex;gap:4px;margin-top:10px;" data-eval-boutons="${categorie}_${m.id}">
       ${[1,2,3].map(n => {
@@ -1551,12 +1565,67 @@ function renderMembreComiteCard(m) {
   </div>`;
 }
 
-async function toggleMembreComite(id, actif) {
+function toggleMembreComite(id, actif) {
+  if (actif) { doDebloquerMembre(id, 'comite'); return; }
+  ouvrirModalBloquerMembre(id, 'comite');
+}
+
+// ─── Modal blocage avec motif (demande Remi 29/08/2026) ─────────
+// Partagée entre "Gérer les membres" (Bureau/Admin) et "Comité de
+// passage" — seul le rechargement final diffère (loadMembres vs
+// loadMembresComite), porté par _blocageMembreCourant.contexte.
+let _blocageMembreCourant = null;
+const MOTIFS_BLOCAGE = ['Non respect de la charte', 'Non inscrits sur l\'application', 'Revente de billet', 'Autres'];
+
+function ouvrirModalBloquerMembre(id, contexte) {
+  _blocageMembreCourant = { id, contexte };
+  document.getElementById('blocageMotif').innerHTML = '<option value="">Choisir un motif</option>' +
+    MOTIFS_BLOCAGE.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  document.getElementById('blocageCommentaire').value = '';
+  showModal('modalBloquerMembre');
+}
+
+async function doConfirmerBlocageMembre() {
+  const motif = document.getElementById('blocageMotif').value;
+  const commentaire = document.getElementById('blocageCommentaire').value.trim();
+  if (!motif) return toast('Sélectionne un motif', 'error');
+  if (motif === 'Autres' && !commentaire) return toast('Un commentaire est requis pour le motif "Autres"', 'error');
   try {
-    await UL.toggleBlocageMembre(id, actif);
-    toast(actif ? 'Compte réactivé' : 'Compte bloqué', 'success');
-    loadMembresComite();
-  } catch(e) { toast('Impossible de modifier le statut du membre', 'error'); }
+    await UL.bloquerMembreAvecMotif(_blocageMembreCourant.id, motif, commentaire);
+    toast('Compte bloqué', 'success');
+    closeModal('modalBloquerMembre');
+    if (_blocageMembreCourant.contexte === 'comite') loadMembresComite(); else loadMembres();
+  } catch(e) { toast(e.message || 'Impossible de bloquer ce membre', 'error'); }
+}
+
+// Cherche le nom de qui a bloqué dans les listes déjà chargées en
+// mémoire (allMembres et/ou _allMembresComite selon la page visitée) —
+// évite un appel réseau ou un embed PostgREST supplémentaire sur
+// membres.bloque_par (auto-référence, même prudence que pour les autres
+// FK vers membres dans ce projet).
+function nomBloqueur(bloquePar) {
+  if (!bloquePar) return '?';
+  const listes = [typeof allMembres !== 'undefined' ? allMembres : null, typeof _allMembresComite !== 'undefined' ? _allMembresComite : null];
+  for (const liste of listes) {
+    if (!Array.isArray(liste)) continue;
+    const trouve = liste.find(m => m.id === bloquePar);
+    if (trouve) return `${trouve.prenom || ''} ${trouve.nom || ''}`.trim() || trouve.pseudo_telegram || '?';
+  }
+  return '?';
+}
+
+// Bandeau "Bloqué par ... le ... — motif" — affiché uniquement si le
+// membre est actuellement bloqué ET qu'un motif a été enregistré (les
+// blocages antérieurs à cette fonctionnalité, ou via "Refuser une
+// demande d'inscription", n'ont pas ces métadonnées : rien ne s'affiche
+// pour eux, comportement identique à avant).
+function bandeauBlocage(m) {
+  if (m.actif || !m.bloque_at) return '';
+  return `
+    <div style="font-size:11px;color:var(--rouge,#f87171);margin-top:4px;background:rgba(248,113,113,.08);border-radius:6px;padding:5px 8px;">
+      ⛔ Bloqué par ${esc(nomBloqueur(m.bloque_par))} le ${new Date(m.bloque_at).toLocaleDateString('fr-FR')}${m.bloque_motif ? ` — ${esc(m.bloque_motif)}` : ''}
+      ${m.bloque_commentaire ? `<div style="margin-top:2px;">💬 ${esc(m.bloque_commentaire)}</div>` : ''}
+    </div>`;
 }
 
 // Débloque l'accès au paiement du cartage pour un Visiteur précis
