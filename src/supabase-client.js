@@ -365,6 +365,19 @@ async function toggleBlocageMembre(membreId, actif) {
   return updateMembre(membreId, { actif });
 }
 
+// Blocage avec motif + commentaire + traçabilité (demande Remi
+// 29/08/2026, Bureau/Admin/Comité de passage) — cf. toggleBlocageMembre
+// pour le déblocage, qui n'a pas besoin de motif.
+async function bloquerMembreAvecMotif(membreId, motif, commentaire) {
+  return updateMembre(membreId, {
+    actif: false,
+    bloque_motif: motif,
+    bloque_commentaire: commentaire || null,
+    bloque_par: currentUser.id,
+    bloque_at: new Date().toISOString(),
+  });
+}
+
 // Débloque l'accès au paiement du cartage pour un Visiteur précis
 // (Comité de passage, cf. renderMembreComiteCard) — demande Remi
 // 30/07/2026 : un Visiteur ne peut plus payer le cartage tant que le
@@ -2935,7 +2948,7 @@ window.UL = {
   loginByTelegram, logout, changePassword, inscription, demanderResetMdp,
   verifierCodeInscription, renvoyerCodeInscription,
   getMembre, getAllMembres, updateMembre, updateStatutMembre, confirmerEmailMembre, getDernieresConnexionsParMembre,
-  updateSectionMembre, toggleBlocageMembre, validerCartageVisiteur, validerDeplacementsVisiteur,
+  updateSectionMembre, toggleBlocageMembre, bloquerMembreAvecMotif, validerCartageVisiteur, validerDeplacementsVisiteur,
   noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
   getParticipationBatch,
   adminResetPassword, updateMembreMdp, supprimerMembre,
