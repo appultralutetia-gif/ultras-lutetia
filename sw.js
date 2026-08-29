@@ -1,9 +1,101 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v84
+// ULTRAS LUTETIA — Service Worker v90
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v90 (28/08/2026) : CACHE_NAME bumpé (v153 → v154 déjà pris, → v155) —
+// 2 bugs trouvés derrière "je n'ai pas tous les articles dans la liste
+// et je ne vois pas toutes mes commandes en cours" (demande Remi, cas
+// Pack Déplacement de mai) :
+// 1. getAllCommandes()/getAllDistributions() (supabase-client.js)
+// plafonnaient à 300/100 lignes — la base ayant dépassé ce volume
+// (348+ commandes), les commandes les plus anciennes n'étaient plus
+// chargées DU TOUT côté admin, invisibles dans absolument toutes les
+// vues (Commandes en cours, Gestion) quel que soit le filtre utilisé.
+// Portées à 2000/1000.
+// 2. Les menus de filtre par article ("Tous les articles"/"Tous les
+// sticks") ne listaient que le catalogue actif (allProduitsAdmin/
+// allSticksAdmin), qui exclut volontairement les articles archivés —
+// un article archivé avec des commandes en cours n'était donc pas
+// sélectionnable dans ces menus (même cause que le correctif Historique
+// du 26/08/2026). Complétés avec les articles archivés trouvés dans les
+// commandes déjà chargées (préfixe 🗄️), sans appel réseau
+// supplémentaire. Fichiers modifiés : boutique.js, supabase-client.js.
+
+// v89 (28/08/2026) : CACHE_NAME bumpé (v153 → v154) — correctif
+// "impossible d'ajouter des amis" (demande Remi, cas Laura Corsois) :
+// dès qu'une inscription existait déjà pour soi sur un déplacement —
+// même non payée (en_attente/refuse), même abandonnée en cours de
+// route — cliquer "M'inscrire"/"Réessayer le paiement" relançait
+// systématiquement un paiement SOLO, sans jamais reproposer le modal
+// "avec des amis". Ce n'était pas nécessaire : l'Edge Function
+// (helloasso-create-checkout) réutilise déjà la ligne existante pour
+// "moi" quand elle n'est pas encore payée, exactement comme pour un
+// ami — aucun risque de doublon en repassant par le modal. Ne
+// s'applique qu'aux inscriptions NON payées (une inscription déjà
+// payée continue de relancer directement, filet de sécurité inchangé).
+// Fichier modifié : deplacements.js.
+
+// v88 (26/08/2026) : CACHE_NAME bumpé (v152 → v153) — même règle
+// d'exemption conditionnelle qu'Amarzit (v87) étendue à Maxine Fournier
+// (demande Remi) : exemptée uniquement si Kentin Fournier ET Laura
+// Corsois participent tous les deux à la même inscription groupée
+// qu'elle. membres.deplacements_gratuits mis à true pour Maxine
+// (Kentin et Laura n'ont pas ce flag). EXEMPTION_CONDITIONNELLE mise à
+// jour aux deux mêmes endroits que pour Amarzit : Edge Function
+// helloasso-create-checkout (déployée directement, v34) et le récap
+// avant paiement (majRecapInscritDepl, deplacements.js). Fichier front
+// modifié : deplacements.js.
+
+// v87 (26/08/2026) : CACHE_NAME bumpé (v151 → v152) — règle famille
+// Amarzit revue (demande Remi) : l'exemption de Myriam Amarzit
+// (membres.deplacements_gratuits=true) n'est plus inconditionnelle,
+// elle ne s'applique désormais que si Stéphane ET Ange Amarzit
+// participent TOUS LES DEUX à la même inscription groupée qu'elle —
+// sinon elle paie sa place normalement (ex: Stéphane + Myriam sans
+// Ange → Stéphane paie 2 places, aucune exemption). Stéphane et Ange
+// n'ont eux-mêmes jamais eu ce flag, rien ne change les concernant.
+// Corrigé aux 2 endroits qui appliquaient la règle : l'Edge Function
+// helloasso-create-checkout (déployée directement, v33 — source de
+// vérité pour le montant réellement facturé, accès direct via Supabase
+// MCP cette fois, l'angle mort mentionné dans les sessions précédentes
+// est levé) ET le récap affiché côté app avant paiement
+// (majRecapInscritDepl, deplacements.js), pour ne jamais annoncer un
+// montant qui ne serait pas celui réellement facturé. Fichier front
+// modifié : deplacements.js.
+
+// v86 (26/08/2026) : CACHE_NAME bumpé (v150 → v151) — vrai bug trouvé
+// derrière "l'Écharpe Laine et les Lunette Paris FC ne sont visibles
+// nulle part" (demande Remi, suite au correctif v85 de l'onglet
+// Historique) : un article Matos peut être archivé de DEUX façons
+// distinctes — automatiquement quand precommande_fin est dépassée (déjà
+// couvert), ou MANUELLEMENT via le bouton "Archiver" sur un article en
+// mode stock (statut passe à 'archive', doArchiverProduit). Ce 2e cas
+// n'était regardé par rien : getProduits() l'exclut du catalogue
+// (.eq('statut','disponible')), et getProduitsHistoriqueMatos() ne
+// cherchait que mode='precommande' — un article archivé manuellement
+// disparaissait donc réellement de partout, y compris de l'onglet
+// Historique. getProduitsHistoriqueMatos() couvre désormais aussi
+// statut='archive' (2 requêtes + dédoublonnage, plus robuste qu'un
+// .or() PostgREST imbriqué). 4 commandes 'prepare' (payées, jamais
+// remises) retrouvées sur ces 3 articles au moment du correctif.
+// Fichiers modifiés : supabase-client.js, boutique.js.
+
+// v85 (26/08/2026) : CACHE_NAME bumpé (v149 → v150) — onglet "🗄️
+// Historique" (Matos et Sticks) enrichi (demande Remi, suite à "on ne
+// voit plus les articles archivés non remis nulle part") : jusqu'ici
+// n'affichait que nom/prix/date de l'article archivé, aucune info sur
+// les commandes en cours. Rien n'était réellement perdu (les commandes
+// restaient visibles dans l'onglet Gestion pour l'admin et "Mes
+// commandes"/"Mes sticks reçus" pour le membre, cf. getAllCommandes/
+// getMesCommandes, jamais filtrées par archivage) — seul cet onglet
+// donnait l'impression trompeuse de leur disparition. Affiche
+// maintenant, par article archivé : nombre remis vs encore à remettre,
+// et la liste des membres encore en attente si non-nul — croisé avec
+// allCommandesAdmin/allDistribsAdmin déjà chargés par loadAdminBoutique,
+// aucun appel réseau supplémentaire. Fichier modifié : boutique.js.
+
 // v84 (26/08/2026) : CACHE_NAME bumpé (v148 → v149) — recherche par nom/
 // prénom/pseudo (demande Remi) ajoutée sur l'onglet "Gestion" (Matos +
 // Sticks réunis), même principe que "Commandes en cours" (25/08/2026) :
@@ -1071,7 +1163,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v149';
+const CACHE_NAME = 'ul-v155';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
