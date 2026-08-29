@@ -365,6 +365,19 @@ async function toggleBlocageMembre(membreId, actif) {
   return updateMembre(membreId, { actif });
 }
 
+// Blocage avec motif + commentaire + traçabilité (demande Remi
+// 29/08/2026, Bureau/Admin/Comité de passage) — cf. toggleBlocageMembre
+// pour le déblocage, qui n'a pas besoin de motif.
+async function bloquerMembreAvecMotif(membreId, motif, commentaire) {
+  return updateMembre(membreId, {
+    actif: false,
+    bloque_motif: motif,
+    bloque_commentaire: commentaire || null,
+    bloque_par: currentUser.id,
+    bloque_at: new Date().toISOString(),
+  });
+}
+
 // Débloque l'accès au paiement du cartage pour un Visiteur précis
 // (Comité de passage, cf. renderMembreComiteCard) — demande Remi
 // 30/07/2026 : un Visiteur ne peut plus payer le cartage tant que le
@@ -2164,15 +2177,31 @@ async function getProduits() {
 // pour l'onglet "Historique" (demande Remi 22/07/2026). Contrairement à
 // getProduits(), aucun filtre de droits/visibilité : c'est un historique
 // de référence, pas un catalogue d'achat.
+// Étendu 26/08/2026 (demande Remi, cas "Écharpe Laine"/"Lunette Paris FC"
+// invisibles nulle part) : couvre aussi les articles archivés
+// MANUELLEMENT (statut='archive', bouton "Archiver" sur un article en
+// mode stock — doArchiverProduit) — un mécanisme distinct et plus ancien
+// que l'archivage automatique par précommande_fin, qui n'était jusqu'ici
+// regardé par aucun onglet une fois l'article retiré de getProduits()
+// (qui filtre .eq('statut','disponible')). Deux requêtes séparées et
+// dédoublonnage plutôt qu'un .or() PostgREST imbriqué, plus robuste.
 async function getProduitsHistoriqueMatos() {
-  const { data, error } = await sb.from('produits')
-    .select('*, section:sections(id, nom)')
-    .eq('mode', 'precommande')
-    .not('precommande_fin', 'is', null)
-    .lt('precommande_fin', new Date().toISOString())
-    .order('precommande_fin', { ascending: false });
-  if (error) throw error;
-  return data || [];
+  const nowIso = new Date().toISOString();
+  const [{ data: precommandesTerminees, error: e1 }, { data: archivesManuels, error: e2 }] = await Promise.all([
+    sb.from('produits').select('*, section:sections(id, nom)')
+      .eq('mode', 'precommande').not('precommande_fin', 'is', null).lt('precommande_fin', nowIso),
+    sb.from('produits').select('*, section:sections(id, nom)').eq('statut', 'archive'),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  const vus = new Set();
+  const tout = [...(precommandesTerminees || []), ...(archivesManuels || [])].filter(p => {
+    if (vus.has(p.id)) return false;
+    vus.add(p.id);
+    return true;
+  });
+  tout.sort((a, b) => new Date(b.precommande_fin || b.created_at) - new Date(a.precommande_fin || a.created_at));
+  return tout;
 }
 
 async function getProduitById(id) {
@@ -2322,11 +2351,18 @@ async function getMesCommandes() {
   return data || [];
 }
 
+// ⚠️ CORRECTIF 28/08/2026 (demande Remi, cas "Pack Déplacement" de mai
+// invisible partout côté admin) : limite de 300 dépassée (348+ commandes
+// au total au moment du correctif) — au-delà, les plus anciennes étaient
+// silencieusement absentes de TOUTES les vues admin (Commandes en cours,
+// Gestion), quel que soit le filtre utilisé, puisqu'elles n'étaient
+// jamais chargées du tout. Portée à 2000, large marge au-delà du volume
+// actuel d'une saison.
 async function getAllCommandes() {
   const { data, error } = await sb.from('commandes')
     .select('*, membre:membres!commandes_membre_id_fkey(nom, prenom, pseudo_telegram), commande_items(*, produit:produits(nom, mode))')
     .order('created_at', { ascending: false })
-    .limit(300);
+    .limit(2000);
   if (error) throw error;
   return data || [];
 }
@@ -2545,11 +2581,13 @@ async function confirmerDistributionStick(distribId) {
   return validerPaiementStick(distribId);
 }
 
+// Même correctif que getAllCommandes (28/08/2026) — limite portée à
+// 1000, large marge au-delà du volume actuel d'une saison.
 async function getAllDistributions() {
   const { data, error } = await sb.from('sticks_distribution')
     .select('*, stick:sticks_catalogue(nom, categorie, prix, mode, lot), membre:membres!sticks_distribution_membre_id_fkey(nom, prenom, pseudo_telegram)')
     .order('created_at', { ascending: false })
-    .limit(100);
+    .limit(1000);
   if (error) throw error;
   return data || [];
 }
@@ -2910,7 +2948,7 @@ window.UL = {
   loginByTelegram, logout, changePassword, inscription, demanderResetMdp,
   verifierCodeInscription, renvoyerCodeInscription,
   getMembre, getAllMembres, updateMembre, updateStatutMembre, confirmerEmailMembre, getDernieresConnexionsParMembre,
-  updateSectionMembre, toggleBlocageMembre, validerCartageVisiteur, validerDeplacementsVisiteur,
+  updateSectionMembre, toggleBlocageMembre, bloquerMembreAvecMotif, validerCartageVisiteur, validerDeplacementsVisiteur,
   noterMembre, getEvaluationsMembre, getEvaluationsCourantesBatch, getHistoriqueEvaluation,
   getParticipationBatch,
   adminResetPassword, updateMembreMdp, supprimerMembre,
