@@ -209,6 +209,7 @@ async function afficherActionsMatos(membre) {
     resultatEl.innerHTML = `
       ${blocHtml}
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${esc(nomComplet)} — ${disponibles.length} commande${disponibles.length > 1 ? 's' : ''} disponible${disponibles.length > 1 ? 's' : ''}</div>
+      ${disponibles.length > 1 ? `<button class="btn btn-sm btn-success" style="width:100%;margin-bottom:8px;" onclick="doConfirmerRetraitMatosGroupe('${disponibles.map(c => c.id).join(',')}')">✔️✔️ Tout confirmer (${disponibles.length})</button>` : ''}
       ${disponibles.map(c => `
         <div class="card" style="margin-bottom:8px;padding:10px;">
           <div style="font-size:13px;">${(c.commande_items || []).map(i => esc(i.produit?.nom || '?')).join(', ')}</div>
@@ -231,6 +232,23 @@ async function doConfirmerRetraitMatos(commandeId) {
   } catch (e) {
     toast(e.message || 'Impossible de confirmer le retrait', 'error');
   }
+}
+
+// Confirmation groupée (demande Remi 29/08/2026, "à la table de vente
+// sans mon PC" — plusieurs articles pour la même personne obligeaient à
+// cliquer un bouton par article) — même principe que
+// doReceptionnerCommandesEnMasse (réception fournisseur), un échec sur
+// une commande n'empêche jamais de traiter les autres.
+async function doConfirmerRetraitMatosGroupe(idsStr) {
+  const ids = idsStr.split(',').filter(Boolean);
+  let ok = 0, echecs = 0;
+  for (const id of ids) {
+    try { await UL.updateCommandeStatut(id, 'distribue'); ok++; }
+    catch (e) { echecs++; }
+  }
+  toast(echecs ? `${ok} confirmée(s), ${echecs} échec(s)` : `${ok} retrait(s) confirmé(s) ✅`, echecs ? 'error' : 'success');
+  document.getElementById('scanResultat').innerHTML = `<div class="info-box ${echecs ? 'error' : 'success'}">${echecs ? `⚠️ ${ok} confirmée(s), ${echecs} échec(s)` : '✅ Tous les retraits confirmés'}</div>`;
+  relancerCameraSiPossible();
 }
 
 // ─── Contexte Stick ─────────────────────────────────────────
@@ -270,6 +288,7 @@ async function afficherActionsStick(membre) {
     resultatEl.innerHTML = `
       ${blocHtml}
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;">${esc(nomComplet)} — ${disponibles.length} remise${disponibles.length > 1 ? 's' : ''} disponible${disponibles.length > 1 ? 's' : ''}</div>
+      ${disponibles.length > 1 ? `<button class="btn btn-sm btn-success" style="width:100%;margin-bottom:8px;" onclick="doConfirmerRemiseStickGroupe('${disponibles.map(d => d.id).join(',')}')">✔️✔️ Tout confirmer (${disponibles.length})</button>` : ''}
       ${disponibles.map(d => `
         <div class="card" style="margin-bottom:8px;padding:10px;">
           <div style="font-size:13px;">${esc(d.stick?.nom || '?')} × ${d.quantite}</div>
@@ -292,6 +311,20 @@ async function doConfirmerRemiseStick(distribId) {
   } catch (e) {
     toast(e.message || 'Impossible de confirmer la remise', 'error');
   }
+}
+
+// Confirmation groupée (demande Remi 29/08/2026) — même principe que
+// doConfirmerRetraitMatosGroupe.
+async function doConfirmerRemiseStickGroupe(idsStr) {
+  const ids = idsStr.split(',').filter(Boolean);
+  let ok = 0, echecs = 0;
+  for (const id of ids) {
+    try { await UL.confirmerDistributionStick(id); ok++; }
+    catch (e) { echecs++; }
+  }
+  toast(echecs ? `${ok} confirmée(s), ${echecs} échec(s)` : `${ok} remise(s) confirmée(s) ✅`, echecs ? 'error' : 'success');
+  document.getElementById('scanResultat').innerHTML = `<div class="info-box ${echecs ? 'error' : 'success'}">${echecs ? `⚠️ ${ok} confirmée(s), ${echecs} échec(s)` : '✅ Toutes les remises confirmées'}</div>`;
+  relancerCameraSiPossible();
 }
 
 // ─── Fermeture modale ───────────────────────────────────────
