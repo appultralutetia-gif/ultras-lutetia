@@ -1,9 +1,22 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v91
+// ULTRAS LUTETIA — Service Worker v92
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v92 (29/08/2026) : CACHE_NAME bumpé (v156 → v157) — bouton "✔️✔️ Tout
+// confirmer" (demande Remi, "à la table de vente sans mon PC") : quand
+// le scan Matos/Sticks trouve plusieurs commandes/remises disponibles
+// pour la même personne, un seul bouton les confirme toutes d'un coup
+// (doConfirmerRetraitMatosGroupe/doConfirmerRemiseStickGroupe) au lieu
+// de devoir cliquer "Confirmer" séparément sur chaque article — les
+// boutons individuels restent disponibles en dessous si besoin de ne
+// confirmer qu'un seul article. N'apparaît que si plus d'un article est
+// disponible (rien ne change pour une commande unique). Un échec sur
+// un article n'empêche jamais les autres d'être confirmés (même
+// principe que la réception groupée déjà existante). Fichier modifié :
+// scan.js.
+
 // v91 (29/08/2026) : CACHE_NAME bumpé (v155 → v156) — motif de blocage
 // (demande Remi) : bloquer un membre (Gérer les membres ET Comité de
 // passage) ouvre désormais un modal demandant un motif obligatoire
@@ -1175,7 +1188,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v156';
+const CACHE_NAME = 'ul-v157';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
