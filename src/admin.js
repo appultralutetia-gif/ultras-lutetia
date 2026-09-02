@@ -1117,7 +1117,17 @@ async function loadDemandesAdmin(idListe = 'demandesListeAdmin', idBadge = 'dema
     // 'sympathisant' + actif=false, exactement le profil d'une demande en
     // attente — sans ce filtre, il réapparaît ici en boucle avec tous les
     // boutons de validation actifs (bug repéré 16/07/2026).
-    const demandes = tous.filter(m => (m.statut === 'visiteur' || m.statut === 'sympathisant') && !m.actif && !estMembreSupprime(m));
+    // ⚠️ CORRECTIF 02/09/2026 (demande Remi, cas Hicham Habib — "je l'ai
+    // bloqué mais il est revenu en Demandes d'inscription") : un membre
+    // encore statut Visiteur/Sympathisant qu'on bloque (nouvelle
+    // fonctionnalité motif de blocage, 29/08/2026) devient lui aussi
+    // !actif — et matchait donc accidentellement ce même filtre, comme
+    // s'il s'agissait d'une toute nouvelle demande jamais traitée. Le
+    // blocage lui-même n'était jamais remis en cause (bloque_at/motif
+    // restaient bien enregistrés), seul l'affichage était trompeur.
+    // !m.bloque_at exclut désormais tout membre explicitement bloqué via
+    // ce motif, même principe que !estMembreSupprime juste au-dessus.
+    const demandes = tous.filter(m => (m.statut === 'visiteur' || m.statut === 'sympathisant') && !m.actif && !estMembreSupprime(m) && !m.bloque_at);
     const badge = document.getElementById(idBadge);
     if (badge) {
       badge.textContent = demandes.length + ' en attente';
