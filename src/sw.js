@@ -1,9 +1,23 @@
 // ============================================================
-// ULTRAS LUTETIA — Service Worker v92
+// ULTRAS LUTETIA — Service Worker v93
 // ============================================================
 // Historique complet des versions précédentes déplacé vers
 // CHANGELOG.md.
 //
+// v93 (02/09/2026) : CACHE_NAME bumpé (v157 → v158) — correctif "je
+// bloque quelqu'un et il revient dans Demandes d'inscription" (demande
+// Remi, cas Hicham Habib) : un membre encore statut Visiteur/
+// Sympathisant qu'on bloque (motif de blocage, 29/08/2026) devient lui
+// aussi !actif — et matchait donc accidentellement le même filtre que
+// "Demandes d'inscription en attente" (statut visiteur/sympa + !actif),
+// réapparaissant comme si c'était une toute nouvelle demande jamais
+// traitée. Le blocage lui-même n'était jamais remis en cause
+// (bloque_at/motif/bloque_par restaient bien enregistrés en base,
+// vérifié sur le cas réel) — seul l'affichage était trompeur. Un membre
+// avec bloque_at renseigné est désormais exclu de cette liste, même
+// principe que l'exclusion déjà existante des comptes anonymisés RGPD.
+// Fichier modifié : admin.js.
+
 // v92 (29/08/2026) : CACHE_NAME bumpé (v156 → v157) — bouton "✔️✔️ Tout
 // confirmer" (demande Remi, "à la table de vente sans mon PC") : quand
 // le scan Matos/Sticks trouve plusieurs commandes/remises disponibles
@@ -1188,7 +1202,7 @@
 //   badge, "Stock: X (Y restants)"). Garde-fou supplémentaire côté
 //   serveur dans passerCommande (paiement cash) au cas où l'affichage
 //   serait périmé. Fichiers modifiés : supabase-client.js, boutique.js.
-const CACHE_NAME = 'ul-v157';
+const CACHE_NAME = 'ul-v158';
 
 // Modules JS/CSS + index.html : network-first (toujours la version la
 // plus récente, avec fallback cache uniquement si le réseau est
