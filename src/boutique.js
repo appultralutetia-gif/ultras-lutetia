@@ -1769,8 +1769,14 @@ function formatPlagePrecommande(item) {
 // Le champ produits.avec_tailles (booléen) est conservé en base et tenu
 // à jour en parallèle (avec_tailles = type_tailles !== 'aucune') pour ne
 // pas casser d'éventuel autre code qui le lirait encore (ex: testable.js).
+// ⚠️ CORRECTIF 03/09/2026 (demande Remi) : ajout de 3XL et 4XL à
+// l'échelle "standard" (S à XXL jusqu'ici) — plusieurs membres en avaient
+// besoin et n'avaient aucune option correspondante au moment de
+// commander. S'applique automatiquement partout où cette constante est
+// utilisée (sélecteur de taille membre, stock par taille admin, Cash
+// Matos) — un seul endroit à modifier.
 const TAILLES_PAR_TYPE = {
-  standard: ['XS','S','M','L','XL','XXL'],
+  standard: ['XS','S','M','L','XL','XXL','3XL','4XL'],
   pantalon: ['38','40','42','44','46','48','50','52'],
 };
 function taillesPourType(type) {
